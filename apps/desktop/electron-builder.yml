@@ -17,9 +17,12 @@ win:
   target: [nsis, portable]
   icon: build/icon.png
 nsis:
+  artifactName: "Sekai-${version}-setup-${arch}.${ext}"
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
+portable:
+  artifactName: "Sekai-${version}-portable-${arch}.${ext}"
 mac:
   target: [dmg, zip]
   category: public.app-category.productivity

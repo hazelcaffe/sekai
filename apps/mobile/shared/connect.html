@@ -157,7 +157,8 @@
 				<h1>Connect to Sekai</h1>
 				<p id="intro">Enter the address you open Sekai at in your browser.</p>
 			</header>
-			<form id="form">
+			<!-- novalidate: "sekai.example.com" is fine (the app adds https://), though type=url would refuse it. -->
+			<form id="form" novalidate>
 				<label for="url">Server address</label>
 				<input
 					id="url"

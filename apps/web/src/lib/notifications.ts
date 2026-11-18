@@ -194,9 +194,9 @@ const PHONE_TOKEN = "sekai.push.phone";
 async function phoneConfig() {
 	const config = await api.push.mobile();
 	if (mobile?.platform === "android" && !config.fcm)
-		throw new Error("Push isn't set up on this server yet. An admin can add Firebase in Admin → Mobile app.");
+		throw new Error("Push isn't set up on this server yet. An admin can add Firebase in Admin → Phone apps.");
 	if (mobile?.platform === "ios" && !config.apns)
-		throw new Error("Push isn't set up on this server yet. An admin can add Apple push in Admin → Mobile app.");
+		throw new Error("Push isn't set up on this server yet. An admin can add Apple push in Admin → Phone apps.");
 	return { fcm: config.fcm };
 }
 

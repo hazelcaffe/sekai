@@ -1,0 +1,58 @@
+# The Xcode project is generated from this file: `xcodegen` (https://github.com/yonaskolb/XcodeGen), then open
+# Sekai.xcodeproj. Don't edit or commit the generated project.
+name: Sekai
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    # The app id. People building their own copy (their own Apple team) change it here, and set
+    # DEVELOPMENT_TEAM here or in Xcode's Signing & Capabilities.
+    SEKAI_APP_ID: io.github.hazelcaffe.sekai
+targets:
+  Sekai:
+    type: application
+    platform: iOS
+    # MARKETING_VERSION and CURRENT_PROJECT_VERSION, shared with the Android app.
+    configFiles:
+      Debug: ../version.xcconfig
+      Release: ../version.xcconfig
+    sources:
+      - path: Sekai
+      # The connect screen, the page bridge and the logo are shared with the Android app.
+      - path: ../shared
+        name: Shared
+        includes: [bridge.js, connect.html, icon.png]
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(SEKAI_APP_ID)
+        PRODUCT_NAME: Sekai
+        INFOPLIST_FILE: Sekai/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sekai/Sekai.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: false
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: false
+        ENABLE_USER_SCRIPT_SANDBOXING: true
+        # The shared logo ships as it is (Colorful Stage art), not re-encoded.
+        COMPRESS_PNG_FILES: false
+        STRIP_PNG_TEXT: false
+    scheme:
+      testTargets: [SekaiTests]
+  # Unit tests for what the screenshots can't show (addresses, paths, bridge values).
+  SekaiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SekaiTests
+    dependencies:
+      - target: Sekai
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(SEKAI_APP_ID).tests
+        GENERATE_INFOPLIST_FILE: true

@@ -56,7 +56,7 @@ The app's user agent ends with ` SekaiApp/<version> (<Android|iOS>)`.
 ## Server endpoints the apps use
 
 - `GET /api/push/mobile` → `{ fcm: MobileFcmConfig | null, apns: boolean }` (the page passes `fcm` to
-  `push.register`; null means an admin hasn't added Firebase in Admin → Mobile app).
+  `push.register`; null means an admin hasn't added Firebase in Admin → Phone apps).
 - `POST /api/push/devices` `{provider, token, environment?, appId, device}` and `POST /api/push/devices/remove`
   `{token}`: the page registers the token for the signed-in person (the native side never does).
 - Pushes. FCM: data-only messages (all values strings): `title`, `body`, `url` (a path), `tag`, `ring` ("1" for
@@ -102,4 +102,17 @@ The app's user agent ends with ` SekaiApp/<version> (<Android|iOS>)`.
   -no-audio -gpu swiftshader_indirect"` (drop `-no-window` to see it); a dev server on this machine is
   `http://10.0.2.2:<port>` from the emulator; screenshots with `adb exec-out screencap -p > shot.png`.
 - iOS: `cd apps/mobile/ios && xcodegen && open Sekai.xcodeproj` on a Mac, or `.github/workflows/mobile.yml` on
-  GitHub's Macs (simulator build, a smoke test with screenshots, and an unsigned `.ipa` to sign yourself).
+  GitHub's Macs (simulator build, unit tests, a smoke test with screenshots, and an unsigned `.ipa` to sign
+  yourself). The app id is `SEKAI_APP_ID` in `ios/project.yml`; set your team in Xcode (Signing & Capabilities).
+  The smoke test (`ios/scripts/smoke-test.sh`) opens the app with no server, an unreachable one and a real one
+  (`ios/scripts/ci-server.sh`: Postgres from Homebrew and this checkout's server, set up with a first account), and
+  checks the app's log (`Log.swift`) for bridge.js reaching the app. Launch arguments stand in for a saved server:
+  `xcrun simctl launch <udid> <app id> -serverUrl http://127.0.0.1:7420`.
+- The unsigned `.ipa` (`Payload/Sekai.app`, built with `CODE_SIGNING_ALLOWED=NO`) has no entitlements: whoever
+  signs it gives it theirs (Xcode, `codesign`, or a sideloading tool). Push needs an Apple team with the Push
+  Notifications capability (free personal teams can't), a profile whose `aps-environment` the app reads to tell the
+  page "sandbox" or "production", and the server's Apple push key (Admin → Phone apps) for the same app id.
+- Releases: the release workflow calls `mobile.yml` (`workflow_call`, also `workflow_dispatch`) with `version` and
+  `build`, which overwrite `version.xcconfig` for that run, and the `ANDROID_KEYSTORE_*` / `ANDROID_KEY_*` secrets
+  (a signed release APK; without them a debug one). Artifacts: `sekai-android` (`Sekai-<version>.apk`, or
+  `Sekai-<version>-debug.apk`), `sekai-ios` (`Sekai-<version>-unsigned.ipa`) and `ios-screenshots`.
