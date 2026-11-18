@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'" />
+		<title>Connect to Sekai</title>
+		<style>
+			:root {
+				color-scheme: dark light;
+				/* Nightcord at 25:00 (dark) and Virtual Singers (light), like the app. */
+				--bg: #0d0a10;
+				--surface: #15111a;
+				--border: rgb(235 215 255 / 0.1);
+				--fg: #efe9f4;
+				--muted: #a99fb4;
+				--accent: #9b54ad;
+				--accent-fg: #ffffff;
+				--danger: #ff6b6b;
+			}
+			@media (prefers-color-scheme: light) {
+				:root {
+					--bg: #ffffff;
+					--surface: #eef6f5;
+					--border: rgb(10 60 56 / 0.1);
+					--fg: #0b1716;
+					--muted: #4c5f5d;
+					--accent: #33ccbb;
+					--accent-fg: #03302b;
+					--danger: #dc3e42;
+				}
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				min-height: 100vh;
+				display: grid;
+				place-items: center;
+				background: var(--bg);
+				color: var(--fg);
+				font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+				-webkit-app-region: drag;
+			}
+			main {
+				width: min(380px, calc(100vw - 48px));
+				display: flex;
+				flex-direction: column;
+				gap: 16px;
+				text-align: center;
+				-webkit-app-region: no-drag;
+			}
+			img {
+				width: 72px;
+				height: 72px;
+				margin: 0 auto;
+				border-radius: 18px;
+			}
+			h1 {
+				margin: 0;
+				font-size: 20px;
+				letter-spacing: -0.01em;
+			}
+			p {
+				margin: 0;
+				color: var(--muted);
+			}
+			input {
+				height: 44px;
+				padding: 0 14px;
+				border-radius: 12px;
+				border: 1px solid var(--border);
+				background: var(--surface);
+				color: var(--fg);
+				font: 14px ui-monospace, monospace;
+				outline: none;
+			}
+			button {
+				height: 44px;
+				border: 0;
+				border-radius: 12px;
+				background: var(--accent);
+				color: var(--accent-fg);
+				font: 600 14px system-ui, sans-serif;
+				cursor: pointer;
+			}
+			button:disabled {
+				opacity: 0.5;
+			}
+			#error {
+				color: var(--danger);
+				min-height: 21px;
+			}
+			code {
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<img src="icon.png" alt="" />
+			<h1>Connect to Sekai</h1>
+			<p>Sekai couldn't reach its server. Start it (<code>bun run docker:up</code> or <code>bun run dev</code>), or point the app at another one.</p>
+			<form id="form">
+				<input id="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:7420" />
+			</form>
+			<button id="go" type="submit" form="form">Connect</button>
+			<div id="error"></div>
+		</main>
+		<script>
+			const input = document.getElementById("url");
+			const button = document.getElementById("go");
+			const error = document.getElementById("error");
+			input.value = window.sekaiConnect.getServerUrl();
+			document.getElementById("form").addEventListener("submit", async (e) => {
+				e.preventDefault();
+				button.disabled = true;
+				button.textContent = "Connecting…";
+				error.textContent = "";
+				const result = await window.sekaiConnect.connect(input.value);
+				if (!result.ok) {
+					error.textContent = result.error || "Couldn't connect.";
+					button.disabled = false;
+					button.textContent = "Connect";
+				}
+			});
+		</script>
+	</body>
+</html>

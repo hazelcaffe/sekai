@@ -1,0 +1,3 @@
+/** Sekai's soft, filled text fields: a quiet tint at rest, a crisp brand edge when focused. */
+export const fieldStyles =
+	"w-full min-w-0 rounded-xl border border-transparent bg-muted/75 px-3.5 text-sm text-foreground outline-none transition-[background-color,border-color,box-shadow] duration-150 placeholder:text-fg-subtle hover:bg-muted focus-visible:border-brand/60 focus-visible:bg-background focus-visible:ring-[3px] focus-visible:ring-ring/15 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive/60 aria-invalid:ring-[3px] aria-invalid:ring-destructive/15 coarse:text-base";

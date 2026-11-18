@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the run before it.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+jobs:
+  check:
+    name: Lint and typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: sekai
+          POSTGRES_PASSWORD: sekai
+          POSTGRES_DB: sekai
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U sekai -d sekai"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      # Tests that need Postgres (sign-in, several people's isolation) make scratch databases next to this one.
+      DATABASE_URL: postgres://sekai:sekai@127.0.0.1:5433/sekai
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun test
+        working-directory: apps/server
+
+  build:
+    name: Build the apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run build:web
+      - run: bun run build:admin
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: sekai:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: The image starts and answers
+        run: |
+          docker network create sekai-ci
+          docker run -d --name db --network sekai-ci -e POSTGRES_USER=sekai -e POSTGRES_PASSWORD=sekai -e POSTGRES_DB=sekai pgvector/pgvector:pg17
+          for i in $(seq 1 30); do docker exec db pg_isready -U sekai -d sekai && break; sleep 2; done
+          docker run -d --name app --network sekai-ci -p 7420:7420 -e DATABASE_URL=postgres://sekai:sekai@db:5432/sekai sekai:ci
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:7420/api/health && exit 0; sleep 2; done
+          docker logs app
+          exit 1

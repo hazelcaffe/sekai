@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart Sekai if it stops answering
+
+[Service]
+Type=oneshot
+ExecStart=@ROOT@/scripts/service/sekai-watchdog.sh

@@ -1,0 +1,6 @@
+# Sekai on the internet, with HTTPS from Let's Encrypt (docker compose --profile public up -d).
+# Set SEKAI_DOMAIN in .env and point the domain's DNS at this machine first.
+{$SEKAI_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:7420
+}

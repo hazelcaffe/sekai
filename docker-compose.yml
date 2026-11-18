@@ -1,0 +1,83 @@
+# Sekai stack.
+#   Database only (for `bun run dev`):  docker compose up -d db --wait
+#   Everything (API + web on :7420):    docker compose up -d --build
+#   On the internet, with HTTPS:        docker compose --profile public up -d --build   (see README: Hosting it)
+name: sekai
+
+services:
+  db:
+    # Postgres 17 with pgvector, ready for semantic memory search later.
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sekai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sekai}
+      POSTGRES_DB: ${POSTGRES_DB:-sekai}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sekai:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-sekai}:${POSTGRES_PASSWORD:-sekai}@db:5432/${POSTGRES_DB:-sekai}
+      SEKAI_HOST: 0.0.0.0
+      SEKAI_PORT: 7420
+      SEKAI_DATA_DIR: /data
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${SEKAI_BIND:-127.0.0.1}:${SEKAI_PORT:-7420}:7420"
+    volumes:
+      - appdata:/data
+      # Subscriptions (BYOS): agent CLIs keep their sign-in in the container's home. Either sign in inside
+      # the container (docker compose exec app codex login, …) or share your own sign-ins (read-write,
+      # because CLIs refresh their tokens):
+      # - ~/.claude:/root/.claude
+      # - ~/.codex:/root/.codex
+      # - ~/.gemini:/root/.gemini
+      # - ~/.grok:/root/.grok
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7420/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # HTTPS in front of Sekai (profile "public"): certificates from Let's Encrypt for SEKAI_DOMAIN.
+  caddy:
+    image: caddy:2
+    profiles: ["public"]
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      SEKAI_DOMAIN: ${SEKAI_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  pgdata:
+  appdata:
+  caddydata:
+  caddyconfig:

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" data-theme="n25" class="dark">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta name="theme-color" content="#0d0a10" media="(prefers-color-scheme: dark)" />
+		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+		<meta name="color-scheme" content="dark light" />
+		<meta name="robots" content="noindex" />
+		<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+		<link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<title>Sekai Admin</title>
+		<script>
+			// Before anything else runs: settings saved before the rename (Feesh → Sekai) move from feesh.* to sekai.*,
+			// then the saved theme is applied before first paint, so there's no flash (see packages/ui/src/lib/themes.ts).
+			try {
+				for (const k of Object.keys(localStorage)) {
+					if (!k.startsWith("feesh.")) continue;
+					const n = `sekai.${k.slice(6)}`;
+					if (localStorage.getItem(n) === null) localStorage.setItem(n, localStorage.getItem(k));
+					localStorage.removeItem(k);
+				}
+				const bg = { vs: "#ffffff", ln: "#0a0d1c", mmj: "#ffffff", vbs: "#0c0a0b", wxs: "#fffdf9", n25: "#0d0a10" };
+				let t = localStorage.getItem("sekai.theme") || "auto";
+				if (t === "light") t = "vs";
+				else if (t === "dark") t = "n25";
+				if (!(t in bg)) t = matchMedia("(prefers-color-scheme: dark)").matches ? "n25" : "vs";
+				const dark = t === "ln" || t === "vbs" || t === "n25";
+				const html = document.documentElement;
+				html.dataset.theme = t;
+				html.classList.toggle("dark", dark);
+				html.style.colorScheme = dark ? "dark" : "light";
+				for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", bg[t]);
+			} catch {}
+		</script>
+	</head>
+	<body>
+		<div id="root"></div>
+		<script type="module" src="/src/main.tsx"></script>
+	</body>
+</html>

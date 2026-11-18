@@ -1,0 +1,54 @@
+{
+	"name": "sekai",
+	"version": "0.1.0",
+	"private": true,
+	"license": "AGPL-3.0-only",
+	"homepage": "https://github.com/hazelcaffe/sekai",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/hazelcaffe/sekai.git"
+	},
+	"bugs": "https://github.com/hazelcaffe/sekai/issues",
+	"type": "module",
+	"packageManager": "bun@1.4.4",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"dev": "bun run scripts/dev.ts",
+		"deploy": "bash scripts/service/deploy.sh",
+		"logs": "journalctl --user -u sekai -f -o cat",
+		"service:install": "bash scripts/service/install.sh",
+		"dev:server": "bun run --cwd apps/server dev",
+		"dev:web": "bun run --cwd apps/web dev",
+		"dev:admin": "bun run --cwd apps/admin dev",
+		"dev:desktop": "bun run --cwd apps/desktop dev",
+		"db:up": "docker compose up -d db --wait",
+		"db:down": "docker compose stop db",
+		"db:reset": "docker compose rm -sfv db && docker volume rm -f sekai_pgdata && docker compose up -d db --wait",
+		"docker:up": "docker compose up -d --build --wait",
+		"docker:down": "docker compose down",
+		"docker:logs": "docker compose logs -f app",
+		"start": "bun run build:web && bun run build:admin && bun run --cwd apps/server start",
+		"build": "bun run build:web && bun run build:admin && bun run build:server && bun run build:desktop",
+		"build:web": "bun run --cwd apps/web build",
+		"build:admin": "bun run --cwd apps/admin build",
+		"build:server": "bun run --cwd apps/server build",
+		"build:desktop": "bun run --cwd apps/desktop build",
+		"typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/ui typecheck && bun run --cwd packages/client typecheck && bun run --cwd apps/server typecheck && bun run --cwd apps/web typecheck && bun run --cwd apps/admin typecheck && bun run --cwd apps/desktop typecheck",
+		"lint": "biome check .",
+		"format": "biome check --write .",
+		"test": "bun test",
+		"test:discord": "bun run --cwd apps/server test:discord",
+		"test:proxmox": "bun run --cwd apps/server test:proxmox",
+		"check": "bun run lint && bun run typecheck && bun run test",
+		"db:generate": "bun run --cwd apps/server db:generate",
+		"reset-password": "bun run --cwd apps/server reset-password"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.6.7",
+		"@types/bun": "^1.4.4",
+		"typescript": "^7.0.2"
+	}
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+release/
+data/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo
+apps/desktop/resources/server/
+
+# Notes for one machine (see AGENTS.md)
+AGENTS.local.md
+.export-private

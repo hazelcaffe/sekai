@@ -1,0 +1,30 @@
+{
+	"name": "@sekai/desktop",
+	"version": "0.1.1",
+	"private": true,
+	"description": "Sekai desktop app",
+	"desktopName": "sekai.desktop",
+	"homepage": "https://github.com/hazelcaffe/sekai",
+	"author": "Sekai contributors",
+	"main": "dist/main.cjs",
+	"scripts": {
+		"build": "bun run scripts/build.ts",
+		"dev": "bun run scripts/build.ts && electron . --dev",
+		"start": "bun run scripts/build.ts && electron .",
+		"package": "bun run scripts/build.ts && electron-builder --config electron-builder.yml",
+		"package:win": "bun run scripts/build.ts && electron-builder --config electron-builder.yml --win",
+		"package:linux": "bun run scripts/build.ts && electron-builder --config electron-builder.yml --linux",
+		"package:mac": "bun run scripts/build.ts && electron-builder --config electron-builder.yml --mac",
+		"publish:local": "bun run scripts/publish-local.ts",
+		"typecheck": "tsc --noEmit -p ."
+	},
+	"devDependencies": {
+		"@sekai/shared": "workspace:*",
+		"@types/node": "^24.9.0",
+		"electron": "^45.3.2",
+		"electron-builder": "^26.18.0"
+	},
+	"dependencies": {
+		"electron-updater": "^6.8.11"
+	}
+}

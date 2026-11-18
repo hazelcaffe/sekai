@@ -1,0 +1,306 @@
+// Sekai desktop helper for macOS (JavaScript for Automation): lets bots you allowed see and use this Mac.
+// Run by the Sekai desktop app as: osascript -l JavaScript mac-helper.jxa <command> '<json args>'
+// Mouse and keyboard go through CoreGraphics events; controls are read through System Events (accessibility).
+// Coordinates are global points with the main display's top-left at 0,0.
+
+ObjC.import("Foundation");
+ObjC.import("CoreGraphics");
+
+const SE = Application("System Events");
+
+const INTERACTIVE = [
+	"AXButton", "AXTextField", "AXTextArea", "AXSecureTextField", "AXCheckBox", "AXRadioButton", "AXPopUpButton",
+	"AXComboBox", "AXLink", "AXMenuItem", "AXMenuBarItem", "AXMenuButton", "AXSlider", "AXIncrementor", "AXTab",
+	"AXRow", "AXCell", "AXDisclosureTriangle", "AXColorWell", "AXDateField", "AXSearchField", "AXWebArea",
+	"AXHeading", "AXImage", "AXStaticText", "AXSwitch", "AXToggle", "AXDockItem",
+];
+const CONTAINERS = [
+	"AXGroup", "AXScrollArea", "AXSplitGroup", "AXSplitter", "AXLayoutArea", "AXLayoutItem", "AXUnknown",
+	"AXToolbar", "AXList", "AXOutline", "AXTable", "AXColumn", "AXBrowser", "AXWindow", "AXSheet", "AXDrawer",
+	"AXValueIndicator", "AXScrollBar", "AXMenuBar", "AXMenu",
+];
+
+function safe(fn, n) {
+	try {
+		const v = fn();
+		return Array.isArray(v) ? v : new Array(n).fill(null);
+	} catch (e) {
+		return new Array(n).fill(null);
+	}
+}
+
+function processFor(pid) {
+	const list = SE.processes.whose({ unixId: Number(pid) })();
+	if (!list.length) throw new Error("That app isn't running anymore; read the screen's controls again.");
+	return list[0];
+}
+
+function frontmost() {
+	const list = SE.processes.whose({ frontmost: true })();
+	return list.length ? list[0] : null;
+}
+
+function roleName(role) {
+	return String(role || "").replace(/^AX/, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+/** Walks one level at a time, reading each property for all children in one Apple Event. */
+function walk(el, path, depth, out, all, limit) {
+	if (out.length >= limit || depth > 30) return;
+	let kids;
+	try {
+		kids = el.uiElements;
+	} catch (e) {
+		return;
+	}
+	const roles = safe(() => kids.role(), 0);
+	const n = roles.length;
+	if (!n) return;
+	const names = safe(() => kids.name(), n);
+	const descs = safe(() => kids.description(), n);
+	const titles = safe(() => kids.title(), n);
+	const positions = safe(() => kids.position(), n);
+	const sizes = safe(() => kids.size(), n);
+	const enabled = safe(() => kids.enabled(), n);
+	const focused = safe(() => kids.focused(), n);
+	const values = safe(() => kids.value(), n);
+	const subroles = safe(() => kids.subrole(), n);
+	for (let i = 0; i < n && out.length < limit; i++) {
+		const role = String(roles[i] || "");
+		const id = `${path}.${i}`;
+		const pos = positions[i];
+		const size = sizes[i];
+		const box = pos && size && size[0] > 0 && size[1] > 0 ? [Math.round(pos[0]), Math.round(pos[1]), Math.round(size[0]), Math.round(size[1])] : null;
+		const name = String(names[i] || titles[i] || descs[i] || "").trim();
+		const keep = all || INTERACTIVE.indexOf(role) >= 0 || (name && CONTAINERS.indexOf(role) < 0);
+		if (keep && box) {
+			const states = [];
+			if (focused[i] === true) states.push("focused");
+			if (enabled[i] === false) states.push("disabled");
+			let value = values[i];
+			if (subroles[i] === "AXSecureTextField" || role === "AXSecureTextField") value = value ? "•••" : null;
+			else if (value !== null && value !== undefined && typeof value !== "object") value = String(value).slice(0, 300);
+			else value = null;
+			if (role === "AXCheckBox" || role === "AXRadioButton") {
+				if (values[i] === 1 || values[i] === true) states.push("checked");
+				value = null;
+			}
+			let actions = [];
+			if (INTERACTIVE.indexOf(role) >= 0) {
+				try {
+					actions = kids[i].actions.name().map((a) => String(a).replace(/^AX/, "").toLowerCase());
+				} catch (e) {}
+			}
+			out.push({ id, role: roleName(role), name, box, states, value, actions });
+		}
+		// Don't descend into what's collapsed or hidden; menus open on demand.
+		if (role !== "AXMenu") walk(kids[i], id, depth + 1, out, all, limit);
+	}
+}
+
+/** Finds an element by its id: "<pid>:w<window>.<i>.<j>…" or "<pid>:m.<i>…" for the menu bar. */
+function find(id) {
+	const m = String(id).match(/^(\d+):(w\d+|m)((?:\.\d+)*)$/);
+	if (!m) throw new Error(`Bad element id ${id}`);
+	const proc = processFor(m[1]);
+	let el = m[2] === "m" ? proc.menuBars[0] : proc.windows[Number(m[2].slice(1))];
+	for (const part of m[3].split(".").filter(Boolean)) el = el.uiElements[Number(part)];
+	try {
+		el.role();
+	} catch (e) {
+		throw new Error(`Element ${id} is gone; read the screen's controls again.`);
+	}
+	return el;
+}
+
+function mouseEvent(type, x, y, button, clickState) {
+	const ev = $.CGEventCreateMouseEvent(null, type, $.CGPointMake(x, y), button);
+	if (clickState) $.CGEventSetIntegerValueField(ev, 1, clickState);
+	$.CGEventPost(0, ev);
+}
+
+const BUTTONS = { left: [1, 2, 0], right: [3, 4, 1], middle: [25, 26, 2] };
+const FLAGS = { shift: 0x20000, ctrl: 0x40000, alt: 0x80000, meta: 0x100000 };
+
+function delay(s) {
+	$.NSThread.sleepForTimeInterval(s);
+}
+
+const COMMANDS = {
+	front(a) {
+		const p = frontmost();
+		if (!p) return { app: null, window: null };
+		let win = null;
+		try {
+			win = p.windows.length ? p.windows[0].name() : null;
+		} catch (e) {}
+		return { app: p.name(), pid: p.unixId(), window: win };
+	},
+
+	windows(a) {
+		const out = [];
+		const procs = SE.processes.whose({ backgroundOnly: false })();
+		for (const p of procs) {
+			let names;
+			try {
+				names = p.windows.name();
+			} catch (e) {
+				continue;
+			}
+			if (!names.length) continue;
+			const pos = safe(() => p.windows.position(), names.length);
+			const size = safe(() => p.windows.size(), names.length);
+			const pid = p.unixId();
+			const app = p.name();
+			names.forEach((title, i) => {
+				if (!pos[i] || !size[i]) return;
+				out.push({ id: `${pid}:${i}`, app, title: String(title || ""), x: pos[i][0], y: pos[i][1], width: size[i][0], height: size[i][1] });
+			});
+		}
+		const f = COMMANDS.front({});
+		return { activeWindow: f.window ? `${f.window} - ${f.app}` : f.app, windows: out };
+	},
+
+	activate(a) {
+		const [pid, index] = String(a.id).split(":");
+		const p = processFor(pid);
+		p.frontmost = true;
+		try {
+			const w = p.windows[Number(index || 0)];
+			w.actions.byName("AXRaise").perform();
+		} catch (e) {}
+		return { ok: true };
+	},
+
+	tree(a) {
+		const out = [];
+		const limit = 600;
+		const apps = [];
+		let procs;
+		if (a.app) {
+			const needle = String(a.app).toLowerCase();
+			procs = SE.processes.whose({ backgroundOnly: false })().filter((p) => String(p.name()).toLowerCase().indexOf(needle) >= 0);
+			if (!procs.length) throw new Error(`No running app matches "${a.app}".`);
+		} else {
+			const f = frontmost();
+			procs = f ? [f] : [];
+		}
+		for (const p of procs) {
+			const pid = p.unixId();
+			apps.push(p.name());
+			let count = 0;
+			try {
+				count = p.windows.length;
+			} catch (e) {}
+			for (let w = 0; w < Math.min(count, 4) && out.length < limit; w++) {
+				walk(p.windows[w], `${pid}:w${w}`, 0, out, a.all, limit);
+			}
+			// The menu bar's top level (File, Edit, …): click one to open it, then read again.
+			try {
+				const bar = p.menuBars[0].uiElements;
+				const names = bar.name();
+				const pos = safe(() => bar.position(), names.length);
+				const size = safe(() => bar.size(), names.length);
+				names.forEach((name, i) => {
+					if (!name || !pos[i] || !size[i] || out.length >= limit) return;
+					out.push({ id: `${pid}:m.${i}`, role: "menu bar item", name: String(name), box: [pos[i][0], pos[i][1], size[i][0], size[i][1]], states: [], value: null, actions: ["press"] });
+				});
+			} catch (e) {}
+		}
+		const f = COMMANDS.front({});
+		return { activeWindow: f.window ? `${f.window} - ${f.app}` : f.app, apps, elements: out, truncated: out.length >= limit };
+	},
+
+	act(a) {
+		const el = find(a.id);
+		const names = el.actions.name();
+		if (!names.length) throw new Error("That element has no actions; click its box instead.");
+		let want = a.action ? String(a.action) : names[0];
+		if (want === "click" || want === "invoke") want = "AXPress";
+		if (!/^AX/.test(want)) want = `AX${want.charAt(0).toUpperCase()}${want.slice(1)}`;
+		const match = names.find((n) => String(n).toLowerCase() === want.toLowerCase());
+		if (!match) throw new Error(`Actions available: ${names.map((n) => String(n).replace(/^AX/, "").toLowerCase()).join(", ")}`);
+		el.actions.byName(match).perform();
+		return { did: String(match).replace(/^AX/, "").toLowerCase() };
+	},
+
+	focus(a) {
+		find(a.id).focused = true;
+		return { ok: true };
+	},
+
+	click(a) {
+		const [down, up, button] = BUTTONS[a.button] || BUTTONS.left;
+		mouseEvent(5, a.x, a.y, 0, 0);
+		delay(0.04);
+		for (let n = 1; n <= (a.count || 1); n++) {
+			mouseEvent(down, a.x, a.y, button, n);
+			mouseEvent(up, a.x, a.y, button, n);
+			if (n < a.count) delay(0.07);
+		}
+		return { ok: true };
+	},
+
+	move(a) {
+		mouseEvent(5, a.x, a.y, 0, 0);
+		return { ok: true };
+	},
+
+	drag(a) {
+		mouseEvent(5, a.x1, a.y1, 0, 0);
+		delay(0.05);
+		mouseEvent(1, a.x1, a.y1, 0, 1);
+		for (let s = 1; s <= 12; s++) {
+			mouseEvent(6, a.x1 + ((a.x2 - a.x1) * s) / 12, a.y1 + ((a.y2 - a.y1) * s) / 12, 0, 0);
+			delay(0.02);
+		}
+		mouseEvent(2, a.x2, a.y2, 0, 1);
+		return { ok: true };
+	},
+
+	scroll(a) {
+		mouseEvent(5, a.x, a.y, 0, 0);
+		delay(0.04);
+		// Lines; positive is up (vertical) or left (horizontal).
+		const ev = $.CGEventCreateScrollWheelEvent2(null, 1, 2, a.dy, a.dx, 0);
+		$.CGEventPost(0, ev);
+		return { ok: true };
+	},
+
+	keys(a) {
+		for (const combo of a.combos) {
+			const flags = combo.mods.reduce((f, m) => f | FLAGS[m], 0);
+			if (combo.code === null || combo.code === undefined) {
+				// A character with no fixed key code: let System Events find it on the user's layout.
+				const using = combo.mods.map((m) => ({ shift: "shift down", ctrl: "control down", alt: "option down", meta: "command down" })[m]);
+				SE.keystroke(combo.char, { using });
+			} else {
+				const down = $.CGEventCreateKeyboardEvent(null, combo.code, true);
+				const up = $.CGEventCreateKeyboardEvent(null, combo.code, false);
+				$.CGEventSetFlags(down, flags);
+				$.CGEventSetFlags(up, flags);
+				$.CGEventPost(0, down);
+				$.CGEventPost(0, up);
+			}
+			delay(0.06);
+		}
+		return { ok: true };
+	},
+
+	keystroke(a) {
+		SE.keystroke(String(a.text));
+		return { ok: true };
+	},
+};
+
+function run(argv) {
+	const cmd = argv[0];
+	const args = argv[1] ? JSON.parse(argv[1]) : {};
+	try {
+		const fn = COMMANDS[cmd];
+		if (!fn) throw new Error(`Unknown command ${cmd}`);
+		return JSON.stringify({ ok: true, data: fn(args) });
+	} catch (e) {
+		return JSON.stringify({ ok: false, error: String((e && e.message) || e) });
+	}
+}

@@ -1,0 +1,68 @@
+{
+	"name": "Sekai",
+	"short_name": "Sekai",
+	"description": "Your team of AI agents",
+	"id": "/",
+	"start_url": "/",
+	"scope": "/",
+	"display": "standalone",
+	"display_override": ["window-controls-overlay", "standalone"],
+	"orientation": "any",
+	"background_color": "#ffffff",
+	"theme_color": "#ffffff",
+	"icons": [
+		{
+			"src": "/icon-192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/icon-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any"
+		}
+	],
+	"launch_handler": {
+		"client_mode": ["navigate-existing", "auto"]
+	},
+	"categories": ["productivity", "utilities"],
+	"shortcuts": [
+		{
+			"name": "Needs you",
+			"short_name": "Needs you",
+			"description": "Approvals and questions from your bots",
+			"url": "/inbox",
+			"icons": [
+				{
+					"src": "/icon-192.png",
+					"sizes": "192x192"
+				}
+			]
+		},
+		{
+			"name": "Activity",
+			"short_name": "Activity",
+			"description": "What your bots are doing",
+			"url": "/activity",
+			"icons": [
+				{
+					"src": "/icon-192.png",
+					"sizes": "192x192"
+				}
+			]
+		},
+		{
+			"name": "Settings",
+			"short_name": "Settings",
+			"url": "/settings",
+			"icons": [
+				{
+					"src": "/icon-192.png",
+					"sizes": "192x192"
+				}
+			]
+		}
+	]
+}

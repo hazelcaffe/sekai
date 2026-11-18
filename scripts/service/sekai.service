@@ -1,0 +1,19 @@
+[Unit]
+Description=Sekai: your team of AI agents
+Documentation=file://@ROOT@/README.md
+# Postgres (Docker) and Tailscale come up on their own; Sekai waits for the database and retries if it's late.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+ExecStart=@ROOT@/scripts/service/sekai-server.sh
+WorkingDirectory=@ROOT@/apps/server
+Restart=always
+RestartSec=5
+# On stop it ends runs, voice calls, browsers and channels cleanly first.
+TimeoutStopSec=30
+Environment=SEKAI_LOG_LEVEL=info
+
+[Install]
+WantedBy=default.target
