@@ -11,11 +11,15 @@ export function sanitizeSvg(raw: string): string {
 	const match = raw.match(/<svg[\s\S]*<\/svg>/i);
 	if (!match) throw badRequest("The model didn't return an SVG");
 	let svg = match[0];
-	svg = svg.replace(/<(script|foreignObject|iframe|object|embed|audio|video)[\s\S]*?<\/\1\s*>/gi, "");
-	svg = svg.replace(/<(script|foreignObject|iframe|object|embed)[^>]*\/>/gi, "");
-	svg = svg.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-	svg = svg.replace(/\s(?:xlink:)?href\s*=\s*("|')\s*(?!#)[^"']*\1/gi, "");
-	svg = svg.replace(/url\(\s*(['"]?)(?!#)[^)]*\1\s*\)/gi, "none");
+	// Again until nothing changes, so a tag split around one that's removed can't join up into a new one.
+	for (let before = ""; before !== svg; ) {
+		before = svg;
+		svg = svg.replace(/<(script|foreignObject|iframe|object|embed|audio|video)[\s\S]*?<\/\1\s*>/gi, "");
+		svg = svg.replace(/<(script|foreignObject|iframe|object|embed)[^>]*\/>/gi, "");
+		svg = svg.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+		svg = svg.replace(/\s(?:xlink:)?href\s*=\s*("|')\s*(?!#)[^"']*\1/gi, "");
+		svg = svg.replace(/url\(\s*(['"]?)(?!#)[^)]*\1\s*\)/gi, "none");
+	}
 	if (!/xmlns=/.test(svg)) svg = svg.replace(/<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
 	return svg;
 }

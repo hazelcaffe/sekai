@@ -24,7 +24,7 @@ import { db, schema } from "../db/index.ts";
 import { bus } from "../events/bus.ts";
 import { agentOwner } from "../events/scope.ts";
 import { errorMessage, notFound, parse } from "../lib/errors.ts";
-import { newId } from "../lib/ids.ts";
+import { newId, randomChars } from "../lib/ids.ts";
 import { log } from "../lib/log.ts";
 import { seal } from "../lib/secrets.ts";
 import { truncate } from "../lib/text.ts";
@@ -97,9 +97,7 @@ const claims = new Map<string, number>();
 // ---------------------------------------------------------------- helpers
 
 function code(len = 6): string {
-	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-	const bytes = crypto.getRandomValues(new Uint8Array(len));
-	return [...bytes].map((b) => alphabet[b % alphabet.length]).join("");
+	return randomChars("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", len);
 }
 
 function pairingsChanged(): void {

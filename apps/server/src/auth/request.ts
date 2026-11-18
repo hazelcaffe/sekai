@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Server } from "bun";
+import { randomChars } from "../lib/ids.ts";
 
 export const SESSION_COOKIE = "sekai_session";
 /**
@@ -18,10 +19,7 @@ const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
 
 /** A random base62 string; 43 characters ≈ 256 bits. */
 export function randomSecret(length = 43): string {
-	const bytes = crypto.getRandomValues(new Uint8Array(length));
-	let out = "";
-	for (const b of bytes) out += ALPHABET[b % ALPHABET.length];
-	return out;
+	return randomChars(ALPHABET, length);
 }
 
 export function safeEqual(a: string, b: string): boolean {

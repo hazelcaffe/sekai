@@ -11,7 +11,7 @@ import { and, asc, eq, isNotNull, isNull, ne } from "drizzle-orm";
 import { db, schema } from "../db/index.ts";
 import { bus } from "../events/bus.ts";
 import { badRequest, HttpError, notFound, parse } from "../lib/errors.ts";
-import { newId } from "../lib/ids.ts";
+import { newId, randomChars } from "../lib/ids.ts";
 import { log } from "../lib/log.ts";
 import { emailReady, sendEmail } from "../services/messaging.ts";
 import { forgetPrefs } from "../services/prefs.ts";
@@ -21,9 +21,7 @@ import { createTicket, deleteUserTickets } from "./tickets.ts";
 
 /** A temporary password: easy to read out or type (no look-alike characters), ~80 bits. */
 function temporaryPassword(): string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
-	const bytes = crypto.getRandomValues(new Uint8Array(16));
-	const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+	const chars = randomChars("abcdefghjkmnpqrstuvwxyz23456789", 16);
 	return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}-${chars.slice(12, 16)}`;
 }
 

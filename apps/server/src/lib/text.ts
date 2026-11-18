@@ -45,22 +45,25 @@ export function slugify(text: string, max = 40): string {
 
 /** Very small HTML → text conversion for web_fetch. */
 export function htmlToText(html: string): string {
-	return html
-		.replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, " ")
-		.replace(/<!--[\s\S]*?-->/g, " ")
-		.replace(/<br\s*\/?>/gi, "\n")
-		.replace(/<\/(p|div|section|article|li|h[1-6]|tr|header|footer|blockquote|pre)>/gi, "\n")
-		.replace(/<li[^>]*>/gi, "• ")
-		.replace(/<[^>]+>/g, " ")
-		.replace(/&nbsp;/g, " ")
-		.replace(/&amp;/g, "&")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/[ \t\f\v]+/g, " ")
-		.replace(/\n\s*\n\s*\n+/g, "\n\n")
-		.trim();
+	return (
+		html
+			.replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, " ")
+			.replace(/<!--[\s\S]*?-->/g, " ")
+			.replace(/<br\s*\/?>/gi, "\n")
+			.replace(/<\/(p|div|section|article|li|h[1-6]|tr|header|footer|blockquote|pre)>/gi, "\n")
+			.replace(/<li[^>]*>/gi, "• ")
+			.replace(/<[^>]+>/g, " ")
+			.replace(/&nbsp;/g, " ")
+			.replace(/&lt;/g, "<")
+			.replace(/&gt;/g, ">")
+			.replace(/&quot;/g, '"')
+			.replace(/&#39;/g, "'")
+			// Last, so "&amp;lt;" stays "&lt;" (the text it stood for) instead of turning into "<".
+			.replace(/&amp;/g, "&")
+			.replace(/[ \t\f\v]+/g, " ")
+			.replace(/\n\s*\n\s*\n+/g, "\n\n")
+			.trim()
+	);
 }
 
 /**

@@ -18,6 +18,23 @@ export const endpoints = {
 	gateway: "wss://gateway.discord.gg/?v=10&encoding=json",
 };
 
+/**
+ * The gateway Discord says to resume on, if it's really Discord's (a secure socket on discord.gg, or the gateway's
+ * own host); anything else means a fresh connection to the usual gateway.
+ */
+function discordGateway(raw: string | undefined): string | null {
+	if (!raw) return null;
+	try {
+		const url = new URL(raw);
+		const usual = new URL(endpoints.gateway);
+		const isDiscord =
+			url.protocol === "wss:" && (url.hostname === "discord.gg" || url.hostname.endsWith(".discord.gg"));
+		return isDiscord || url.host === usual.host ? `${url.protocol}//${url.host}` : null;
+	} catch {
+		return null;
+	}
+}
+
 // Gateway opcodes and close codes we act on.
 const OP = {
 	dispatch: 0,
@@ -197,7 +214,7 @@ export function discordUserAdapter(channel: Channel): ChannelAdapter {
 			};
 			self = r.user;
 			sessionId = r.session_id;
-			resumeUrl = r.resume_gateway_url ?? null;
+			resumeUrl = discordGateway(r.resume_gateway_url);
 			retries = 0;
 			dms.clear();
 			for (const ch of r.private_channels ?? []) dms.set(ch.id, ch);

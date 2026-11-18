@@ -126,7 +126,8 @@ export async function readText(path: string, maxBytes: number, workdir: string):
 	const file = resolvePath(path, workdir);
 	const handle = await open(file, "r");
 	try {
-		const buf = Buffer.alloc(Math.max(1, maxBytes));
+		// At most 10 MB at a time, whatever was asked for.
+		const buf = Buffer.alloc(Math.min(Math.max(1, Math.floor(maxBytes) || 1), 10 * 1024 * 1024));
 		const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
 		return buf.subarray(0, bytesRead).toString("utf8");
 	} finally {

@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { db, schema } from "../db/index.ts";
 import { newId } from "../lib/ids.ts";
@@ -81,8 +82,7 @@ export async function deleteUserTickets(userId: string, kind?: TicketKind): Prom
 
 /** A 6-digit code for email or text, stored hashed on the ticket (replacing an earlier one). */
 export async function setTicketCode(id: string, data: Record<string, unknown>): Promise<string> {
-	const n = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
-	const code = String(n % 1_000_000).padStart(6, "0");
+	const code = String(randomInt(1_000_000)).padStart(6, "0");
 	await db
 		.update(schema.authTickets)
 		.set({ codeHash: sha256(`${id}:${code}`), data })

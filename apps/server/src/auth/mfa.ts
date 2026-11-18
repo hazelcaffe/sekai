@@ -3,7 +3,7 @@ import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import QRCode from "qrcode";
 import { db, schema } from "../db/index.ts";
 import { badRequest, HttpError } from "../lib/errors.ts";
-import { newId } from "../lib/ids.ts";
+import { newId, randomChars } from "../lib/ids.ts";
 import { seal, unseal } from "../lib/secrets.ts";
 import { emailReady, maskEmail, maskPhone, sendEmail, sendSms, smsReady } from "../services/messaging.ts";
 import { safeEqual, sha256 } from "./request.ts";
@@ -87,8 +87,7 @@ const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 export async function newRecoveryCodes(userId: string): Promise<string[]> {
 	await db.delete(schema.recoveryCodes).where(eq(schema.recoveryCodes.userId, userId));
 	const codes = Array.from({ length: 10 }, () => {
-		const b = crypto.getRandomValues(new Uint8Array(10));
-		const c = Array.from(b, (x) => CODE_ALPHABET[x % CODE_ALPHABET.length]).join("");
+		const c = randomChars(CODE_ALPHABET, 10);
 		return `${c.slice(0, 5)}-${c.slice(5)}`;
 	});
 	const now = Date.now();

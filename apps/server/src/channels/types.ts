@@ -1,4 +1,5 @@
 import type { Channel } from "@sekai/shared";
+import { guardedFetch } from "../lib/net.ts";
 
 export interface InboundAttachment {
 	name: string;
@@ -204,9 +205,14 @@ export type AdapterFactory = (channel: Channel) => ChannelAdapter;
 
 export const MAX_INBOUND_BYTES = 20 * 1024 * 1024;
 
-/** Downloads an attachment with a size cap. */
+/** Downloads an attachment with a size cap (from the internet only: the address comes from a message). */
 export async function download(url: string, init?: RequestInit): Promise<Uint8Array | null> {
-	const res = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) });
+	let res: Response;
+	try {
+		res = await guardedFetch(new URL(url), { ...init, signal: AbortSignal.timeout(60_000) });
+	} catch {
+		return null;
+	}
 	if (!res.ok) return null;
 	const length = Number(res.headers.get("content-length") ?? 0);
 	if (length > MAX_INBOUND_BYTES) return null;

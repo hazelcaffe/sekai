@@ -13,7 +13,7 @@ import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm";
 import { config } from "../config.ts";
 import { db, schema } from "../db/index.ts";
 import { HttpError } from "../lib/errors.ts";
-import { newId } from "../lib/ids.ts";
+import { newId, randomChars } from "../lib/ids.ts";
 import { log } from "../lib/log.ts";
 import { forgetPrefs } from "../services/prefs.ts";
 import { forgetActors } from "./actor.ts";
@@ -93,8 +93,7 @@ let wrongCodes = 0;
 export async function ensureSetupCode(origin: string): Promise<void> {
 	if (await isSetUp()) return;
 	setupOrigin = origin;
-	const bytes = crypto.getRandomValues(new Uint8Array(6));
-	setupCode = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+	setupCode = randomChars(CODE_ALPHABET, 6);
 	wrongCodes = 0;
 	log.info(`first-time setup: open ${origin} and create your account`);
 	log.info(`enter this setup code there: ${setupCode}`);

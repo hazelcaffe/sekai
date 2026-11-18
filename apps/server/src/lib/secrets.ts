@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config.ts";
+import { randomChars } from "./ids.ts";
 
 /**
  * Encryption at rest for secrets Sekai keeps for you: bots' SSH keys, machine passwords and saved logins.
@@ -57,14 +58,5 @@ export function unsealJson<T>(sealed: string): T {
 
 /** A password that's easy to type into a VNC or sudo prompt: letters and digits, no look-alikes. */
 export function randomPassword(length = 20): string {
-	const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-	// Rejection sampling keeps every character equally likely.
-	const limit = 256 - (256 % alphabet.length);
-	let out = "";
-	while (out.length < length) {
-		for (const b of randomBytes(length * 2)) {
-			if (b < limit && out.length < length) out += alphabet[b % alphabet.length];
-		}
-	}
-	return out;
+	return randomChars("abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", length);
 }
