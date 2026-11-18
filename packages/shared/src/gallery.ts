@@ -108,7 +108,8 @@ export function galleryIcon(id: string): GalleryIcon | undefined {
 
 /** The first name, without the unit, e.g. "Ichika" or "Miku". */
 export function galleryShortName(icon: GalleryIcon): string {
-	const base = icon.name.replace(/\s*\(.*\)$/, "");
+	const paren = icon.name.indexOf(" (");
+	const base = paren >= 0 ? icon.name.slice(0, paren) : icon.name;
 	const parts = base.split(" ");
 	// Virtual singers go by their given name, which comes last (Hatsune Miku → Miku); the others' comes first.
 	const singer = VIRTUAL_SINGERS.has(icon.id.split("-")[1] ?? "");

@@ -34,6 +34,6 @@ export function cleanIgHandle(h: string): string {
 		.trim()
 		.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "")
 		.replace(/^@/, "")
-		.replace(/[/?#].*$/, "")
+		.replace(/[/?#][\s\S]*/, "")
 		.toLowerCase();
 }

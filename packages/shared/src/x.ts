@@ -34,6 +34,6 @@ export function cleanHandle(h: string): string {
 		.trim()
 		.replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//i, "")
 		.replace(/^@/, "")
-		.replace(/[/?#].*$/, "")
+		.replace(/[/?#][\s\S]*/, "")
 		.toLowerCase();
 }

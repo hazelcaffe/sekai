@@ -33,6 +33,6 @@ export function cleanTtHandle(h: string): string {
 		.trim()
 		.replace(/^https?:\/\/(www\.)?tiktok\.com\//i, "")
 		.replace(/^@/, "")
-		.replace(/[/?#].*$/, "")
+		.replace(/[/?#][\s\S]*/, "")
 		.toLowerCase();
 }

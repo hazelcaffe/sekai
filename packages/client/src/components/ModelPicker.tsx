@@ -33,7 +33,7 @@ import type { Brand } from "./logos.ts";
 export function shortModelName(info: ModelInfo | undefined, id: string): string {
 	if (info?.byos) return info.name;
 	if (id.startsWith("prv_")) return "Removed subscription";
-	return (info?.name ?? id).replace(/^Claude /, "").replace(/^Gemini /, "Gemini ");
+	return (info?.name ?? id).replace(/^Claude /, "");
 }
 
 export function thinkingOptions(info: ModelInfo | undefined): { value: ThinkingSetting; label: string }[] {

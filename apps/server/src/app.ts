@@ -204,7 +204,8 @@ export function createApp(): Hono {
 		log.error(`${c.req.method} ${c.req.path} failed`, err);
 		// Database errors quote the query and its values (which can include secrets): say less to the client.
 		const msg = errorMessage(err);
-		return c.json({ error: /^Failed query:|params:/i.test(msg) ? "Something went wrong on the server" : msg }, 500);
+		const fromDatabase = msg.startsWith("Failed query:") || /params:/i.test(msg);
+		return c.json({ error: fromDatabase ? "Something went wrong on the server" : msg }, 500);
 	});
 
 	return app;

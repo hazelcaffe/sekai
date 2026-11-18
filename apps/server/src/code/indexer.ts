@@ -24,7 +24,9 @@ const READ_BATCH = 120;
 /** Chunks embedded per request. */
 const EMBED_BATCH = 64;
 const MAX_CHUNKS = 60_000;
-const TEST_PATH = /(^|\/)(tests?|__tests__|spec|test-d|e2e)\/|\.(test|spec)\.[a-z]+$/i;
+const TEST_DIR = /(?:^|\/)(?:tests?|__tests__|spec|test-d|e2e)\//i;
+const TEST_FILE = /\.(?:test|spec)\.[a-z]+$/i;
+const isTestPath = (path: string) => TEST_DIR.test(path) || TEST_FILE.test(path);
 
 const running = new Map<string, AbortController>();
 
@@ -318,7 +320,7 @@ export async function searchCode(
 	const model = rows.find((r) => r.chunks > 0 || r.status === "indexing")?.embeddingModel ?? rows[0]?.embeddingModel;
 	const sameModel = rows.filter((r) => r.embeddingModel === model).map((r) => r.id);
 	const prefix = opts.pathPrefix?.replace(/^\.?\/+/, "");
-	const pathFilter = prefix ? sql`and path like ${`${prefix.replace(/[%_]/g, "\\$&")}%`}` : sql``;
+	const pathFilter = prefix ? sql`and path like ${`${prefix.replace(/[\\%_]/g, "\\$&")}%`}` : sql``;
 	const pool = limit * 4;
 
 	type Hit = {
@@ -391,7 +393,7 @@ export async function searchCode(
 	add(byMeaning, 1);
 	add(byWords, 0.8);
 	// "Where is X done" usually means the code, not its tests: those rank a little lower (still found).
-	for (const v of score.values()) if (TEST_PATH.test(v.hit.path)) v.score *= 0.8;
+	for (const v of score.values()) if (isTestPath(v.hit.path)) v.score *= 0.8;
 	return [...score.values()]
 		.sort((a, b) => b.score - a.score)
 		.slice(0, limit)

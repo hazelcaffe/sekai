@@ -162,7 +162,8 @@ function qs(query?: Query): string {
 /** Typed client for the Sekai HTTP API. Used by the web app and the desktop shell. */
 export function createApiClient(options: ApiClientOptions) {
 	const doFetch = options.fetch ?? fetch.bind(globalThis);
-	const base = options.baseUrl.replace(/\/+$/, "");
+	let base = options.baseUrl;
+	while (base.endsWith("/")) base = base.slice(0, -1);
 
 	function headers(json: boolean): Record<string, string> {
 		const h: Record<string, string> = {};

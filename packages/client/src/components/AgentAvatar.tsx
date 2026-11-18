@@ -217,10 +217,12 @@ export function AgentAvatar({
 	) : null;
 
 	if (avatar.kind === "image") {
+		// Pictures come from Sekai's uploads (or an http(s) or data: image): nothing else is put in an <img>.
+		const safe = /^(\/|https?:|data:image\/)/.test(avatar.url);
 		return (
 			<span className={box} style={style} title={title}>
 				<img
-					src={assetUrl(avatar.url)}
+					src={safe ? assetUrl(avatar.url) : undefined}
 					alt={title ?? ""}
 					draggable={false}
 					className="size-full rounded-full bg-surface-2 object-cover"

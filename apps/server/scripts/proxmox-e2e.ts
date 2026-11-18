@@ -24,7 +24,11 @@ function check(label: string, ok: unknown, detail = "") {
 		console.log(`  ✓ ${label}`);
 	} else {
 		failed.push(label);
-		console.log(`  ✗ ${label}${detail ? `\n      ${detail}` : ""}`);
+		// One line per detail (it can hold text from the machine).
+		const oneLine = String(detail)
+			.replace(/[\r\n]+/g, " ")
+			.slice(0, 500);
+		console.log(`  ✗ ${label}${oneLine ? `\n      ${oneLine}` : ""}`);
 	}
 }
 

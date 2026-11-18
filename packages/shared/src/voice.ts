@@ -157,12 +157,41 @@ export function speakableText(markdown: string): string {
 	);
 }
 
+const SENTENCE_END = new Set([".", "!", "?", "。", "！", "？"]);
+const CLOSERS = new Set(['"', "'", ")", "]"]);
+
+/** Sentences (with their end marks and closing quotes), and line breaks as breaks: one pass, no backtracking. */
+function splitSentences(text: string): string[] {
+	const out: string[] = [];
+	let start = 0;
+	let i = 0;
+	while (i < text.length) {
+		const ch = text[i] as string;
+		if (ch === "\n") {
+			while (i < text.length && text[i] === "\n") i++;
+			out.push(text.slice(start, i));
+			start = i;
+			continue;
+		}
+		if (SENTENCE_END.has(ch)) {
+			while (i < text.length && SENTENCE_END.has(text[i] as string)) i++;
+			while (i < text.length && CLOSERS.has(text[i] as string)) i++;
+			out.push(text.slice(start, i));
+			start = i;
+			continue;
+		}
+		i++;
+	}
+	if (start < text.length) out.push(text.slice(start));
+	return out.length ? out : [text];
+}
+
 /**
  * Cuts text into pieces of at most `max` characters, at sentence ends where it can (for text-to-speech
  * services with a length limit, and to start speaking sooner).
  */
 export function speechChunks(text: string, max: number): string[] {
-	const sentences = text.match(/[^.!?。！？\n]+(?:[.!?。！？]+["')\]]*|\n+|$)/g) ?? [text];
+	const sentences = splitSentences(text);
 	const out: string[] = [];
 	let cur = "";
 	for (const raw of sentences) {

@@ -285,7 +285,9 @@ export function discordUserAdapter(channel: Channel): ChannelAdapter {
 			}
 			if (typeof p.s === "number") seq = p.s;
 			if (p.op === OP.hello) {
-				const interval = (p.d as { heartbeat_interval: number }).heartbeat_interval;
+				// Discord's own number, kept within sane bounds.
+				const asked = Number((p.d as { heartbeat_interval: number }).heartbeat_interval);
+				const interval = Math.min(Math.max(Number.isFinite(asked) ? asked : 41_250, 5_000), 120_000);
 				if (helloTimer) clearTimeout(helloTimer);
 				helloTimer = null;
 				acked = true;

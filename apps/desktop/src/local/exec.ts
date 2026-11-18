@@ -95,10 +95,13 @@ export async function runCommand(
 		errBytes += b.length;
 	});
 	let timedOut = false;
-	const timer = setTimeout(() => {
-		timedOut = true;
-		killTree(child);
-	}, opts.timeoutMs);
+	const timer = setTimeout(
+		() => {
+			timedOut = true;
+			killTree(child);
+		},
+		Math.min(Math.max(opts.timeoutMs, 1_000), 30 * 60_000),
+	);
 	const onAbort = () => killTree(child);
 	signal.addEventListener("abort", onAbort, { once: true });
 	try {

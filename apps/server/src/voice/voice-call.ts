@@ -65,14 +65,15 @@ interface Reply {
 	caption: string;
 }
 
-const TOOL_LABELS: [RegExp, string][] = [
-	[/^web|search|fetch/, "Looking it up…"],
-	[/^memory/, "Checking memory…"],
-	[/^note/, "Writing a note…"],
-	[/^routine|reminder/, "Setting it up…"],
-	[/^computer|browser|screenshot/, "Using the computer…"],
-	[/^run_command|file/, "Working on it…"],
-	[/^agent_|team_/, "Asking a teammate…"],
+/** What the bot says it's doing while a tool runs, by the tool's name. */
+const TOOL_LABELS: [(name: string) => boolean, string][] = [
+	[(n) => n.startsWith("web") || n.includes("search") || n.includes("fetch"), "Looking it up…"],
+	[(n) => n.startsWith("memory"), "Checking memory…"],
+	[(n) => n.startsWith("note"), "Writing a note…"],
+	[(n) => n.startsWith("routine") || n.includes("reminder"), "Setting it up…"],
+	[(n) => n.startsWith("computer") || n.includes("browser") || n.includes("screenshot"), "Using the computer…"],
+	[(n) => n.startsWith("run_command") || n.includes("file"), "Working on it…"],
+	[(n) => n.startsWith("agent_") || n.includes("team_"), "Asking a teammate…"],
 ];
 
 function textOf(parts: MessagePart[]): string {
@@ -266,7 +267,7 @@ export class VoiceCall implements CallSession {
 				// A copy: the writer keeps appending to its own part object.
 				r.parts[ev.index] = structuredClone(ev.part);
 				if (ev.part.type === "tool") {
-					const label = TOOL_LABELS.find(([re]) => re.test(ev.part.type === "tool" ? ev.part.name : ""))?.[1];
+					const label = TOOL_LABELS.find(([is]) => is(ev.part.type === "tool" ? ev.part.name : ""))?.[1];
 					if (ev.part.status === "running" || ev.part.status === "pending") {
 						this.emit({ type: "state", state: "working", label: label ?? "Working on it…" });
 					}

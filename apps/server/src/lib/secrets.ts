@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config.ts";
 
@@ -19,9 +19,12 @@ function secretKey(): Buffer {
 		return key;
 	}
 	const file = join(config.dataDir, "secret.key");
-	if (!existsSync(file)) {
-		writeFileSync(file, randomBytes(32).toString("hex"), { mode: 0o600 });
+	try {
+		// Created only if it isn't there yet ("wx"), so two starts at once can't each write a different key.
+		writeFileSync(file, randomBytes(32).toString("hex"), { mode: 0o600, flag: "wx" });
 		chmodSync(file, 0o600);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
 	}
 	key = Buffer.from(readFileSync(file, "utf8").trim(), "hex");
 	if (key.length !== 32) throw new Error(`${file} must hold 32 bytes of hex`);

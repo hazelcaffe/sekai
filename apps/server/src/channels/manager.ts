@@ -509,7 +509,7 @@ async function tryTrust(channel: Channel, entry: Running, msg: InboundMessage): 
 	const rest = said[2].trim();
 	const everyone =
 		/^(?:everyone|everybody)(?: (?:in )?(?:here|this (?:gc|group(?: chat)?|chat|server|channel)))?$/.test(rest);
-	const onlyMentions = others.length > 0 && /^@@(?:\s*(?:,|and|&)?\s*@@)*$/.test(rest);
+	const onlyMentions = others.length > 0 && /^@@(?:\s*(?:(?:,|and|&)\s*)?@@)*$/.test(rest);
 	if (!everyone && !onlyMentions) return null;
 
 	const save = async (allowFrom: string[]) => {

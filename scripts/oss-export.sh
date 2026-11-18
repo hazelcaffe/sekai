@@ -1,21 +1,39 @@
 #!/usr/bin/env bash
-# Prepares the public repository: a clean copy of the files git tracks, with a fresh history (one commit), in a
-# folder of its own. It doesn't publish anything: review the folder, then push it yourself.
-#   bash scripts/oss-export.sh [target folder]        (default: ../sekai-public)
+# Prepares the public repository from what's committed here: no .env, data/, AGENTS.local.md, builds or
+# node_modules, and no history. It doesn't push anything: review the folder, then push it yourself.
+#   bash scripts/oss-export.sh [target folder]                  a new folder with one commit (default: ../sekai-public)
+#   bash scripts/oss-export.sh --update <folder> "<message>"     the public clone's files replaced, as one new commit
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+update=""
+if [ "${1:-}" = "--update" ]; then
+	update=1
+	shift
+fi
 target="${1:-$root/../sekai-public}"
+message="${2:-Update from the private repository}"
 cd "$root"
 if [ -n "$(git status --porcelain)" ]; then
 	echo "Commit or stash your changes first (the export takes what's committed)." >&2
 	exit 1
 fi
-if [ -e "$target" ]; then
-	echo "$target already exists. Remove it or pick another folder." >&2
+if [ -n "$update" ]; then
+	if [ ! -d "$target/.git" ]; then
+		echo "$target isn't a git clone of the public repository." >&2
+		exit 1
+	fi
+	if [ -n "$(git -C "$target" status --porcelain)" ]; then
+		echo "$target has uncommitted changes." >&2
+		exit 1
+	fi
+	# Everything but .git goes, then the committed files come back (so deleted files are deleted there too).
+	find "$target" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+elif [ -e "$target" ]; then
+	echo "$target already exists. Remove it, pick another folder, or use --update." >&2
 	exit 1
+else
+	mkdir -p "$target"
 fi
-mkdir -p "$target"
-# What's committed, nothing else: no .env, data/, AGENTS.local.md, builds or node_modules.
 git archive --format=tar HEAD | tar -x -C "$target"
 rm -f "$target/AGENTS.local.md"
 
@@ -39,6 +57,16 @@ if [ -n "$personal" ]; then
 fi
 
 cd "$target"
+if [ -n "$update" ]; then
+	git add -A
+	if git diff --cached --quiet; then
+		echo "Nothing changed."
+		exit 0
+	fi
+	git commit -q -m "$message"
+	echo "Committed in $target: $(git log --oneline -1). Review it, then: git push"
+	exit 0
+fi
 git init -q -b main
 git add -A
 git -c user.name="Sekai" -c user.email="sekai@users.noreply.github.com" commit -q -m "Sekai: your own team of AI agents"

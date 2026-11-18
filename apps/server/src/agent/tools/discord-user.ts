@@ -106,10 +106,20 @@ async function discordSession(
 	return { s, account };
 }
 
+/** A page on discord.com itself (not a look-alike address that merely contains the name). */
+function isDiscordPage(url: string): boolean {
+	try {
+		const host = new URL(url).hostname;
+		return host === "discord.com" || host.endsWith(".discord.com");
+	} catch {
+		return false;
+	}
+}
+
 // The account token in the live page, if Discord rotated it (after a captcha/verify the app holds a fresh one).
 async function pageToken(s: BrowserSession): Promise<string | null> {
 	for (const page of s.context.pages()) {
-		if (!page.url().includes("discord.com")) continue;
+		if (!isDiscordPage(page.url())) continue;
 		const t = await page
 			.evaluate(`(() => { try { return window.__sekaiToken ?? null; } catch { return null; } })()`)
 			.catch(() => null);
