@@ -36,6 +36,12 @@ everyone's data apart (every query is scoped to the person Sekai acts for).
   `bun run db:up` they run against scratch databases.
 - **Docs:** user-facing changes go in [docs/guide.md](docs/guide.md) (settings in [docs/install.md](docs/install.md)); structural ones in the AGENTS.md files.
 
+## Branches
+
+- **`main`** is stable: it's what releases are tagged from and what the install docs point at.
+- **`dev`** is where new work lands first, tested by CI but not yet tried out for long. Open pull requests against
+  `dev`; it's merged into `main` once it has proven itself.
+
 Before you open a pull request:
 
 ```bash

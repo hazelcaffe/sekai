@@ -29,6 +29,7 @@ export { VoiceGrid, VoiceSettingsEditor } from "./components/VoiceSettings.tsx";
 export * from "./data.ts";
 export { desktop, isDesktop, isMac, type LocalComputerInfo, type SekaiDesktop } from "./desktop.ts";
 export { joinArgs, kvText, parseKv, splitArgs } from "./forms.ts";
+export { isMobileApp, mobile, type SekaiMobile } from "./mobile.ts";
 export {
 	cancelPasskeyPrompt,
 	passkeyAutofill,

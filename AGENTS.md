@@ -13,6 +13,7 @@ Read this file first, then the one next to the code you're changing:
 | Web app (chats, bot panel)                                      | [apps/web/AGENTS.md](apps/web/AGENTS.md)         |
 | Admin app                                                       | [apps/admin/AGENTS.md](apps/admin/AGENTS.md)     |
 | Desktop app (Electron)                                          | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) |
+| Phone apps (iOS, Android)                                       | [apps/mobile/AGENTS.md](apps/mobile/AGENTS.md)   |
 | Shared packages (`@sekai/shared`, `@sekai/client`, `@sekai/ui`) | [packages/AGENTS.md](packages/AGENTS.md)         |
 
 The user-facing docs are [README.md](README.md) (overview, quick start) and [docs/](docs/): `install.md` (installing,
@@ -50,6 +51,7 @@ apps/server     API + SSE event bus + WebSockets (VNC, voice, desktop bridge); s
 apps/web        React 19 + Vite chat app (sidebar, chats, bot panel, settings, PWA service worker)
 apps/admin      React admin app at /admin (models, subscriptions, apps, voice, approvals, machines, Tailscale…)
 apps/desktop    Electron shell; src/local lends the user's computer to bots
+apps/mobile     iOS and Android shells around the web app (shared bridge.js and connect screen)
 packages/shared zod schemas, TypeScript types, ServerEvent union, and the typed API client (createApiClient)
 packages/client React hooks/components shared by web and admin (TanStack Query data hooks, ModelPicker, voice)
 packages/ui     design system (shadcn/ui restyled) + Sekai building blocks (Section, SettingsPanel, ContextMenu…)

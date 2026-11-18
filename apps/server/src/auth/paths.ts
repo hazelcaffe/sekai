@@ -12,6 +12,10 @@ export function isPublicAuthPath(path: string): boolean {
 			"/api/auth/mfa/send",
 			"/api/auth/mfa/verify",
 			"/api/auth/forgot",
+			// Signing in to the phone apps through the browser (finish checks the session itself).
+			"/api/auth/app/start",
+			"/api/auth/app/finish",
+			"/api/auth/app/exchange",
 		].includes(path) ||
 		/^\/api\/auth\/sso\/[A-Za-z0-9_]+\/(start|callback)$/.test(path) ||
 		/^\/api\/auth\/ticket\/(invite|reset)\/[A-Za-z0-9]+$/.test(path)

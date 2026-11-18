@@ -10,10 +10,14 @@ import {
 	WebAuthnError,
 } from "@simplewebauthn/browser";
 import { api } from "./api.ts";
+import { mobile } from "./mobile.ts";
 
-/** This browser can make passkeys, and the server says this address can use them. */
+/**
+ * This browser can make passkeys, and the server says this address can use them. Not in the phone apps: their web
+ * views can't use passkeys for a self-hosted address (signing in goes through the system browser there).
+ */
 export function passkeysSupported(availableHere: boolean): boolean {
-	return availableHere && browserSupportsWebAuthn();
+	return !mobile && availableHere && browserSupportsWebAuthn();
 }
 
 function friendly(err: unknown): Error {

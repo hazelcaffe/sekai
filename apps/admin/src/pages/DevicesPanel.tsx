@@ -47,20 +47,22 @@ export function describeAgent(ua: string | null): { label: string; phone: boolea
 							: /Linux/.test(ua)
 								? "Linux"
 								: null;
-	const app = /Electron|Sekai\//.test(ua)
-		? "Sekai desktop app"
-		: /Edg\//.test(ua)
-			? "Edge"
-			: /Firefox\//.test(ua)
-				? "Firefox"
-				: /Chrome\//.test(ua)
-					? "Chrome"
-					: /Safari\//.test(ua)
-						? "Safari"
-						: /curl|bun|node/i.test(ua)
-							? "A script"
-							: "A browser";
-	return { label: os ? `${app} on ${os}` : app, phone: /iPhone|Android.*Mobile/.test(ua) };
+	const app = /SekaiApp\//.test(ua)
+		? "Sekai app"
+		: /Electron|Sekai\//.test(ua)
+			? "Sekai desktop app"
+			: /Edg\//.test(ua)
+				? "Edge"
+				: /Firefox\//.test(ua)
+					? "Firefox"
+					: /Chrome\//.test(ua)
+						? "Chrome"
+						: /Safari\//.test(ua)
+							? "Safari"
+							: /curl|bun|node/i.test(ua)
+								? "A script"
+								: "A browser";
+	return { label: os ? `${app} on ${os}` : app, phone: /iPhone|Android.*Mobile|SekaiApp\//.test(ua) };
 }
 
 function Sessions() {
@@ -108,7 +110,7 @@ function Sessions() {
 									<div className="truncate text-xs text-fg-subtle">
 										{s.current ? "Active now" : `Active ${timeAgo(s.lastSeenAt)}`}
 										{s.ip ? ` · ${s.ip}` : ""} · signed in with{" "}
-										{s.method === "setup" ? "setup" : s.method}
+										{s.method === "app" ? "the app, through the browser" : s.method}
 									</div>
 								</div>
 								{!s.current && (

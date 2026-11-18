@@ -1,5 +1,8 @@
+import { MobilePushToken } from "@sekai/shared";
 import { Hono } from "hono";
 import { z } from "zod";
+import { addDevice, removeDevice } from "../mobile/devices.ts";
+import { apnsReady, fcmClientConfig } from "../mobile/settings.ts";
 import { addSubscription, pushToMe, removeSubscription, vapidPublicKey } from "../push.ts";
 import { body, ok } from "./util.ts";
 
@@ -14,6 +17,14 @@ export const pushRoutes = new Hono()
 	.post("/unsubscribe", async (c) => {
 		const { endpoint } = await body(c, z.object({ endpoint: z.string() }));
 		await removeSubscription(endpoint);
+		return c.json(ok);
+	})
+	// The iOS and Android apps: what they need to turn push on, and their phones' tokens.
+	.get("/mobile", async (c) => c.json({ fcm: await fcmClientConfig(), apns: await apnsReady() }))
+	.post("/devices", async (c) => c.json({ devices: await addDevice(await body(c, MobilePushToken)) }, 201))
+	.post("/devices/remove", async (c) => {
+		const { token } = await body(c, z.object({ token: z.string().max(4096) }));
+		await removeDevice(token);
 		return c.json(ok);
 	})
 	.post("/test", async (c) =>

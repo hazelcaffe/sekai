@@ -89,6 +89,7 @@ import type {
 	NoteUpdate,
 } from "./memory.ts";
 import type { Message, MessageRetry, MessageSend, MessageSendResult } from "./message.ts";
+import type { MobilePushClientConfig, MobilePushSettings, MobilePushStatus, MobilePushToken } from "./mobile.ts";
 import type {
 	ApiModel,
 	ApiProviderCreate,
@@ -326,6 +327,10 @@ export function createApiClient(options: ApiClientOptions) {
 				post<{ devices: number }>("/push/subscriptions", sub),
 			unsubscribe: (endpoint: string) => post<{ ok: boolean }>("/push/unsubscribe", { endpoint }),
 			test: () => post<{ sent: number }>("/push/test"),
+			/** The phone apps: what they need to turn push on, and this phone's push address. */
+			mobile: () => get<MobilePushClientConfig>("/push/mobile"),
+			addDevice: (token: MobilePushToken) => post<{ devices: number }>("/push/devices", token),
+			removeDevice: (token: string) => post<{ ok: boolean }>("/push/devices/remove", { token }),
 		},
 
 		tailscale: {
@@ -562,6 +567,8 @@ export function createApiClient(options: ApiClientOptions) {
 			sms: () => get<SmsConfig>("/admin/sms"),
 			saveSms: (body: Partial<SmsConfig>) => request<SmsConfig>("PUT", "/admin/sms", body),
 			testSms: (to: string) => post<{ ok: true }>("/admin/sms/test", { to }),
+			mobile: () => get<MobilePushStatus>("/admin/mobile"),
+			saveMobile: (body: Partial<MobilePushSettings>) => request<MobilePushStatus>("PUT", "/admin/mobile", body),
 		},
 
 		conversations: {

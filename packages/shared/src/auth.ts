@@ -42,7 +42,8 @@ export interface AuthStatus {
 
 export type SessionRestriction = "password" | "mfa";
 
-export type SessionMethod = "password" | "passkey" | "setup" | "sso" | "invite";
+/** How a session signed in ("app": the phone app, through the browser). */
+export type SessionMethod = "password" | "passkey" | "setup" | "sso" | "invite" | "app";
 
 // ---------------------------------------------------------------- two-step sign-in
 

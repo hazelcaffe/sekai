@@ -22,9 +22,9 @@ and other accounts), MCP servers, X mention poller, push, etc. SIGTERM shuts the
   `requireAuth` then runs the request as its person (`runAs(actor)`) and keeps sessions that owe a step (a temporary
   password, required two-factor sign-in) to the pages for it.
 - `auth/`: `service.ts` (accounts, sessions, tokens), `routes.ts` (sign-in, two-factor, SSO, invites, account),
-  `admin-routes.ts` (`/api/admin`: people, roles, SSO providers, email and SMS), `actor.ts`, `roles.ts`, `users.ts`,
+  `admin-routes.ts` (`/api/admin`: people, roles, SSO providers, email and SMS, phone app push), `actor.ts`, `roles.ts`, `users.ts`,
   `mfa.ts` + `totp.ts`, `sso.ts`, `tickets.ts` (single-use hashed tokens), `passkeys.ts`, `request.ts` (cookies, origin,
-  trusted proxies). Admin-only route groups and sudo mode (`requireRecentAuth`) are set up in `app.ts`.
+  trusted proxies), `app-signin.ts` (the phone apps sign in through the system browser: a PKCE-style one-time code). Admin-only route groups and sudo mode (`requireRecentAuth`) are set up in `app.ts`.
 - Ownership (see the root AGENTS.md): services scope by `currentActor()` with `services/visibility.ts`; background
   work must `runAs` the owner; events are filtered per person in `events/scope.ts`; limits in `services/limits.ts`;
   personal settings in `services/prefs.ts` (`getSettings()` merges the actor's name, time zone, approval mode and tool
@@ -74,7 +74,8 @@ src/services/     housekeeping.ts (daily pruning of caches, deleted bots' folder
                   uploads
 src/db/           schema.ts (all tables), index.ts (initDb, db, schema)
 src/lib/          errors, log, ids (newId), secrets (seal/unseal), text helpers, time
-src/push.ts       Web Push (VAPID), driven by bus notifications
+src/push.ts       Web Push (VAPID), driven by bus notifications; also sends to phones (src/mobile)
+src/mobile/       the phone apps' push: settings (Admin → Phone apps), devices (each person's phones), fcm.ts, apns.ts
 ```
 
 ## Core patterns

@@ -41,7 +41,8 @@ function AuthGate() {
 	}, [error, refetch]);
 	const signedIn = ({ user, restriction }: SignedIn) => {
 		const next = continueTo();
-		if (next?.startsWith("/admin")) {
+		// The admin app, or the server itself (signing in to the phone app through this browser).
+		if (next?.startsWith("/admin") || next?.startsWith("/api/auth/app/")) {
 			location.assign(next);
 			return;
 		}

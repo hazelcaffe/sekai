@@ -24,6 +24,15 @@ import { log } from "../lib/log.ts";
 import { body, ok } from "../routes/util.ts";
 import { emailReady } from "../services/messaging.ts";
 import { actorFor } from "./actor.ts";
+import {
+	APP_COOKIE,
+	APP_FINISH,
+	appPage,
+	appSignIn,
+	issueAppCode,
+	redeemAppCode,
+	startAppSignIn,
+} from "./app-signin.ts";
 import { authenticate, denyReason } from "./index.ts";
 import {
 	challengeFor,
@@ -155,6 +164,33 @@ export function publicUrl(c: Context): string {
 	const url = config.publicUrl ?? requestOrigin(c.req.raw);
 	if (!url) throw new HttpError(400, "Set SEKAI_PUBLIC_URL so Sekai knows its own address");
 	return url;
+}
+
+/** The phone app's sign-in in this browser (see app-signin.ts). */
+function appCookie(c: Context, token: string, maxAge: number): string {
+	const parts = [
+		`${APP_COOKIE}=${encodeURIComponent(token)}`,
+		"Path=/api/auth/app",
+		"HttpOnly",
+		"SameSite=Lax",
+		`Max-Age=${maxAge}`,
+	];
+	if (isHttps(c.req.raw)) parts.push("Secure");
+	return parts.join("; ");
+}
+
+/** Hands this browser's sign-in to the app: a one-time code in a sekai:// link. */
+async function handToApp(c: Context, p: Extract<Principal, { kind: "session" }>) {
+	const code = await issueAppCode(readCookie(c.req.raw, APP_COOKIE), p.userId, p.restriction);
+	c.header("set-cookie", appCookie(c, "", 0), { append: true });
+	c.header("cache-control", "no-store");
+	return c.html(
+		appPage({
+			title: "You're signed in",
+			text: "Going back to the Sekai app. If nothing happens, tap the button.",
+			open: `sekai://signed-in?code=${encodeURIComponent(code)}`,
+		}),
+	);
 }
 
 function mfaCookie(c: Context, token: string, maxAge: number): string {
@@ -409,10 +445,84 @@ const publicRoutes = new Hono()
 			if (!user) throw new HttpError(401, "Account not found");
 			const signedIn = await completeSignIn(c, user, "sso");
 			return back(
-				signedIn.status === "mfa" ? `/?mfa=1&redirect=${encodeURIComponent(result.redirect)}` : result.redirect,
+				signedIn.status === "mfa" ? `/?mfa=1&next=${encodeURIComponent(result.redirect)}` : result.redirect,
 			);
 		} catch (err) {
 			return back("/", err instanceof Error ? err.message : String(err));
+		}
+	})
+
+	// The phone apps sign in through the system browser (see app-signin.ts).
+	.get("/app/start", async (c) => {
+		const p = await authenticate(c.req.raw);
+		const signedIn = p?.kind === "session";
+		let token: string;
+		try {
+			token = await startAppSignIn(c.req.query("challenge") ?? "", signedIn);
+		} catch (err) {
+			const text = err instanceof Error ? err.message : String(err);
+			return c.html(appPage({ title: "Couldn't sign in", text }), 400);
+		}
+		c.header("set-cookie", appCookie(c, token, 15 * 60), { append: true });
+		const provider = c.req.query("provider");
+		if (signedIn) return c.redirect(APP_FINISH, 302);
+		if (provider && /^[A-Za-z0-9_]+$/.test(provider)) {
+			return c.redirect(`/api/auth/sso/${provider}/start?redirect=${encodeURIComponent(APP_FINISH)}`, 302);
+		}
+		return c.redirect(`/?next=${encodeURIComponent(APP_FINISH)}`, 302);
+	})
+	.get("/app/finish", async (c) => {
+		const started = await appSignIn(readCookie(c.req.raw, APP_COOKIE));
+		if (!started) {
+			return c.html(
+				appPage({ title: "That sign-in expired", text: "Go back to the Sekai app and try again." }),
+				400,
+			);
+		}
+		const p = await authenticate(c.req.raw);
+		if (p?.kind !== "session") return c.redirect(`/?next=${encodeURIComponent(APP_FINISH)}`, 302);
+		// Signed in before the app asked: make sure it's the person holding the phone who wants this.
+		if (started.hadSession) {
+			const user = await getUserRow(p.userId);
+			c.header("cache-control", "no-store");
+			return c.html(
+				appPage({
+					title: "Sign in to the app?",
+					text: `The Sekai app on this phone wants to sign in as ${user?.name || user?.username || "you"} (@${user?.username ?? ""}).`,
+					form: { action: APP_FINISH, button: "Continue", cancel: "Cancel" },
+				}),
+			);
+		}
+		return handToApp(c, p);
+	})
+	.post("/app/finish", async (c) => {
+		requireSameOrigin(c, "Signing in to the app");
+		const p = await authenticate(c.req.raw);
+		if (p?.kind !== "session") return c.redirect(`/?next=${encodeURIComponent(APP_FINISH)}`, 303);
+		return handToApp(c, p);
+	})
+	// In the app's web view: the code and the verifier only the app has, for a session of its own.
+	.post("/app/exchange", async (c) => {
+		const ip = ipOf(c);
+		try {
+			checkRate(ip);
+			const form = await c.req.parseBody();
+			const code = typeof form.code === "string" ? form.code : "";
+			const verifier = typeof form.verifier === "string" ? form.verifier : "";
+			const { userId, restriction } = await redeemAppCode(code, verifier).catch((err: unknown) => {
+				recordFailure(ip);
+				throw err;
+			});
+			const user = await getUserRow(userId);
+			if (!user || user.disabledAt) throw new HttpError(403, "This account is turned off. Ask an admin.");
+			const s = await createSession(user.id, "app", meta(c), restriction);
+			c.header("set-cookie", sessionCookie(c.req.raw, s.secret, s.maxAgeSeconds), { append: true });
+			await touchLogin(user.id);
+			log.info(`signed in: ${user.username} (the app, through the browser) from ${ip}`);
+			return c.redirect("/", 303);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return c.redirect(`/?sso_error=${encodeURIComponent(message.slice(0, 300))}`, 303);
 		}
 	})
 

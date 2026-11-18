@@ -100,6 +100,16 @@ Locked out? On the server, `bun run reset-password` resets the first admin's pas
   results to that device, even when Sekai is closed. Browsers only allow push and passkeys on HTTPS (or localhost):
   host Sekai on the internet with a domain, or use your tailnet's HTTPS address (**Admin → Tailscale → HTTPS
   address** runs `tailscale serve` for you). On iPhone and iPad, add Sekai to the Home Screen first.
+- **Phone apps** (iOS and Android): native apps that show your Sekai and add what a browser tab can't: push
+  notifications with **Approve** and **Deny** buttons, signing in through your phone's browser (so passkeys and
+  Google sign-in work), the mic for calls, file uploads and downloads, and `sekai://c/<chat>` links. On first start
+  they ask for your server's address; **Settings → Server** switches it. Build Android with
+  `cd apps/mobile/android && ./gradlew assembleDebug`. Build iOS on a Mac with XcodeGen
+  (`cd apps/mobile/ios && xcodegen`), or let the Mobile apps workflow on GitHub build it, including an unsigned
+  `.ipa` you sign with your own certificate. For notifications while the app is closed, an admin adds Firebase
+  (Android) and an Apple push key (iOS) in **Admin → Phone apps**, which walks you through it; without them the apps
+  notify only while open. As in a browser, the mic needs the HTTPS address. More in
+  [apps/mobile/AGENTS.md](../apps/mobile/AGENTS.md).
 - **Desktop app** (Windows, macOS, Linux): `bun run --cwd apps/desktop package:win|mac|linux` builds installers. It
   connects to `http://127.0.0.1:7420` by default (change it from the tray or the connect screen), lives in the tray,
   shows native notifications, opens `sekai://c/<chat>` links, and can [lend the computer to your

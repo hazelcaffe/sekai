@@ -2,6 +2,7 @@ import {
 	api,
 	BrandGlyph,
 	cancelPasskeyPrompt,
+	mobile,
 	passkeyAutofill,
 	passkeysSupported,
 	signInWithPasskey,
@@ -9,7 +10,7 @@ import {
 } from "@sekai/client";
 import type { AuthStatus, MfaMethod, SignInResult } from "@sekai/shared";
 import { Button, Callout, Field, Input, PasswordInput, Spinner } from "@sekai/ui";
-import { CircleAlert, Fingerprint, KeyRound, MailCheck } from "lucide-react";
+import { CircleAlert, Fingerprint, Globe, KeyRound, MailCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AuthLayout, OrDivider } from "./AuthLayout.tsx";
 import { MfaStep } from "./MfaStep.tsx";
@@ -38,6 +39,7 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 	const [busy, setBusy] = useState<"password" | "passkey" | null>(null);
 	const [challenge, setChallenge] = useState<Challenge | null>(null);
 	const [forgot, setForgot] = useState(false);
+	// In the phone app, passkeys and single sign-on happen in the system browser (they don't work in app views).
 	const passkeys = passkeysSupported(status.passkeysAvailable);
 
 	const handle = useCallback(
@@ -93,6 +95,15 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 		}
 	};
 
+	const viaBrowser = async (provider: string | null) => {
+		setError(null);
+		try {
+			await mobile?.signInWithBrowser({ provider });
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		}
+	};
+
 	if (challenge) {
 		return (
 			<AuthLayout title="One more step" subtitle="Your account has two-factor sign-in.">
@@ -112,6 +123,7 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 	if (forgot) return <ForgotPassword onBack={() => setForgot(false)} />;
 
 	const showPasskey = passkeys && status.hasPasskeys;
+	const showBrowser = Boolean(mobile);
 	return (
 		<AuthLayout
 			title="Welcome back"
@@ -128,9 +140,21 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 				)
 			}
 		>
-			{(showPasskey || status.sso.length > 0) && (
+			{(showPasskey || showBrowser || status.sso.length > 0) && (
 				<>
 					<div className="flex flex-col gap-2.5">
+						{showBrowser && (
+							<Button
+								variant={status.hasPasskeys ? "primary" : "secondary"}
+								size="lg"
+								className="w-full"
+								onClick={() => void viaBrowser(null)}
+								disabled={busy !== null}
+							>
+								{status.hasPasskeys ? <Fingerprint /> : <Globe />}
+								{status.hasPasskeys ? "Sign in with a passkey" : "Sign in with your browser"}
+							</Button>
+						)}
 						{showPasskey && (
 							<Button
 								variant="primary"
@@ -152,6 +176,10 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 									size="lg"
 									className="w-full"
 									onClick={() => {
+										if (mobile) {
+											void viaBrowser(p.id);
+											return;
+										}
 										const next = new URLSearchParams(location.search).get("next");
 										location.assign(api.auth.ssoStartUrl(p.id, { redirect: next ?? "/" }));
 									}}
@@ -174,7 +202,7 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 			>
 				<Field label="Username or email">
 					<Input
-						autoFocus={!showPasskey && status.sso.length === 0}
+						autoFocus={!showPasskey && !showBrowser && status.sso.length === 0}
 						value={username}
 						onChange={(e) => setUsername(e.target.value)}
 						autoComplete={passkeys ? "username webauthn" : "username"}
@@ -210,7 +238,11 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 				)}
 				<Button
 					type="submit"
-					variant={showPasskey || status.sso.length ? "secondary" : "primary"}
+					variant={
+						showPasskey || status.sso.length || (showBrowser && status.hasPasskeys)
+							? "secondary"
+							: "primary"
+					}
 					size="lg"
 					className="mt-1 w-full"
 					disabled={!username.trim() || !password || busy !== null}

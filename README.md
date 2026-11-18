@@ -25,7 +25,7 @@ OpenAI-compatible gateway or API provider (OpenAI, Anthropic, Gemini, OpenRouter
 subscriptions you already pay for (Codex, Claude Code, Gemini CLI, Grok…) as a bot's brain.
 
 Sekai runs on [Bun](https://bun.sh) and Postgres, with a responsive web app you can install on your phone, an admin
-app, and an optional desktop app. It's free software under the [GNU AGPL v3](LICENSE).
+app, iOS and Android apps, and an optional desktop app. It's free software under the [GNU AGPL v3](LICENSE).
 
 ## Highlights
 

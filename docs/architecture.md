@@ -21,6 +21,7 @@ apps/server      Bun + Hono API, Postgres (Drizzle), SSE event bus
   src/x            X accounts and the mention listener
   src/code         code index: chunking, incremental indexing, hybrid search (pgvector + full text)
   src/push.ts      Web Push (VAPID) for every notification
+  src/mobile       push for the phone apps: Firebase (FCM HTTP v1) and Apple (APNs over HTTP/2), each person's phones
   src/browser      Playwright sessions (bot's computer or headless on the server) and sign-in requests
   src/mcp          MCP client manager, OAuth sign-in for apps
   src/auth         accounts, sessions, roles, two-factor sign-in, single sign-on, the actor (who a request runs as)
@@ -30,6 +31,8 @@ apps/web         React 19, Vite, Tailwind 4, TanStack Query, Radix; service work
 apps/admin       the admin app (overview, models, apps, voice, approvals, computers, Tailscale, account)
 apps/desktop     Electron shell (sandboxed renderer, minimal preload bridge, auto-update from your server); src/local
                  lends the computer to bots (bridge client, Windows/macOS/Linux helpers, browser, commands, files)
+apps/mobile      iOS (Swift, WKWebView, XcodeGen) and Android (Kotlin, WebView) shells around the web app, with a shared
+                 bridge (push, sign-in through the browser, downloads, links) and connect screen
 packages/shared  zod schemas, event types and the typed API client used by every app
 packages/client  React hooks and components shared by the web and admin apps
 packages/ui      the design system (shadcn/ui based)

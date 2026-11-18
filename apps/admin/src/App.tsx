@@ -18,6 +18,7 @@ import { ComparePanel } from "./pages/ComparePanel.tsx";
 import { ComputersPanel } from "./pages/ComputerSettings.tsx";
 import { DevicesPanel } from "./pages/DevicesPanel.tsx";
 import { MemoryPanel } from "./pages/MemoryPanel.tsx";
+import { MobilePanel } from "./pages/MobilePanel.tsx";
 import { ModelsPanel } from "./pages/ModelsPanel.tsx";
 import { OverviewPanel } from "./pages/OverviewPanel.tsx";
 import { PeoplePanel } from "./pages/PeoplePanel.tsx";
@@ -42,6 +43,7 @@ const PANELS: Record<Exclude<Tab, "overview">, ComponentType> = {
 	people: PeoplePanel,
 	roles: RolesPanel,
 	signin: SignInPanel,
+	mobile: MobilePanel,
 	computers: ComputersPanel,
 	tailscale: TailscalePanel,
 	account: AccountPanel,

@@ -16,6 +16,7 @@ import {
 	ScrollText,
 	Server,
 	ShieldCheck,
+	Smartphone,
 	Sparkles,
 	UserCog,
 	UserRound,
@@ -37,6 +38,7 @@ export type Tab =
 	| "people"
 	| "roles"
 	| "signin"
+	| "mobile"
 	| "computers"
 	| "tailscale"
 	| "account"
@@ -187,6 +189,14 @@ export const NAV: NavGroup[] = [
 				blurb: "Single sign-on, email and text messages",
 				keywords:
 					"sso oauth oidc openid connect google github discord authentik keycloak smtp email mail text sms twilio webhook codes invites password reset",
+			},
+			{
+				value: "mobile",
+				label: "Phone apps",
+				icon: <Smartphone />,
+				tone: "success",
+				blurb: "Push for the iOS and Android apps",
+				keywords: "mobile app ios iphone ipad android push notifications firebase fcm apple apns p8",
 			},
 		],
 	},

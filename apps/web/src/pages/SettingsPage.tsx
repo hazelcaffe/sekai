@@ -2,6 +2,7 @@ import {
 	adminUrl,
 	api,
 	desktop,
+	mobile,
 	qk,
 	queryClient,
 	ThemePicker,
@@ -37,6 +38,7 @@ import {
 	LogOut,
 	MessageSquareText,
 	Palette,
+	Server,
 	ShieldCheck,
 	Smartphone,
 	Sunrise,
@@ -53,6 +55,7 @@ import {
 	notificationPermission,
 	pushSubscribed,
 	pushSupported,
+	refreshMobilePermission,
 	requestNotificationPermission,
 } from "../lib/notifications.ts";
 import { useUi } from "../stores/ui.ts";
@@ -189,15 +192,20 @@ function NotificationsTab() {
 	const [push, setPush] = useState<boolean | null>(null);
 	const [busy, setBusy] = useState(false);
 	useEffect(() => {
+		if (mobile) void refreshMobilePermission().then(setPerm);
 		if (pushSupported()) void pushSubscribed().then(setPush);
 	}, []);
 	const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
 	const standalone = window.matchMedia("(display-mode: standalone)").matches;
 	const text =
 		perm === "granted"
-			? "On while Sekai is open, even in the background."
+			? mobile
+				? "On while the app is open or in the background."
+				: "On while Sekai is open, even in the background."
 			: perm === "denied"
-				? "Blocked in your browser's site settings."
+				? mobile
+					? "Blocked for Sekai in your phone's settings."
+					: "Blocked in your browser's site settings."
 				: perm === "unsupported"
 					? ios && !standalone
 						? "On iPhone and iPad, add Sekai to your Home Screen first (Share → Add to Home Screen), then open it from there."
@@ -240,7 +248,7 @@ function NotificationsTab() {
 					</Button>
 				)}
 			</SettingsRow>
-			{!window.isSecureContext && <HttpsHint />}
+			{!window.isSecureContext && !mobile && <HttpsHint />}
 			{pushSupported() && perm !== "denied" && (
 				<SettingsRow
 					icon={<Smartphone />}
@@ -439,6 +447,24 @@ function MoreLinks() {
 				</span>
 				<ChevronRight className="size-4 text-fg-subtle transition-transform group-hover:translate-x-0.5" />
 			</a>
+			{mobile && (
+				<button
+					type="button"
+					onClick={() => mobile?.openSettings()}
+					className="group flex items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3 text-left transition-colors hover:bg-muted/60"
+				>
+					<IconTile tone="neutral" size="sm">
+						<Server />
+					</IconTile>
+					<span className="min-w-0 flex-1">
+						<span className="block text-sm font-medium">Server</span>
+						<span className="block truncate text-xs text-fg-subtle">
+							{mobile.serverUrl.replace(/^https?:\/\//, "")} · Sekai app {mobile.version}
+						</span>
+					</span>
+					<ChevronRight className="size-4 text-fg-subtle transition-transform group-hover:translate-x-0.5" />
+				</button>
+			)}
 			{auth?.via === "session" && (
 				<Button variant="ghost" className="justify-start px-3" onClick={() => void signOut()}>
 					<LogOut /> Sign out

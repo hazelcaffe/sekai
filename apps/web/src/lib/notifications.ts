@@ -1,4 +1,5 @@
-import { api, desktop } from "@sekai/client";
+import { api, desktop, mobile } from "@sekai/client";
+import type { MobilePushToken } from "@sekai/shared";
 
 let swRegistration: ServiceWorkerRegistration | null = null;
 
@@ -17,16 +18,32 @@ export async function registerServiceWorker(): Promise<void> {
 }
 
 export function notificationsSupported(): boolean {
-	return Boolean(desktop) || "Notification" in window;
+	return Boolean(desktop || mobile) || "Notification" in window;
+}
+
+/** The phone app's answer, kept here since asking it takes a moment (see refreshMobilePermission). */
+let mobilePermission: NotificationPermission = "default";
+
+/** Asks the phone app whether it may show notifications (the system settings can change it any time). */
+export async function refreshMobilePermission(): Promise<NotificationPermission> {
+	if (!mobile) return notificationPermission() as NotificationPermission;
+	const p = await mobile.push.permission().catch(() => "prompt" as const);
+	mobilePermission = p === "prompt" ? "default" : p;
+	return mobilePermission;
 }
 
 export function notificationPermission(): NotificationPermission | "unsupported" {
 	if (desktop) return "granted";
+	if (mobile) return mobilePermission;
 	return "Notification" in window ? Notification.permission : "unsupported";
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
 	if (desktop) return true;
+	if (mobile) {
+		mobilePermission = await mobile.push.requestPermission().catch(() => "denied" as const);
+		return mobilePermission === "granted";
+	}
 	if (!("Notification" in window)) return false;
 	if (Notification.permission === "granted") return true;
 	return (await Notification.requestPermission()) === "granted";
@@ -42,6 +59,10 @@ export async function systemNotify(
 ): Promise<void> {
 	if (desktop) {
 		desktop.notify(title, body, { conversationId });
+		return;
+	}
+	if (mobile) {
+		mobile.notify(title, body, { conversationId, approval: approval ?? null });
 		return;
 	}
 	if (!("Notification" in window) || Notification.permission !== "granted") return;
@@ -79,8 +100,12 @@ export async function systemNotify(
 
 const PUSH_FLAG = "sekai.push";
 
-/** Push needs a service worker and the Push API (on iPhone: only once Sekai is added to the Home Screen). */
+/**
+ * Push needs a service worker and the Push API (on iPhone: only once Sekai is added to the Home Screen), or the
+ * phone app (Apple's and Google's push services).
+ */
 export function pushSupported(): boolean {
+	if (mobile) return true;
 	return !desktop && "serviceWorker" in navigator && "PushManager" in window && window.isSecureContext;
 }
 
@@ -104,6 +129,7 @@ function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
 
 /** This browser's push subscription, kept in step with the server. */
 export async function pushSubscribed(): Promise<boolean> {
+	if (mobile) return pushOn() && (await phoneToken().catch(() => null)) !== null;
 	const reg = await registration();
 	const sub = await reg?.pushManager.getSubscription().catch(() => null);
 	if (!sub) {
@@ -115,6 +141,7 @@ export async function pushSubscribed(): Promise<boolean> {
 
 /** Turns on push for this browser: asks for permission, subscribes, and tells the server. */
 export async function enablePush(): Promise<void> {
+	if (mobile) return enablePhonePush();
 	if (!(await requestNotificationPermission())) throw new Error("Notifications are blocked for this site");
 	const reg = await registration();
 	if (!reg) throw new Error("This browser can't get push notifications");
@@ -145,9 +172,65 @@ export async function enablePush(): Promise<void> {
 
 export async function disablePush(): Promise<void> {
 	localStorage.removeItem(PUSH_FLAG);
+	if (mobile) {
+		const token = localStorage.getItem(PHONE_TOKEN);
+		localStorage.removeItem(PHONE_TOKEN);
+		if (token) await api.push.removeDevice(token).catch(() => {});
+		await mobile.push.unregister().catch(() => {});
+		return;
+	}
 	const reg = await registration();
 	const sub = await reg?.pushManager.getSubscription();
 	if (!sub) return;
 	await api.push.unsubscribe(sub.endpoint).catch(() => {});
 	await sub.unsubscribe();
+}
+
+// ---------------------------------------------------------------- the phone apps
+
+const PHONE_TOKEN = "sekai.push.phone";
+
+/** What the app needs from this server for push (Firebase's client settings on Android). */
+async function phoneConfig() {
+	const config = await api.push.mobile();
+	if (mobile?.platform === "android" && !config.fcm)
+		throw new Error("Push isn't set up on this server yet. An admin can add Firebase in Admin → Mobile app.");
+	if (mobile?.platform === "ios" && !config.apns)
+		throw new Error("Push isn't set up on this server yet. An admin can add Apple push in Admin → Mobile app.");
+	return { fcm: config.fcm };
+}
+
+async function phoneToken(): Promise<MobilePushToken | null> {
+	if (!mobile) return null;
+	return mobile.push.current(await phoneConfig());
+}
+
+async function savePhoneToken(token: MobilePushToken): Promise<void> {
+	await api.push.addDevice(token);
+	localStorage.setItem(PHONE_TOKEN, token.token);
+	localStorage.setItem(PUSH_FLAG, "1");
+}
+
+async function enablePhonePush(): Promise<void> {
+	if (!mobile) return;
+	const config = await phoneConfig();
+	await savePhoneToken(await mobile.push.register(config));
+	mobilePermission = "granted";
+}
+
+/**
+ * In the phone app, once signed in: tells the server this phone's push address again (it changes now and then),
+ * and whenever the app says it changed.
+ */
+export function syncPhonePush(): () => void {
+	if (!mobile) return () => {};
+	void refreshMobilePermission();
+	if (pushOn()) {
+		void phoneToken()
+			.then((token) => (token ? savePhoneToken(token) : undefined))
+			.catch(() => {});
+	}
+	return mobile.push.onToken((token) => {
+		if (pushOn()) void savePhoneToken(token).catch(() => {});
+	});
 }
