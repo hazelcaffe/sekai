@@ -10,6 +10,7 @@ import {
 	useConversations,
 	useMachines,
 	useMessages,
+	useSeats,
 	useSettings,
 } from "@sekai/client";
 import { type Agent, avatarColor, type Conversation, channelTitle, type Message, type ModelRef } from "@sekai/shared";
@@ -75,7 +76,9 @@ function ChatHeader({
 	onOpenComputer: () => void;
 }) {
 	const { data: machines = [] } = useMachines(agent?.id);
-	const hasMachine = Boolean(agent) && machines.length > 0;
+	// Its own machines, or a seat on one of yours (another bot's computer shared with it).
+	const { data: seats = [] } = useSeats(agent?.id ?? "", Boolean(agent));
+	const hasMachine = Boolean(agent) && (machines.length > 0 || seats.length > 0);
 	const { phone, wide } = useLayout();
 	const navigate = useNavigate();
 	const ui = useUi();
@@ -203,7 +206,11 @@ function ChatHeader({
 								New chat
 							</DropdownItem>
 							<DropdownItem icon={<Monitor />} onSelect={onOpenComputer}>
-								{hasMachine ? `${agent.name}'s computer` : "Give it a computer"}
+								{hasMachine
+									? `${agent.name}'s computer`
+									: agent.sharedBy
+										? "Computers and browsers"
+										: "Give it a computer"}
 							</DropdownItem>
 							<DropdownSeparator />
 							<DropdownLabel>Chats with {agent.name}</DropdownLabel>

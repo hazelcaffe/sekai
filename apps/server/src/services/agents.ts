@@ -257,11 +257,15 @@ export async function deleteAgent(id: string): Promise<void> {
 	// Its runs (and any approvals they wait on) stop first.
 	const { cancelAgentRuns } = await import("../agent/runtime.ts");
 	await cancelAgentRuns(id);
-	// Its computer and devboxes would otherwise keep running on Proxmox.
+	// Its computer and devboxes would otherwise keep running on Proxmox; its seats on other bots' machines go too.
 	const { deleteAgentMachines } = await import("../machines/manager.ts");
 	await deleteAgentMachines(id);
+	const { removeAgentSeats } = await import("../machines/seats.ts");
+	await removeAgentSeats(id).catch((err: unknown) => log.warn(`${agent.name}'s seats: ${errorMessage(err)}`));
 	const { closeBrowser } = await import("../browser/engine.ts");
 	await closeBrowser(id);
+	const { leaveSharedBrowsers } = await import("../browser/shared.ts");
+	await leaveSharedBrowsers(id);
 	// Its keys come off your devices and teammates' machines (the database would only forget that it had access).
 	const { listGrants, revokeGrant } = await import("../machines/hosts.ts");
 	for (const g of (await listGrants()).filter((x) => x.agentId === id)) {

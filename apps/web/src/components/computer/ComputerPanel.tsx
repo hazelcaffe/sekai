@@ -6,8 +6,10 @@ import {
 	formatBytes,
 	timeAgo,
 	useCheckpoints,
+	useMachineMembers,
 	useMachines,
 	useSavedLogins,
+	useSeats,
 	useSettings,
 } from "@sekai/client";
 import {
@@ -16,19 +18,15 @@ import {
 	DEFAULT_COMPUTER_SPECS,
 	DEFAULT_DEVBOX_SPECS,
 	type Machine,
-	type MachineAccess,
+	type MachineBackend,
 	type MachineSpecs,
 } from "@sekai/shared";
-import { Badge, Button, Confirm, Field, IconButton, Input, Section, Spinner } from "@sekai/ui";
+import { Badge, Button, Confirm, Field, Fold, IconButton, Input, Section, Segmented, Spinner } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	BookmarkPlus,
 	Box,
-	Check,
-	Copy,
-	Download,
-	Eye,
 	History,
 	KeyRound,
 	Laptop,
@@ -41,8 +39,10 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { Access, ScreenPreview, StatusBadge } from "./MachineParts.tsx";
+import { Seats, SharedBrowsers, ShareMachine } from "./Sharing.tsx";
 import { VncView } from "./VncView.tsx";
 
 const gb = (mb: number) => `${Math.round((mb / 1024) * 10) / 10} GB`;
@@ -52,82 +52,33 @@ function specsLine(s: MachineSpecs): string {
 	return `${s.cores} cores · ${mem} RAM · ${s.diskGb} GB disk`;
 }
 
-function StatusBadge({ m }: { m: Machine }) {
-	const tone =
-		m.status === "running"
-			? "success"
-			: m.status === "error"
-				? "danger"
-				: m.status === "stopped"
-					? "neutral"
-					: "info";
-	const label = {
-		creating: "Setting up",
-		provisioning: "Setting up",
-		running: "Running",
-		stopped: "Off",
-		error: "Problem",
-		deleting: "Deleting",
-	}[m.status];
-	return <Badge tone={tone}>{label}</Badge>;
-}
+const BACKEND_LABEL: Record<MachineBackend, string> = { vm: "Virtual machine", lxc: "Container" };
 
-function CopyRow({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
-	const [done, setDone] = useState(false);
+/** Virtual machine or container, for a new computer or devbox. */
+function BackendChoice({
+	value,
+	onChange,
+	order,
+}: {
+	value: MachineBackend;
+	onChange: (b: MachineBackend) => void;
+	order: MachineBackend[];
+}) {
 	return (
-		<div className="flex items-center gap-2 py-1 text-[13px]">
-			<span className="w-20 shrink-0 text-fg-subtle">{label}</span>
-			<code className="min-w-0 flex-1 truncate font-mono text-[12px]">{secret ? "••••••••••" : value}</code>
-			<IconButton
-				label={done ? "Copied" : "Copy"}
-				size="icon-sm"
-				onClick={async () => {
-					await navigator.clipboard.writeText(value);
-					setDone(true);
-					setTimeout(() => setDone(false), 1200);
-				}}
-			>
-				{done ? <Check /> : <Copy />}
-			</IconButton>
+		<div className="flex flex-col gap-1.5">
+			<Segmented
+				value={value}
+				onValueChange={onChange}
+				options={order.map((b) => ({ value: b, label: BACKEND_LABEL[b] }))}
+				size="sm"
+				className="self-start"
+			/>
+			<p className="text-xs leading-5 text-fg-subtle">
+				{value === "lxc"
+					? "Lighter and quicker to start. It shares your server's kernel."
+					: "Fully separate, with its own kernel: for Docker-heavy or kernel work."}
+			</p>
 		</div>
-	);
-}
-
-/** The live screen: a fresh screenshot every couple of seconds while the panel is open. */
-function ScreenPreview({ machine, onTakeover }: { machine: Machine; onTakeover: () => void }) {
-	const [src, setSrc] = useState(() => api.machines.screenUrl(machine.id));
-	const [failed, setFailed] = useState(false);
-	useEffect(() => {
-		const t = setInterval(() => {
-			if (document.visibilityState === "visible") setSrc(api.machines.screenUrl(machine.id));
-		}, 2500);
-		return () => clearInterval(t);
-	}, [machine.id]);
-	return (
-		<button
-			type="button"
-			onClick={onTakeover}
-			className="group relative block aspect-[16/10] w-full overflow-hidden rounded-2xl border border-border bg-black"
-			aria-label="Take over"
-		>
-			{!failed && (
-				<img
-					src={src}
-					alt={`${machine.name}'s screen`}
-					className="size-full object-contain"
-					onError={() => setFailed(true)}
-					onLoad={() => setFailed(false)}
-				/>
-			)}
-			{failed && (
-				<span className="absolute inset-0 flex items-center justify-center text-xs text-neutral-400">
-					The screen isn't available right now
-				</span>
-			)}
-			<span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 coarse:opacity-100">
-				<Maximize2 className="size-3.5" /> Take over
-			</span>
-		</button>
 	);
 }
 
@@ -135,12 +86,15 @@ function SpecsEditor({
 	value,
 	onSave,
 	onCancel,
-	kind,
+	vm,
+	ballooning,
 }: {
 	value: MachineSpecs;
 	onSave: (s: MachineSpecs) => void;
 	onCancel: () => void;
-	kind: Machine["kind"];
+	/** Virtual machines restart for new cores and memory; containers take them right away. */
+	vm: boolean;
+	ballooning: boolean;
 }) {
 	const [s, setS] = useState(value);
 	const num = (v: string, fallback: number) => (Number.isFinite(Number(v)) && v !== "" ? Number(v) : fallback);
@@ -178,7 +132,7 @@ function SpecsEditor({
 					/>
 				</Field>
 			</div>
-			{kind === "computer" && (
+			{ballooning && (
 				<Field
 					label="Minimum RAM (GB)"
 					hint="Ballooning: the VM gives memory back down to this when idle. 0 turns it off."
@@ -193,7 +147,10 @@ function SpecsEditor({
 				</Field>
 			)}
 			<p className="text-xs text-fg-subtle">
-				Disks can only grow. Changing cores or memory restarts a running computer.
+				Disks can only grow.{" "}
+				{vm
+					? "Changing cores or memory restarts a running virtual machine."
+					: "A container takes new cores and memory right away."}
 			</p>
 			<div className="flex justify-end gap-2">
 				<Button variant="secondary" size="sm" onClick={onCancel}>
@@ -203,62 +160,6 @@ function SpecsEditor({
 					Save
 				</Button>
 			</div>
-		</div>
-	);
-}
-
-function Access({ machine }: { machine: Machine }) {
-	const [access, setAccess] = useState<MachineAccess | null>(null);
-	const reveal = useMutation({ mutationFn: () => api.machines.access(machine.id), onSuccess: setAccess });
-	const host = machine.addresses.tailscale ?? machine.addresses.lan;
-	const download = () => {
-		if (!access) return;
-		const blob = new Blob([access.privateKey], { type: "text/plain" });
-		const a = document.createElement("a");
-		a.href = URL.createObjectURL(blob);
-		a.download = `${machine.hostname}-key`;
-		a.click();
-		// Some browsers cancel a download whose URL is revoked right away.
-		setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-	};
-	return (
-		<div className="flex flex-col">
-			{host && (
-				<CopyRow
-					label="SSH"
-					value={`ssh ${machine.username}@${host}${machine.ports.ssh !== 22 ? ` -p ${machine.ports.ssh}` : ""}`}
-				/>
-			)}
-			{host && machine.ports.vnc && <CopyRow label="VNC" value={`${host}:${machine.ports.vnc}`} />}
-			{host && machine.ports.rdp && <CopyRow label="RDP" value={`${host}:${machine.ports.rdp}`} />}
-			{machine.addresses.tailscale && machine.addresses.lan && (
-				<CopyRow label="LAN" value={machine.addresses.lan} />
-			)}
-			{access ? (
-				<>
-					{access.userPassword && <CopyRow label={machine.username} value={access.userPassword} />}
-					{access.rootPassword && <CopyRow label="root" value={access.rootPassword} />}
-					{access.vncPassword && <CopyRow label="VNC pass" value={access.vncPassword} />}
-					<div className="mt-1 flex gap-2">
-						<Button variant="ghost" size="sm" onClick={download}>
-							<Download /> SSH key
-						</Button>
-						<Button variant="ghost" size="sm" onClick={() => setAccess(null)}>
-							<X /> Hide
-						</Button>
-					</div>
-				</>
-			) : (
-				<Button
-					variant="ghost"
-					size="sm"
-					className="mt-1 self-start"
-					onClick={() => reveal.mutate()}
-					disabled={reveal.isPending}
-				>
-					<Eye /> Passwords and key
-				</Button>
-			)}
 		</div>
 	);
 }
@@ -412,6 +313,7 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 	const [takeover, setTakeover] = useState(false);
 	const [editing, setEditing] = useState(false);
 	const [confirm, setConfirm] = useState(false);
+	const { data: members = [] } = useMachineMembers(machine.id, machine.provider !== "local");
 	const update = useMutation({
 		mutationFn: (specs: MachineSpecs) => api.machines.update(machine.id, { specs }),
 		onSuccess: () => setEditing(false),
@@ -428,6 +330,7 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 	const remove = useMutation({ mutationFn: () => api.machines.delete(machine.id) });
 	const busy = machine.status === "creating" || machine.status === "provisioning" || machine.status === "deleting";
 	const isComputer = machine.kind === "computer";
+	const backend = machine.backend ? BACKEND_LABEL[machine.backend] : null;
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -461,6 +364,7 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 						<StatusBadge m={machine} />
 					</span>
 					<span className="block truncate text-xs text-fg-subtle">
+						{backend ? `${backend} · ` : ""}
 						{specsLine(machine.specs)}
 						{machine.expiresAt ? ` · deleted ${timeAgo(machine.expiresAt)}` : ""}
 					</span>
@@ -474,7 +378,8 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 			{editing && (
 				<SpecsEditor
 					value={machine.specs}
-					kind={machine.kind}
+					vm={machine.backend === "vm"}
+					ballooning={isComputer && machine.backend === "vm"}
 					onSave={(s) => update.mutate(s)}
 					onCancel={() => setEditing(false)}
 				/>
@@ -482,6 +387,9 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 			{(machine.status === "running" || machine.status === "stopped") && <Access machine={machine} />}
 			{machine.provider === "proxmox" && (machine.status === "running" || machine.status === "stopped") && (
 				<Checkpoints machine={machine} />
+			)}
+			{machine.provider !== "local" && (machine.status === "running" || machine.status === "stopped") && (
+				<ShareMachine machine={machine} />
 			)}
 			<div className="flex flex-wrap gap-1.5">
 				{isComputer && machine.status === "running" && (
@@ -525,11 +433,16 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 				open={confirm}
 				onOpenChange={setConfirm}
 				title={`Delete ${machine.name}?`}
-				description={
+				description={[
 					machine.provider === "proxmox"
-						? `The ${isComputer ? "VM" : "container"} and everything on it are deleted from Proxmox. ${agent.name}'s memory and chats are kept.`
-						: "Sekai forgets this machine. Nothing on it is touched."
-				}
+						? `The ${machine.backend === "lxc" ? "container" : "virtual machine"} and everything on it are deleted from Proxmox. ${agent.name}'s memory and chats are kept.`
+						: "Sekai forgets this machine. Nothing on it is touched, except the accounts other bots got there.",
+					members.length
+						? `${members.length} other bot${members.length === 1 ? "" : "s"} use${members.length === 1 ? "s" : ""} it and lose${members.length === 1 ? "s" : ""} ${members.length === 1 ? "its account" : "their accounts"} there.`
+						: "",
+				]
+					.filter(Boolean)
+					.join(" ")}
 				confirmLabel="Delete"
 				danger
 				onConfirm={() => remove.mutate()}
@@ -541,6 +454,8 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 function NewComputer({ agent, proxmox }: { agent: Agent; proxmox: boolean }) {
 	const { data: settings } = useSettings();
 	const [specs, setSpecs] = useState<MachineSpecs | null>(null);
+	const [chosen, setChosen] = useState<MachineBackend | null>(null);
+	const backend = chosen ?? settings?.machines.computerBackend ?? "vm";
 	const [ssh, setSsh] = useState<{ host: string; port: string; username: string } | null>(null);
 	const create = useMutation({
 		mutationFn: () =>
@@ -557,7 +472,7 @@ function NewComputer({ agent, proxmox }: { agent: Agent; proxmox: boolean }) {
 							rdpPort: 3389,
 						},
 					})
-				: api.machines.create({ agentId: agent.id, kind: "computer", specs: specs ?? undefined }),
+				: api.machines.create({ agentId: agent.id, kind: "computer", backend, specs: specs ?? undefined }),
 	});
 	const base = settings?.machines.computerSpecs ?? DEFAULT_COMPUTER_SPECS;
 	return (
@@ -572,11 +487,18 @@ function NewComputer({ agent, proxmox }: { agent: Agent; proxmox: boolean }) {
 			</div>
 			{proxmox ? (
 				<>
+					<BackendChoice value={backend} onChange={setChosen} order={["vm", "lxc"]} />
 					{specs ? (
-						<SpecsEditor value={specs} kind="computer" onSave={setSpecs} onCancel={() => setSpecs(null)} />
+						<SpecsEditor
+							value={specs}
+							vm={backend === "vm"}
+							ballooning={backend === "vm"}
+							onSave={setSpecs}
+							onCancel={() => setSpecs(null)}
+						/>
 					) : (
 						<div className="flex items-center justify-between text-xs text-fg-subtle">
-							{specsLine(base)}
+							{specsLine(backend === "lxc" ? { ...base, minMemoryMb: 0 } : base)}
 							<Button variant="ghost" size="xs" onClick={() => setSpecs(base)}>
 								Change
 							</Button>
@@ -651,11 +573,14 @@ function Devboxes({ agent, devboxes, proxmox }: { agent: Agent; devboxes: Machin
 	const [adding, setAdding] = useState(false);
 	const [name, setName] = useState("");
 	const [hours, setHours] = useState("");
+	const [chosen, setChosen] = useState<MachineBackend | null>(null);
+	const backend = chosen ?? settings?.machines.devboxBackend ?? "lxc";
 	const create = useMutation({
 		mutationFn: () =>
 			api.machines.create({
 				agentId: agent.id,
 				kind: "devbox",
+				backend,
 				name: name.trim() || undefined,
 				ttlHours: Number(hours) || undefined,
 			}),
@@ -663,13 +588,14 @@ function Devboxes({ agent, devboxes, proxmox }: { agent: Agent; devboxes: Machin
 			setAdding(false);
 			setName("");
 			setHours("");
+			setChosen(null);
 		},
 	});
 	if (!proxmox && devboxes.length === 0) return null;
 	return (
 		<Section
 			title="Devboxes"
-			description="Temporary Linux containers for development work. They're deleted on their own when their time is up."
+			description="Temporary Linux machines for development work. They're deleted on their own when their time is up."
 			action={
 				proxmox && !adding ? (
 					<Button variant="secondary" size="xs" onClick={() => setAdding(true)}>
@@ -695,6 +621,7 @@ function Devboxes({ agent, devboxes, proxmox }: { agent: Agent; devboxes: Machin
 							onChange={(e) => setHours(e.target.value)}
 						/>
 					</div>
+					<BackendChoice value={backend} onChange={setChosen} order={["lxc", "vm"]} />
 					<div className="flex items-center justify-between gap-2">
 						<span className="text-xs text-fg-subtle">
 							{specsLine(settings?.machines.devboxSpecs ?? DEFAULT_DEVBOX_SPECS)}
@@ -803,6 +730,7 @@ function SavedLogins({ agent }: { agent: Agent }) {
 /** A bot's computer (live view, takeover, access), its devboxes and its saved logins. */
 export function ComputerPanel({ agent, onClose }: { agent: Agent; onClose: () => void }) {
 	const { data: machines = [] } = useMachines(agent.id);
+	const { data: seats = [] } = useSeats(agent.id);
 	const { data: settings } = useSettings();
 	const proxmox = Boolean(
 		settings?.machines.proxmox.url && settings.machines.proxmox.tokenId && settings.machines.proxmox.node,
@@ -810,6 +738,8 @@ export function ComputerPanel({ agent, onClose }: { agent: Agent; onClose: () =>
 	const computer = machines.find((m) => m.kind === "computer");
 	const devboxes = machines.filter((m) => m.kind === "devbox");
 	const devices = machines.filter((m) => m.kind === "device");
+	// Someone else's bot: its own computer stays theirs; here it's what you share with it.
+	const theirs = Boolean(agent.sharedBy);
 	return (
 		<div className="flex h-full min-h-0 flex-col pt-safe">
 			<div className="flex items-center gap-2 px-4 pt-4 pb-3">
@@ -820,16 +750,36 @@ export function ComputerPanel({ agent, onClose }: { agent: Agent; onClose: () =>
 				</IconButton>
 			</div>
 			<div className={cn("flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6 pb-safe scrollbar-thin")}>
-				{/* Keyed: another bot's machine must never show this one's passwords or key. */}
-				{computer ? (
+				{theirs ? (
+					<div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-2/50 px-4 py-6 text-center">
+						<Monitor className="size-8 text-fg-subtle" />
+						<div className="text-sm font-medium">
+							{agent.name} is {agent.sharedBy}'s bot
+						</div>
+						<p className="max-w-xs text-xs leading-5 text-fg-subtle">
+							Its own computer stays theirs. Share one of your bots' computers or a browser with it, and
+							it works there in your chats, in its own account.
+						</p>
+					</div>
+				) : computer ? (
+					/* Keyed: another bot's machine must never show this one's passwords or key. */
 					<MachineCard key={computer.id} machine={computer} agent={agent} />
-				) : (
+				) : seats.length === 0 ? (
 					<NewComputer agent={agent} proxmox={proxmox} />
+				) : null}
+				{/* Without a computer of its own, the ones it shares come first. */}
+				{!computer && <Seats agent={agent} />}
+				{!theirs && !computer && seats.length > 0 && (
+					<Fold title="A computer of its own" summary="Its own desktop on your Proxmox server">
+						<NewComputer agent={agent} proxmox={proxmox} />
+					</Fold>
 				)}
-				<Devboxes agent={agent} devboxes={devboxes} proxmox={proxmox} />
-				<LentComputers agent={agent} devices={devices} />
-				<SavedLogins agent={agent} />
-				{!computer && devboxes.length === 0 && devices.length === 0 && (
+				{!theirs && <Devboxes agent={agent} devboxes={devboxes} proxmox={proxmox} />}
+				{computer && <Seats agent={agent} />}
+				<SharedBrowsers agent={agent} />
+				{!theirs && <LentComputers agent={agent} devices={devices} />}
+				{!theirs && <SavedLogins agent={agent} />}
+				{!theirs && !computer && devboxes.length === 0 && devices.length === 0 && seats.length === 0 && (
 					<p className="flex items-start gap-2 text-xs leading-5 text-fg-subtle">
 						<Box className="mt-0.5 size-3.5 shrink-0" />
 						Without a computer, {agent.name} still browses the web with a browser on your Sekai server.

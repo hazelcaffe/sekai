@@ -9,7 +9,7 @@ import { encodeOggOpus } from "../voice/ogg.ts";
 import { voiceFor } from "../voice/settings.ts";
 import { speakAll } from "../voice/tts.ts";
 
-export type Via = "auto" | "app" | "discord";
+export type Via = "auto" | "app" | "discord" | "slack";
 
 /** Text said in the bot's voice, as a voice message (Ogg Opus, uploaded). */
 export async function voiceMessage(agent: Agent, text: string): Promise<AudioPart> {
@@ -32,28 +32,28 @@ export async function mainChat(agentId: string): Promise<string> {
 }
 
 /**
- * A message from a bot to you, started by the bot: a Discord DM from its bot when it has one (auto), or in its
+ * A message from a bot to you, started by the bot: a Slack or Discord DM when it has one (auto), or in its
  * chat in the app. Either way you get a notification, and it can be a voice message.
  */
 export async function messageUser(
 	agent: Agent,
 	input: { text: string; voice?: boolean; via?: Via },
-): Promise<{ where: "app" | "discord"; conversationId: string; messageId: string; voice: boolean }> {
+): Promise<{ where: "app" | "discord" | "slack"; conversationId: string; messageId: string; voice: boolean }> {
 	const via = input.via ?? "auto";
-	let where: "app" | "discord" = "app";
+	let where: "app" | "discord" | "slack" = "app";
 	let conversationId: string | null = null;
 	if (via !== "app") {
 		const { ownerDm } = await import("../channels/manager.ts");
-		const dm = await ownerDm(agent.id).catch((err: unknown) => {
+		const dm = await ownerDm(agent.id, via === "auto" ? undefined : via).catch((err: unknown) => {
 			log.warn(`couldn't open a DM for ${agent.name}: ${errorMessage(err)}`);
 			return null;
 		});
 		if (dm) {
-			where = "discord";
+			where = dm.type === "slack" ? "slack" : "discord";
 			conversationId = dm.conversationId;
-		} else if (via === "discord") {
+		} else if (via === "discord" || via === "slack") {
 			throw new Error(
-				"You have no connected Discord bot with an owner to DM (set one up in your panel: Tools → Discord).",
+				`You have no connected ${via === "slack" ? "Slack" : "Discord"} bot with an owner to DM (set one up in your panel: Tools → Accounts).`,
 			);
 		}
 	}

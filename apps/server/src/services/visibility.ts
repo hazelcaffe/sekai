@@ -55,6 +55,37 @@ export async function canSeeAgent(agent: { id: string; userId: string }, actor =
 	return (await sharedAgentIds(actor)).includes(agent.id);
 }
 
+/**
+ * Whether a bot may use a shared machine or browser (or its own machine) in this run, where Sekai acts for `actor`.
+ * The one rule for every place that lists or uses them (tools, the browser, the prompt):
+ * - in its owner's runs: any of its bots, and bots shared with the owner (while they still are);
+ * - for someone else: only with the switch "Also for people these bots are shared with" on, and only bots the
+ *   owner owns, chatting with someone they're shared with;
+ * - a bot someone else owns never uses it in its own owner's chats, or anyone else's.
+ * Sekai's own work for a bot (no actor) counts as its owner's.
+ */
+export async function mayUseShared(
+	resource: { ownerId: string; shareWithViewers: boolean },
+	agent: { id: string; userId: string },
+	actor: Pick<Actor, "userId" | "roleId"> | null = currentActor(),
+): Promise<boolean> {
+	const sharedWithActor =
+		actor && agent.userId !== actor.userId ? (await sharedAgentIds(actor)).includes(agent.id) : false;
+	return sharedRule(resource, agent, actor?.userId ?? null, sharedWithActor);
+}
+
+/** mayUseShared's rule, given whether the bot is shared with the person Sekai acts for. */
+export function sharedRule(
+	resource: { ownerId: string; shareWithViewers: boolean },
+	agent: { userId: string },
+	actorId: string | null,
+	sharedWithActor: boolean,
+): boolean {
+	const who = actorId ?? agent.userId;
+	if (who === resource.ownerId) return agent.userId === who || sharedWithActor;
+	return resource.shareWithViewers && agent.userId === resource.ownerId && sharedWithActor;
+}
+
 /** Whether the actor may change this bot (it's theirs; Sekai itself may). */
 export function ownsAgent(agent: { userId: string }, actor = currentActor()): boolean {
 	return !actor || agent.userId === actor.userId;

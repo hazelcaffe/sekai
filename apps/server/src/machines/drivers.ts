@@ -1,6 +1,6 @@
 import type { Machine } from "@sekai/shared";
 import scanScript from "../code/scan.py" with { type: "text" };
-import { getAgent } from "../services/agents.ts";
+import { getAgentRow } from "../services/agents.ts";
 import { BridgeDesktop, deviceCall, deviceTunnel } from "./bridge.ts";
 import type { DesktopControl } from "./desktop.ts";
 import { desktopOf, sshTarget } from "./manager.ts";
@@ -53,45 +53,43 @@ function parseScanOutput<T>(stdout: Uint8Array | string, stderr: string): T {
 	return out;
 }
 
-function sshDriver(m: Machine): MachineDriver {
+/** Commands, files, the screen and tunnels as one bot on the machine: its own account (its seat). */
+function sshDriver(m: Machine, agentId: string): MachineDriver {
+	const target = () => sshTarget(m, agentId);
 	return {
 		async exec(command, opts) {
 			const full = opts.cwd ? `cd ${shq(opts.cwd)} && ${command}` : command;
-			const r = await sshExec(await sshTarget(m), `bash -lc ${shq(full)}`, {
+			const r = await sshExec(await target(), `bash -lc ${shq(full)}`, {
 				timeoutMs: opts.timeoutMs,
 				signal: opts.signal,
 			});
 			return { code: r.code, stdout: new TextDecoder().decode(r.stdout), stderr: r.stderr, timedOut: r.timedOut };
 		},
 		async readFile(path, maxBytes) {
-			const r = await sshExec(await sshTarget(m), `head -c ${maxBytes} ${shq(path)}`);
+			const r = await sshExec(await target(), `head -c ${maxBytes} ${shq(path)}`);
 			if (r.code !== 0) throw new Error(r.stderr.trim() || "Couldn't read it");
 			return new TextDecoder().decode(r.stdout);
 		},
 		async writeFile(path, content, append = false) {
 			const p = shq(path);
-			const r = await sshExec(
-				await sshTarget(m),
-				`mkdir -p "$(dirname ${p})" && cat ${append ? ">>" : ">"} ${p}`,
-				{
-					input: content,
-				},
-			);
+			const r = await sshExec(await target(), `mkdir -p "$(dirname ${p})" && cat ${append ? ">>" : ">"} ${p}`, {
+				input: content,
+			});
 			if (r.code !== 0) throw new Error(r.stderr.trim() || "Couldn't write it");
 		},
-		desktop: () => desktopOf(m),
+		desktop: () => desktopOf(m, agentId),
 		async tunnel(port) {
-			return sshTunnel(await sshTarget(m), port);
+			return sshTunnel(await target(), port);
 		},
 		async codeScan(root, signal) {
-			const r = await sshExec(await sshTarget(m), `python3 -c ${shq(scanScript)} scan ${shq(root)}`, {
+			const r = await sshExec(await target(), `python3 -c ${shq(scanScript)} scan ${shq(root)}`, {
 				timeoutMs: 180_000,
 				signal,
 			});
 			return parseScanOutput<CodeScan>(r.stdout, r.stderr);
 		},
 		async codeRead(root, paths, signal) {
-			const r = await sshExec(await sshTarget(m), `python3 -c ${shq(scanScript)} read ${shq(root)}`, {
+			const r = await sshExec(await target(), `python3 -c ${shq(scanScript)} read ${shq(root)}`, {
 				input: JSON.stringify(paths),
 				timeoutMs: 180_000,
 				signal,
@@ -147,13 +145,14 @@ function outdated(err: unknown): Error {
 			: new Error(message);
 }
 
-export async function driverFor(m: Machine): Promise<MachineDriver> {
+/** Working on a machine as a bot (the machine's own bot by default; another bot works in its own seat there). */
+export async function driverFor(m: Machine, agentId = m.agentId): Promise<MachineDriver> {
 	if (m.provider === "local") {
 		if (!m.remoteId) throw new Error("This computer isn't linked to a desktop app");
-		const agent = await getAgent(m.agentId);
+		const agent = await getAgentRow(m.agentId);
 		return deviceDriver(m.remoteId, { id: m.agentId, name: agent?.name ?? "A bot" });
 	}
-	return sshDriver(m);
+	return sshDriver(m, agentId);
 }
 
 /** Machines a bot can see a desktop on right now: its own computer, and your computers lent to it. */
@@ -161,8 +160,11 @@ export function hasDesktop(m: Machine): boolean {
 	return m.status === "running" && (m.kind === "computer" || m.kind === "device");
 }
 
-/** A machine of a bot by reference: "computer" (or nothing), "device" (your computer), an id, a name or a host. */
-export function pickMachine(all: Machine[], ref: string | undefined): Machine | null {
+/**
+ * A machine of a bot by reference: "computer" (or nothing: its own computer first, then a shared one it has a seat
+ * on), "device" (your computer), an id, a name or a host. Its own machines come first in `all`.
+ */
+export function pickMachine<T extends Machine>(all: T[], ref: string | undefined): T | null {
 	const r = ref?.trim().toLowerCase();
 	if (!r || r === "computer" || r === "my computer") return all.find((m) => m.kind === "computer") ?? null;
 	if (r === "device" || r === "user" || r === "local" || r === "user's computer") {

@@ -120,7 +120,13 @@ describe("phone apps end to end", () => {
 			const p = Bun.spawn(["bun", join(import.meta.dir, "fixtures", "app-signin-check.ts")], {
 				stdout: "pipe",
 				stderr: "pipe",
-				env: { ...process.env, DATABASE_URL: TEST_DB, SEKAI_LOG_LEVEL: "error" },
+				// Its own data folder (and so its own secret key), not the checkout's.
+				env: {
+					...process.env,
+					DATABASE_URL: TEST_DB,
+					SEKAI_DATA_DIR: join(import.meta.dir, ".mobile-data"),
+					SEKAI_LOG_LEVEL: "error",
+				},
 			});
 			const out = await new Response(p.stdout).text();
 			const line = out.split("\n").find((l) => l.startsWith("REPORT "));

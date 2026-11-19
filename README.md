@@ -54,10 +54,12 @@ app, a browser extension, and an optional desktop app. It's free software under 
   and "confirm it's you" before sensitive changes.
 - **Voice.** Call a bot from the app or a Discord voice channel, have replies read aloud, dictate, and send voice
   messages both ways, with ElevenLabs or Fish Audio voices (or ones you make).
-- **Bots reach you.** Push notifications on your phone, messages and calls from bots, and their own Discord bots,
-  Discord accounts and X accounts.
-- **Computers of their own.** On a Proxmox server, a bot can have a desktop VM it uses by itself while you watch or
-  take over, and devboxes for development. With the desktop app you can lend it your own computer too.
+- **Bots reach you.** Push notifications on your phone, messages and calls from bots, and their own Slack apps,
+  Discord bots, Discord accounts and X accounts. Several bots can talk together in one Slack thread or Discord
+  channel, each as itself.
+- **Computers of their own.** On a Proxmox server, a bot can have a desktop (a VM or a container) it uses by itself
+  while you watch or take over, and devboxes for development. With the desktop app you can lend it your own computer
+  too.
 - **Your browser, beside you.** Chat in a Chromium/Firefox sidebar or Safari popover/companion window, and share
   only the tabs you choose with a bot. Actions ask first; Stop sharing ends control. See the
   [browser extension guide](apps/extension/README.md) for installation, permissions and Safari signing.
@@ -125,7 +127,7 @@ updates.
 
 - [Installing and hosting](docs/install.md): Docker, from source, as a service, on the internet, configuration,
   backups, updating, troubleshooting.
-- [User guide](docs/guide.md): people and roles, approvals, routines, memory, the library, voice, Discord and X,
+- [User guide](docs/guide.md): people and roles, approvals, routines, memory, the library, voice, Slack, Discord and X,
   apps, computers, your own devices, subscriptions as brains.
 - [Architecture](docs/architecture.md): how the code fits together, and how to extend it.
 - [Browser extension](apps/extension/README.md): builds, connection, tools, privacy and GitHub Actions releases.

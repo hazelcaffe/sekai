@@ -1,8 +1,11 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	type Agent,
 	type Checkpoint,
 	type Machine,
 	type MachineAccess,
+	type MachineBackend,
 	MachineCreate,
 	type MachineCreate as MachineCreateInput,
 	type MachineSpecs,
@@ -11,6 +14,7 @@ import {
 } from "@sekai/shared";
 import { and, eq } from "drizzle-orm";
 import { currentActor, requirePermission } from "../auth/actor.ts";
+import { config } from "../config.ts";
 import { db, schema } from "../db/index.ts";
 import { bus } from "../events/bus.ts";
 import { agentOwner } from "../events/scope.ts";
@@ -18,28 +22,35 @@ import { badRequest, errorMessage, notFound, parse } from "../lib/errors.ts";
 import { newId } from "../lib/ids.ts";
 import { log } from "../lib/log.ts";
 import { randomPassword, sealJson, unsealJson } from "../lib/secrets.ts";
-import { getAgent } from "../services/agents.ts";
+import { getAgent, getAgentRow } from "../services/agents.ts";
 import { effectiveTimezone, getSettings } from "../services/settings.ts";
 import { requireOwnAgent } from "../services/visibility.ts";
 import { BridgeDesktop, type DeviceHello, isDeviceOnline, revokeDevice, setBridgeHooks } from "./bridge.ts";
-import {
-	computerUserData,
-	desktopHelper,
-	devboxSetupScript,
-	installHelperScript,
-	metaData,
-	PROGRESS_FILE,
-	READY_FILE,
-} from "./cloudinit.ts";
 import { Desktop, type DesktopControl } from "./desktop.ts";
+import { Guest } from "./guest.ts";
 import { seedIso } from "./iso.ts";
 import { agentKeyFile, agentKeypair, hostnameFor, linuxUsername } from "./keys.ts";
 import { DEBIAN_IMAGE, ForeignVmError, ProxmoxClient, ProxmoxError, permissionHelp, pickAddresses } from "./proxmox.ts";
-import { type SshTarget, sshExec, sshForget, sshReachable, sshText } from "./ssh.ts";
+import {
+	computerSetupScript,
+	computerUserData,
+	desktopHelper,
+	devboxSetupScript,
+	devboxUserData,
+	FAILED_FILE,
+	installHelperScript,
+	metaData,
+	PROGRESS_FILE,
+	type ProvisionInput,
+	READY_FILE,
+	SETUP_LOG,
+	SETUP_SCRIPT,
+} from "./setup.ts";
+import { type SshTarget, sshForget, sshReachable, sshText } from "./ssh.ts";
 import { machineAuthKey } from "./tailscale.ts";
 
 /**
- * Bots' machines: their own computer (a Proxmox VM with a desktop) and devboxes (temporary containers).
+ * Bots' machines: their own computer (with a desktop) and devboxes (temporary), each a Proxmox VM or container.
  * Creating one returns right away; setup continues in the background and status updates stream to the app.
  */
 
@@ -52,7 +63,7 @@ interface Secrets {
 
 const PROVISION_TIMEOUT_MS = 45 * 60_000;
 
-function toMachine(row: Row): Machine {
+export function toMachine(row: Row): Machine {
 	const { secrets: _secrets, ...rest } = row;
 	return rest;
 }
@@ -71,6 +82,14 @@ async function patch(id: string, fields: Partial<Row>): Promise<Machine | null> 
 
 const detail = (id: string, statusDetail: string, status?: Machine["status"]) =>
 	patch(id, status ? { statusDetail, status } : { statusDetail });
+
+/** What a Proxmox machine runs as. Rows from before backends existed: computers were VMs, devboxes containers. */
+export function backendOf(m: Pick<Machine, "provider" | "kind" | "backend">): MachineBackend | null {
+	if (m.provider !== "proxmox") return null;
+	return m.backend ?? (m.kind === "computer" ? "vm" : "lxc");
+}
+
+export const isVm = (m: Pick<Machine, "provider" | "kind" | "backend">) => backendOf(m) === "vm";
 
 // ---------------------------------------------------------------- queries
 
@@ -130,11 +149,131 @@ export async function findMachine(agentId: string, ref?: string | null): Promise
 	return all.find((m) => m.id === ref || m.name.toLowerCase() === r || m.hostname === r) ?? null;
 }
 
-export async function machineAccess(id: string): Promise<MachineAccess> {
+// ---------------------------------------------------------------- seats
+
+/**
+ * Where a bot works on a machine: the machine's own bot has its account (screen :0, VNC 5900, Chrome on 9222);
+ * another bot sharing it has a seat of its own (its account, and on a computer its own screen :N).
+ */
+export interface Seat {
+	agentId: string;
+	/** The machine's own bot. */
+	own: boolean;
+	username: string;
+	/** Computers: the screen's display number. */
+	display: number | null;
+	vncPort: number | null;
+	/** Chrome's debugging port on the machine. */
+	cdpPort: number;
+	/** The member row (null for the machine's own bot). */
+	memberId: string | null;
+}
+
+type MemberRow = typeof schema.machineMembers.$inferSelect;
+/**
+ * A seat's secrets. A bot someone else owns gets a key of the seat's own (Sekai keeps it, nobody downloads it from
+ * the bot's own machines), so its owner never holds a key to your machine. Your own bots use their usual key.
+ */
+export interface MemberSecrets {
+	userPassword: string;
+	vncPassword: string | null;
+	key?: { publicKey: string; privateKey: string };
+}
+
+/** The key a seat signs in with: its own, or its bot's. */
+export async function seatKeypair(row: MemberRow): Promise<{ publicKey: string; privateKey: string }> {
+	const own = unsealJson<MemberSecrets>(row.secrets).key;
+	if (own) return own;
+	const agent = await getAgentRow(row.agentId);
+	return agentKeypair(row.agentId, agent?.name ?? "bot");
+}
+
+/** Writes a seat's own key where ssh can read it (only Sekai can), and returns the path. */
+function seatKeyFile(row: MemberRow, privateKey: string): string {
+	const dir = join(config.dataDir, "ssh", "keys");
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	const file = join(dir, `seat-${row.id}`);
+	writeFileSync(file, privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`, { mode: 0o600 });
+	return file;
+}
+
+/** A seat's own key file goes with the seat. */
+export function forgetSeatKey(memberId: string): void {
+	rmSync(join(config.dataDir, "ssh", "keys", `seat-${memberId}`), { force: true });
+}
+
+/** Ports a seat on display :N gets. */
+export const seatPorts = (display: number) => ({ vncPort: 5900 + display, cdpPort: 9222 + display });
+
+export async function memberRow(machineId: string, agentId: string): Promise<MemberRow | null> {
+	const row = await db.query.machineMembers.findFirst({
+		where: and(eq(schema.machineMembers.machineId, machineId), eq(schema.machineMembers.agentId, agentId)),
+	});
+	return row ?? null;
+}
+
+export function seatOfMember(row: MemberRow): Seat {
+	return {
+		agentId: row.agentId,
+		own: false,
+		username: row.username,
+		display: row.display,
+		vncPort: row.vncPort,
+		cdpPort: row.cdpPort ?? 9222,
+		memberId: row.id,
+	};
+}
+
+/**
+ * The bot's seat on the machine. Others need a ready seat (pending: one still being set up, for setup itself).
+ * No access check: callers have already decided the bot may use the machine (see mayUseShared).
+ */
+export async function seatOf(m: Machine, agentId = m.agentId, pending = false): Promise<Seat> {
+	if (agentId === m.agentId) {
+		return {
+			agentId,
+			own: true,
+			username: m.username,
+			display: m.kind === "computer" ? 0 : null,
+			vncPort: m.ports.vnc,
+			cdpPort: 9222,
+			memberId: null,
+		};
+	}
+	const row = await memberRow(m.id, agentId);
+	if (!row) throw new Error(`That bot has no account on ${m.name}`);
+	if (row.status !== "ready" && !pending) {
+		throw new Error(
+			row.status === "adding"
+				? `Its account on ${m.name} is still being set up (${row.statusDetail ?? "a few minutes"})`
+				: `Its account on ${m.name} isn't ready${row.statusDetail ? `: ${row.statusDetail}` : ""}`,
+		);
+	}
+	return seatOfMember(row);
+}
+
+/** The passwords and key of a seat: the machine's own bot's (with root's), or a member's own (no root). */
+export async function machineAccess(id: string, agentId?: string): Promise<MachineAccess> {
 	const row = await db.query.machines.findFirst({ where: eq(schema.machines.id, id) });
 	if (!row) throw notFound("Machine");
-	const agent = await getAgent(row.agentId);
-	const keys = await agentKeypair(row.agentId, agent?.name ?? "bot");
+	const who = agentId ?? row.agentId;
+	if (who !== row.agentId) {
+		const member = await memberRow(row.id, who);
+		if (!member) throw notFound("Seat");
+		const s = unsealJson<MemberSecrets>(member.secrets);
+		const keys = await seatKeypair(member);
+		return {
+			machineId: row.id,
+			username: member.username,
+			userPassword: s.userPassword,
+			rootPassword: "",
+			vncPassword: s.vncPassword,
+			publicKey: keys.publicKey,
+			privateKey: keys.privateKey,
+		};
+	}
+	const agent = await getAgentRow(who);
+	const keys = await agentKeypair(who, agent?.name ?? "bot");
 	const s = unsealJson<Secrets>(row.secrets);
 	return {
 		machineId: row.id,
@@ -147,51 +286,81 @@ export async function machineAccess(id: string): Promise<MachineAccess> {
 	};
 }
 
-/** How Sekai reaches the machine: Tailscale first (stable and encrypted), then the LAN. */
-export async function sshTarget(m: Machine, user?: string): Promise<SshTarget> {
+async function keyFileOf(agentId: string): Promise<string> {
+	const agent = await getAgentRow(agentId);
+	return agentKeyFile(agentId, agent?.name ?? "bot");
+}
+
+function hostOf(m: Machine): string {
 	if (m.provider === "local") throw new Error(`${m.name} is reached through the desktop app, not SSH`);
 	const host = m.addresses.tailscale ?? m.addresses.lan;
 	if (!host) throw new Error(`${m.name} has no address yet`);
-	const agent = await getAgent(m.agentId);
-	return {
-		machineId: m.id,
-		host,
-		port: m.ports.ssh,
-		user: user ?? m.username,
-		keyFile: await agentKeyFile(m.agentId, agent?.name ?? "bot"),
-	};
+	return host;
 }
 
-const desktops = new Map<string, { desktop: Desktop; host: string }>();
+/**
+ * How Sekai reaches the machine for a bot: Tailscale first (stable and encrypted), then the LAN; as the bot's
+ * own account there with its own key (the machine's own bot by default).
+ */
+export async function sshTarget(m: Machine, agentId = m.agentId): Promise<SshTarget> {
+	const host = hostOf(m);
+	if (agentId === m.agentId) {
+		return { machineId: m.id, host, port: m.ports.ssh, user: m.username, keyFile: await keyFileOf(agentId) };
+	}
+	const row = await memberRow(m.id, agentId);
+	if (!row) throw new Error(`That bot has no account on ${m.name}`);
+	const own = unsealJson<MemberSecrets>(row.secrets).key;
+	const keyFile = own ? seatKeyFile(row, own.privateKey) : await keyFileOf(agentId);
+	return { machineId: m.id, host, port: m.ports.ssh, user: row.username, keyFile };
+}
 
-/** The machine's desktop, for screenshots and input: over SSH, or through the desktop app for your computer. */
-export async function desktopOf(m: Machine): Promise<DesktopControl> {
+/** root, with the machine's own bot's key (setting up a container). */
+export async function rootTarget(m: Machine): Promise<SshTarget> {
+	return { machineId: m.id, host: hostOf(m), port: m.ports.ssh, user: "root", keyFile: await keyFileOf(m.agentId) };
+}
+
+/** Desktops per seat (machine and bot). */
+const desktops = new Map<string, { desktop: Desktop; host: string; user: string }>();
+const seatKey = (machineId: string, agentId: string) => `${machineId}:${agentId}`;
+
+function forgetDesktops(machineId: string): void {
+	for (const key of desktops.keys()) if (key.startsWith(`${machineId}:`)) desktops.delete(key);
+}
+
+/**
+ * The bot's screen on the machine, for screenshots and input: its own seat's display over SSH (the machine's own
+ * bot by default), or through the desktop app for your computer.
+ */
+export async function desktopOf(m: Machine, agentId = m.agentId): Promise<DesktopControl> {
 	if (m.provider === "local") {
 		if (!m.remoteId) throw new Error("This computer isn't linked to a desktop app");
-		const agent = await getAgent(m.agentId);
+		const agent = await getAgentRow(m.agentId);
 		return new BridgeDesktop(m.remoteId, { id: m.agentId, name: agent?.name ?? "A bot" });
 	}
-	const target = await sshTarget(m);
-	const cached = desktops.get(m.id);
-	if (cached && cached.host === target.host) return cached.desktop;
+	const target = await sshTarget(m, agentId);
+	const key = seatKey(m.id, agentId);
+	const cached = desktops.get(key);
+	if (cached && cached.host === target.host && cached.user === target.user) return cached.desktop;
 	const desktop = new Desktop(target);
-	desktops.set(m.id, { desktop, host: target.host });
+	desktops.set(key, { desktop, host: target.host, user: target.user });
 	return desktop;
 }
 
-/** Computers you've taken over: the bot keeps its hands off until you hand them back. */
+/** Screens you've taken over (per seat): the bot keeps its hands off until you hand them back. */
 const takenOver = new Map<string, number>();
 const TAKEOVER_MAX_MS = 2 * 3_600_000;
 
-export function setTakeover(id: string, active: boolean): void {
-	if (active) takenOver.set(id, Date.now());
-	else takenOver.delete(id);
+export function setTakeover(machineId: string, agentId: string, active: boolean): void {
+	const key = seatKey(machineId, agentId);
+	if (active) takenOver.set(key, Date.now());
+	else takenOver.delete(key);
 }
 
-export function isTakenOver(id: string): boolean {
-	const since = takenOver.get(id);
-	if (since && Date.now() - since > TAKEOVER_MAX_MS) takenOver.delete(id);
-	return takenOver.has(id);
+export function isTakenOver(machineId: string, agentId: string): boolean {
+	const key = seatKey(machineId, agentId);
+	const since = takenOver.get(key);
+	if (since && Date.now() - since > TAKEOVER_MAX_MS) takenOver.delete(key);
+	return takenOver.has(key);
 }
 
 export async function touchMachine(id: string): Promise<void> {
@@ -200,10 +369,16 @@ export async function touchMachine(id: string): Promise<void> {
 
 // ---------------------------------------------------------------- create
 
-function specsFor(kind: Machine["kind"], base: MachineSpecs, custom?: Partial<MachineSpecs>): MachineSpecs {
+/** Ballooning is for computers on VMs only: containers don't balloon, and devboxes keep the memory they get. */
+export function specsFor(
+	kind: Machine["kind"],
+	backend: MachineBackend | null,
+	base: MachineSpecs,
+	custom?: Partial<MachineSpecs>,
+): MachineSpecs {
 	const s = { ...base, ...custom };
 	if (s.minMemoryMb > s.memoryMb) s.minMemoryMb = s.memoryMb;
-	if (kind === "devbox") s.minMemoryMb = 0;
+	if (kind === "devbox" || backend === "lxc") s.minMemoryMb = 0;
 	return s;
 }
 
@@ -229,8 +404,13 @@ export async function createMachine(input: MachineCreateInput, createdBy: "user"
 	}
 	if (data.provider === "ssh" && !data.ssh) throw badRequest("Say where the machine is (host, port, user)");
 
+	const backend =
+		data.provider === "proxmox"
+			? (data.backend ?? (data.kind === "computer" ? settings.computerBackend : settings.devboxBackend))
+			: null;
 	const specs = specsFor(
 		data.kind,
+		backend,
 		data.kind === "computer" ? settings.computerSpecs : settings.devboxSpecs,
 		data.specs,
 	);
@@ -258,6 +438,7 @@ export async function createMachine(input: MachineCreateInput, createdBy: "user"
 		agentId: agent.id,
 		kind: data.kind,
 		provider: data.provider,
+		backend,
 		name,
 		status: "creating",
 		statusDetail: "Getting ready",
@@ -273,6 +454,7 @@ export async function createMachine(input: MachineCreateInput, createdBy: "user"
 		remoteId: null,
 		secrets: sealJson(secrets),
 		expiresAt: ttlHours ? now + ttlHours * 3_600_000 : null,
+		shareWithViewers: false,
 		createdBy,
 		lastUsedAt: null,
 		createdAt: now,
@@ -291,8 +473,8 @@ function provision(id: string): Promise<void> {
 		const agent = await getAgent(m.agentId);
 		if (!agent) throw new Error("The bot was deleted");
 		if (m.provider === "ssh") await adoptSsh(m);
-		else if (m.kind === "computer") await provisionComputer(m, agent);
-		else await provisionDevbox(m, agent);
+		else if (isVm(m)) await provisionVm(m, agent);
+		else await provisionLxc(m, agent);
 	};
 	return Promise.race([
 		run(),
@@ -321,6 +503,13 @@ function vmidOf(m: Machine): number | null {
 	return id ? Number(id) : null;
 }
 
+/** The machine on Proxmox (null until it has an id there). */
+function guestOf(m: Machine, settings: Awaited<ReturnType<typeof getSettings>>["machines"], vmid = vmidOf(m)) {
+	const backend = backendOf(m);
+	if (!vmid || !backend) return null;
+	return new Guest(proxmox(settings), vmid, backend, m.hostname, settings.proxmox.imageStorage);
+}
+
 /** VM ids are handed out one at a time, skipping any id a Sekai machine already holds (even a failed one). */
 let allocating: Promise<unknown> = Promise.resolve();
 
@@ -344,24 +533,59 @@ const dropVmid = (m: Machine) => async (err: unknown) => {
 };
 
 /** A setup resumed after a restart: remove what the interrupted one built, then build afresh (never two VMs). */
-async function clearHalfBuilt(m: Machine, px: ProxmoxClient, imageStorage: string): Promise<void> {
-	const old = vmidOf(m);
+async function clearHalfBuilt(m: Machine, settings: Awaited<ReturnType<typeof getSettings>>["machines"]) {
+	const old = guestOf(m, settings);
 	if (!old) return;
 	try {
-		if (m.kind === "computer") {
-			await px.deleteVm(old, m.hostname);
-			await px.deleteVolume(imageStorage, `${imageStorage}:iso/sekai-seed-${old}.iso`).catch(() => {});
-		} else {
-			await px.deleteLxc(old, m.hostname);
-		}
+		await old.remove();
 	} catch (err) {
 		if (!(err instanceof ForeignVmError)) throw err;
 	}
 	await patch(m.id, { remoteId: null });
 }
 
-/** A bot's computer on Proxmox, set up by cloud-init from a NoCloud seed. */
-async function provisionComputer(m: Machine, agent: Agent): Promise<void> {
+/** What setup needs to know about the machine and its bot (passwords, key, tailnet, time zone). */
+async function setupInput(
+	m: Machine,
+	agent: Agent,
+	settings: Awaited<ReturnType<typeof getSettings>>["machines"],
+): Promise<ProvisionInput> {
+	const secrets = await secretsOf(m.id);
+	const keys = await agentKeypair(agent.id, agent.name);
+	return {
+		hostname: m.hostname,
+		displayName: agent.name,
+		username: m.username,
+		userPassword: secrets.userPassword,
+		rootPassword: secrets.rootPassword,
+		vncPassword: secrets.vncPassword ?? randomPassword(8),
+		publicKey: keys.publicKey,
+		tailscaleAuthKey: await machineAuthKey(settings.tailscaleAuthKey, m.hostname),
+		timezone: await effectiveTimezone(),
+	};
+}
+
+/** A computer's desktop answers the helper (its session can take a little while after setup ends). */
+async function waitForDesktop(id: string): Promise<void> {
+	await detail(id, "Starting the desktop");
+	let last: unknown = null;
+	for (let i = 0; i < 24; i++) {
+		const m = await requireMachine(id);
+		if (m.status === "deleting") return;
+		try {
+			const info = await (await desktopOf(m)).info();
+			log.info(`machine ${m.name}: desktop ${info.width}x${info.height}`);
+			return;
+		} catch (err) {
+			last = err;
+		}
+		await Bun.sleep(5000);
+	}
+	throw new Error(`The desktop didn't start: ${errorMessage(last)}`);
+}
+
+/** A computer or devbox as a VM: Debian's cloud image, set up by cloud-init from a NoCloud seed. */
+async function provisionVm(m: Machine, agent: Agent): Promise<void> {
 	const settings = (await getSettings()).machines;
 	const px = proxmox(settings);
 	const { imageStorage, storage, bridge, node } = settings.proxmox;
@@ -382,21 +606,11 @@ async function provisionComputer(m: Machine, agent: Agent): Promise<void> {
 		await px.downloadUrl(imageStorage, "import", DEBIAN_IMAGE.file, DEBIAN_IMAGE.url);
 	}
 
-	await clearHalfBuilt(m, px, imageStorage);
+	await clearHalfBuilt(m, settings);
 	const vmid = await claimVmid(m, px, settings.proxmox.vmidStart, node);
-	const secrets = await secretsOf(m.id);
-	const keys = await agentKeypair(agent.id, agent.name);
-	const userData = computerUserData({
-		hostname: m.hostname,
-		displayName: agent.name,
-		username: m.username,
-		userPassword: secrets.userPassword,
-		rootPassword: secrets.rootPassword,
-		vncPassword: secrets.vncPassword ?? randomPassword(8),
-		publicKey: keys.publicKey,
-		tailscaleAuthKey: await machineAuthKey(settings.tailscaleAuthKey, m.hostname),
-		timezone: await effectiveTimezone(),
-	});
+	const input = await setupInput(m, agent, settings);
+	const computer = m.kind === "computer";
+	const userData = computer ? computerUserData(input) : devboxUserData(input);
 	const seedName = `sekai-seed-${vmid}.iso`;
 	await detail(m.id, "Preparing cloud-init");
 	await px.upload(imageStorage, "iso", seedName, seedIso(userData, metaData(`sekai-${m.id}`, m.hostname)));
@@ -406,8 +620,8 @@ async function provisionComputer(m: Machine, agent: Agent): Promise<void> {
 		.createVm({
 			vmid,
 			name: m.hostname,
-			description: `Sekai computer for ${agent.name}`,
-			tags: "sekai",
+			description: `Sekai ${m.kind} for ${agent.name}`,
+			tags: `sekai;${m.kind}`,
 			ostype: "l26",
 			machine: "q35",
 			cpu: "host",
@@ -429,7 +643,7 @@ async function provisionComputer(m: Machine, agent: Agent): Promise<void> {
 	await px.vmPower(vmid, "start");
 	await patch(m.id, { status: "provisioning", statusDetail: "Booting" });
 
-	// cloud-init installs the desktop; follow along through the guest agent once it's installed.
+	// cloud-init installs everything; follow along through the guest agent once it's installed.
 	const deadline = Date.now() + PROVISION_TIMEOUT_MS;
 	for (;;) {
 		if (Date.now() > deadline) throw new Error("Setup took too long");
@@ -455,7 +669,7 @@ async function provisionComputer(m: Machine, agent: Agent): Promise<void> {
 				await detail(m.id, "Waiting for SSH");
 			}
 		} else if (current.statusDetail === "Booting") {
-			await detail(m.id, "Installing the desktop (takes a few minutes)");
+			await detail(m.id, computer ? "Installing the desktop (takes a few minutes)" : "Installing tools");
 		}
 		await Bun.sleep(5000);
 	}
@@ -464,12 +678,36 @@ async function provisionComputer(m: Machine, agent: Agent): Promise<void> {
 	// bring back a VM that can't start without the deleted seed.)
 	await px.setVmConfig(vmid, { ide2: "none,media=cdrom" }).catch(() => {});
 	await px.deleteVolume(imageStorage, `${imageStorage}:iso/${seedName}`).catch(() => {});
+	if (computer) await waitForDesktop(m.id);
 	await patch(m.id, { status: "running", statusDetail: null });
 	log.info(`machine ${m.name} is ready`);
 }
 
-/** A devbox: a Debian 13 container, set up over SSH (containers don't run cloud-init). */
-async function provisionDevbox(m: Machine, agent: Agent): Promise<void> {
+/** Reads how a container's setup is going: its progress line, and the end of its log if it stopped. */
+const SETUP_STATE = [
+	`printf '%s\\n' "$(cat ${PROGRESS_FILE} 2>/dev/null)"`,
+	`if [ -f ${READY_FILE} ]; then echo ready`,
+	`elif [ -f ${FAILED_FILE} ]; then echo failed; tail -n 12 ${SETUP_LOG}`,
+	"elif systemctl is-active --quiet sekai-setup; then echo running",
+	`else echo stopped; tail -n 12 ${SETUP_LOG}; fi`,
+].join("\n");
+
+/** The end of a setup log as one readable line (nothing in the log is secret: the script never prints them). */
+export function setupFailure(log: string): string {
+	const tail = log
+		.split("\n")
+		.map((l) => l.trim())
+		.filter((l) => l && !l.startsWith("== "))
+		.slice(-6)
+		.join(" / ");
+	return `Setup failed${tail ? `: ${tail.slice(-600)}` : ""}`;
+}
+
+/**
+ * A computer or devbox as an unprivileged container (Debian's template, nesting on), set up over SSH as root.
+ * The setup runs detached on the container and Sekai follows it, so a dropped connection doesn't stop it.
+ */
+async function provisionLxc(m: Machine, agent: Agent): Promise<void> {
 	const settings = (await getSettings()).machines;
 	const px = proxmox(settings);
 	const { imageStorage, storage, bridge, node } = settings.proxmox;
@@ -488,18 +726,18 @@ async function provisionDevbox(m: Machine, agent: Agent): Promise<void> {
 		template = `${imageStorage}:vztmpl/${name}`;
 	}
 
-	await clearHalfBuilt(m, px, imageStorage);
+	await clearHalfBuilt(m, settings);
 	const vmid = await claimVmid(m, px, settings.proxmox.vmidStart, node);
-	const secrets = await secretsOf(m.id);
-	const keys = await agentKeypair(agent.id, agent.name);
+	const input = await setupInput(m, agent, settings);
+	const computer = m.kind === "computer";
 	await detail(m.id, "Creating the container");
 	await px
 		.createLxc({
 			vmid,
 			ostemplate: template,
 			hostname: m.hostname,
-			description: `Sekai devbox for ${agent.name}`,
-			tags: "sekai;devbox",
+			description: `Sekai ${m.kind} for ${agent.name}`,
+			tags: `sekai;${m.kind}`,
 			cores: m.specs.cores,
 			memory: m.specs.memoryMb,
 			swap: 512,
@@ -507,8 +745,9 @@ async function provisionDevbox(m: Machine, agent: Agent): Promise<void> {
 			net0: `name=eth0,bridge=${bridge},ip=dhcp`,
 			unprivileged: 1,
 			features: "nesting=1",
-			password: secrets.rootPassword,
-			"ssh-public-keys": `${keys.publicKey}\n`,
+			onboot: 1,
+			password: input.rootPassword,
+			"ssh-public-keys": `${input.publicKey}\n`,
 			start: 1,
 		})
 		.catch(dropVmid(m));
@@ -523,26 +762,41 @@ async function provisionDevbox(m: Machine, agent: Agent): Promise<void> {
 	if (!lan) throw new Error("The container didn't get an IP address (is DHCP available on that bridge?)");
 	await patch(m.id, { addresses: { lan, tailscale: null } });
 
-	const root = await sshTarget(await requireMachine(m.id), "root");
-	for (let i = 0; i < 30 && !(await sshReachable(root)); i++) await Bun.sleep(2000);
+	const root = await rootTarget(await requireMachine(m.id));
+	let reachable = false;
+	for (let i = 0; i < 30 && !reachable; i++) {
+		reachable = await sshReachable(root);
+		if (!reachable) await Bun.sleep(2000);
+	}
+	if (!reachable) throw new Error(`Can't reach the container over SSH at ${lan}`);
 	await detail(m.id, "Setting up");
-	const script = devboxSetupScript({
-		hostname: m.hostname,
-		displayName: agent.name,
-		username: m.username,
-		userPassword: secrets.userPassword,
-		rootPassword: secrets.rootPassword,
-		publicKey: keys.publicKey,
-		tailscaleAuthKey: await machineAuthKey(settings.tailscaleAuthKey, m.hostname),
-		timezone: await effectiveTimezone(),
+	const script = computer ? computerSetupScript(input) : devboxSetupScript(input);
+	await sshText(root, `install -d -m 700 /var/lib/sekai && cat > ${SETUP_SCRIPT} && chmod 700 ${SETUP_SCRIPT}`, {
+		input: script,
 	});
-	const r = await sshExec(root, "bash -s", { input: script, timeoutMs: 20 * 60_000 });
-	if (r.code !== 0) throw new Error(`Setup failed: ${r.stderr.trim().slice(-500)}`);
-	const tailscale = settings.tailscaleAuthKey
+	await sshText(root, `systemd-run --unit=sekai-setup --collect --quiet /bin/bash ${SETUP_SCRIPT}`);
+
+	const deadline = Date.now() + PROVISION_TIMEOUT_MS;
+	for (;;) {
+		if (Date.now() > deadline) throw new Error("Setup took too long");
+		await Bun.sleep(5000);
+		const current = await getMachine(m.id);
+		if (!current || current.status === "deleting") return;
+		// A connection that drops now and then is fine: the setup keeps going on the container.
+		const out = await sshText(root, SETUP_STATE, { timeoutMs: 30_000 }).catch(() => null);
+		if (out === null) continue;
+		const [progress = "", state = "", ...rest] = out.split("\n");
+		if (state === "ready") break;
+		if (state === "failed" || state === "stopped") throw new Error(setupFailure(rest.join("\n")));
+		if (progress.trim() && progress.trim() !== current.statusDetail) await detail(m.id, progress.trim());
+	}
+	const tailscale = input.tailscaleAuthKey
 		? (await sshText(root, "tailscale ip -4 2>/dev/null | head -1").catch(() => "")).trim() || null
 		: null;
-	await patch(m.id, { addresses: { lan, tailscale }, status: "running", statusDetail: null });
-	log.info(`devbox ${m.name} is ready`);
+	await patch(m.id, { addresses: { lan, tailscale } });
+	if (computer) await waitForDesktop(m.id);
+	await patch(m.id, { status: "running", statusDetail: null });
+	log.info(`${m.kind} ${m.name} is ready`);
 }
 
 /** A machine you already run: Sekai checks it can get in with the bot's key and installs the desktop helper. */
@@ -596,8 +850,12 @@ export async function updateMachine(id: string, input: MachineUpdateInput): Prom
 	const fields: Partial<Row> = {};
 	if (data.name) fields.name = data.name;
 	if (data.ttlHours !== undefined && m.kind === "devbox") fields.expiresAt = Date.now() + data.ttlHours * 3_600_000;
+	if (data.shareWithViewers !== undefined) {
+		if (m.kind === "device") throw badRequest("Your own computer is only for your chats");
+		fields.shareWithViewers = data.shareWithViewers;
+	}
 	if (data.specs) {
-		const next = specsFor(m.kind, m.specs, data.specs);
+		const next = specsFor(m.kind, backendOf(m), m.specs, data.specs);
 		if (next.diskGb < m.specs.diskGb) throw badRequest("Disks can only grow");
 		await resize(m, next);
 		fields.specs = next;
@@ -609,19 +867,13 @@ async function resize(m: Machine, next: MachineSpecs): Promise<void> {
 	if (m.provider !== "proxmox") throw badRequest("Only Proxmox machines can be resized from Sekai");
 	const vmid = vmidOf(m);
 	if (!vmid) throw badRequest("This machine isn't on Proxmox yet");
-	const px = proxmox((await getSettings()).machines);
-	if (m.kind === "computer") {
-		await px.setVmConfig(vmid, { cores: next.cores, memory: next.memoryMb, balloon: next.minMemoryMb });
-		if (next.diskGb > m.specs.diskGb) await px.resizeVmDisk(vmid, "scsi0", `${next.diskGb}G`);
-		// CPU and memory changes need a restart unless hotplug is on.
-		if ((next.cores !== m.specs.cores || next.memoryMb !== m.specs.memoryMb) && m.status === "running") {
-			await detail(m.id, "Restarting to apply the new size");
-			await px.vmPower(vmid, "reboot");
-			await patch(m.id, { statusDetail: null });
-		}
-	} else {
-		await px.setLxcConfig(vmid, { cores: next.cores, memory: next.memoryMb });
-		if (next.diskGb > m.specs.diskGb) await px.resizeLxcDisk(vmid, `${next.diskGb}G`);
+	const guest = guestOf(m, (await getSettings()).machines, vmid);
+	if (!guest) throw badRequest("This machine isn't on Proxmox yet");
+	// A VM's CPU and memory changes need a restart (unless hotplug is on); containers take them right away.
+	if ((await guest.resize(m.specs, next)) && m.status === "running") {
+		await detail(m.id, "Restarting to apply the new size");
+		await guest.power("reboot");
+		await patch(m.id, { statusDetail: null });
 	}
 }
 
@@ -629,13 +881,9 @@ export async function powerMachine(id: string, action: "start" | "stop" | "resta
 	const m = await requireMachine(id);
 	if (m.provider === "local") throw badRequest("Sekai doesn't power your own computer on or off");
 	if (m.provider !== "proxmox") throw badRequest("Sekai can only power Proxmox machines on and off");
-	const vmid = vmidOf(m);
-	if (!vmid) throw badRequest("This machine isn't on Proxmox yet");
-	const px = proxmox((await getSettings()).machines);
-	const verb = action === "restart" ? "reboot" : action === "stop" ? "shutdown" : "start";
-	if (m.kind === "computer" && verb === "start") await ejectSeed(px, vmid);
-	if (m.kind === "computer") await px.vmPower(vmid, verb);
-	else await px.lxcPower(vmid, verb);
+	const guest = guestOf(m, (await getSettings()).machines);
+	if (!guest) throw badRequest("This machine isn't on Proxmox yet");
+	await guest.power(action === "restart" ? "reboot" : action === "stop" ? "shutdown" : "start");
 	return (await patch(id, { status: action === "stop" ? "stopped" : "running", statusDetail: null })) ?? m;
 }
 
@@ -649,20 +897,19 @@ export async function deleteMachine(id: string): Promise<void> {
 		return;
 	}
 	await patch(id, { status: "deleting", statusDetail: "Deleting" });
+	// Other bots on it lose their seats (and on a machine you added over SSH, their accounts come off it), and the
+	// browsers on it (bots' own and shared ones) close.
+	const { removeAllMembers } = await import("./seats.ts");
+	await removeAllMembers(m).catch((err: unknown) => log.warn(`members of ${m.name}: ${errorMessage(err)}`));
+	const { closeSessionsOn } = await import("../browser/engine.ts");
+	await closeSessionsOn(m.id).catch(() => {});
 	try {
 		if (m.provider === "proxmox") {
-			const vmid = vmidOf(m);
-			if (vmid) {
-				const settings = (await getSettings()).machines;
-				const px = proxmox(settings);
-				if (m.kind === "computer") {
-					await px.deleteVm(vmid, m.hostname);
-					const seed = `${settings.proxmox.imageStorage}:iso/sekai-seed-${vmid}.iso`;
-					await px.deleteVolume(settings.proxmox.imageStorage, seed).catch(() => {});
-				} else {
-					await px.deleteLxc(vmid, m.hostname);
-				}
-				await deleteBackupCheckpoints(m, px, vmid);
+			const settings = (await getSettings()).machines;
+			const guest = guestOf(m, settings);
+			if (guest) {
+				await guest.remove();
+				await deleteBackupCheckpoints(m, proxmox(settings), guest.vmid);
 			}
 		}
 	} catch (err) {
@@ -674,7 +921,7 @@ export async function deleteMachine(id: string): Promise<void> {
 		}
 	}
 	if (m.addresses.lan || m.addresses.tailscale) await sshForget(await sshTarget(m)).catch(() => {});
-	desktops.delete(id);
+	forgetDesktops(id);
 	await db.delete(schema.machines).where(eq(schema.machines.id, id));
 	bus.emit({ type: "machine.deleted", machineId: id, agentId: m.agentId });
 }
@@ -751,6 +998,7 @@ async function syncDevice(hello: DeviceHello, userId: string): Promise<void> {
 			agentId,
 			kind: "device",
 			provider: "local",
+			backend: null,
 			name: hello.name,
 			status: "running",
 			statusDetail: null,
@@ -762,6 +1010,7 @@ async function syncDevice(hello: DeviceHello, userId: string): Promise<void> {
 			remoteId: hello.deviceId,
 			secrets: sealJson({ userPassword: "", rootPassword: "", vncPassword: null } satisfies Secrets),
 			expiresAt: null,
+			shareWithViewers: false,
 			createdBy: "user",
 			lastUsedAt: null,
 			createdAt: now,
@@ -813,6 +1062,8 @@ export async function initMachines(): Promise<void> {
 		}
 		if (m.status === "deleting") void deleteMachine(m.id).catch(() => {});
 	}
+	const { initMembers } = await import("./seats.ts");
+	await initMembers();
 	sweeper = setInterval(async () => {
 		const now = Date.now();
 		for (const m of await listMachines().catch(() => [])) {
@@ -856,22 +1107,24 @@ function locked<T>(machineId: string, fn: () => Promise<T>): Promise<T> {
 async function checkpointTarget(id: string): Promise<{
 	m: Machine;
 	px: ProxmoxClient;
+	guest: Guest;
 	kind: "qemu" | "lxc";
 	vmid: number;
 	mode: CheckpointMode;
 }> {
 	const m = await requireMachine(id);
-	const vmid = vmidOf(m);
-	if (m.provider !== "proxmox" || !vmid) throw badRequest("Only bots' own computers and devboxes have checkpoints");
-	const px = proxmox((await getSettings()).machines);
-	const kind = m.kind === "computer" ? "qemu" : "lxc";
+	const settings = (await getSettings()).machines;
+	const guest = m.provider === "proxmox" ? guestOf(m, settings) : null;
+	if (!guest) throw badRequest("Only bots' own computers and devboxes have checkpoints");
+	const px = proxmox(settings);
+	const { kind, vmid } = guest;
 	const known = modes.get(id);
 	let mode = known && Date.now() - known.at < 10 * 60_000 ? known.mode : null;
 	if (!mode) {
 		mode = (await px.canSnapshot(kind, vmid).catch(() => true)) ? "snapshot" : "backup";
 		modes.set(id, { mode, at: Date.now() });
 	}
-	return { m, px, kind, vmid, mode };
+	return { m, px, guest, kind, vmid, mode };
 }
 
 /** Backups carry this in their notes: a reused VM id must never show another machine's backups. */
@@ -990,22 +1243,10 @@ export async function makeCheckpoint(id: string, label: string, auto = false): P
 	});
 }
 
-/**
- * A stopped VM that still points at its setup seed (deleted once setup finished) can't start: Proxmox refuses a
- * missing volume. That happens after going back to a checkpoint taken before the seed was ejected.
- */
-async function ejectSeed(px: ProxmoxClient, vmid: number): Promise<void> {
-	const cfg = await px.vmConfig(vmid).catch(() => ({}) as Record<string, string | number>);
-	const stale = Object.entries(cfg).filter(
-		([k, v]) => /^(ide|sata|scsi)\d+$/.test(k) && /iso\/(sekai|feesh)-seed-/.test(String(v)),
-	);
-	for (const [k] of stale) await px.setVmConfig(vmid, { [k]: "none,media=cdrom" });
-}
-
 /** Puts the machine back to a checkpoint (everything since is lost) and starts it again if it was running. */
 export async function restoreCheckpoint(id: string, name: string): Promise<void> {
 	return locked(id, async () => {
-		const { m, px, kind, vmid, mode } = await checkpointTarget(id);
+		const { m, px, guest, kind, vmid, mode } = await checkpointTarget(id);
 		const wasRunning = m.status === "running";
 		if (mode === "backup") {
 			const { list } = await sekaiBackups(px, m, vmid);
@@ -1017,27 +1258,20 @@ export async function restoreCheckpoint(id: string, name: string): Promise<void>
 		try {
 			if (mode === "backup") {
 				// A restore replaces the machine, so it has to be off first.
-				const status = kind === "qemu" ? await px.vmStatus(vmid) : await px.lxcStatus(vmid);
-				if (status.status === "running") {
-					if (kind === "qemu") await px.vmPower(vmid, "stop");
-					else await px.lxcPower(vmid, "stop");
-				}
+				if (await guest.running()) await guest.power("stop");
 				await px.restoreBackup(kind, vmid, name, (await getSettings()).machines.proxmox.storage);
 			} else {
 				// Started here rather than by the rollback, so a stale setup seed can be ejected in between.
 				await px.rollback(kind, vmid, name, false);
 			}
-			if (kind === "qemu") await ejectSeed(px, vmid);
-			if (wasRunning) {
-				if (kind === "qemu") await px.vmPower(vmid, "start");
-				else await px.lxcPower(vmid, "start");
-			}
+			if (wasRunning) await guest.power("start");
+			else await guest.ejectSeed();
 		} catch (err) {
 			await patch(id, { statusDetail: null });
 			throw snapshotProblem(err);
 		}
-		// Its desktop and SSH sessions start over.
-		desktops.delete(id);
+		// Its desktops and SSH sessions start over.
+		forgetDesktops(id);
 		await patch(id, { statusDetail: null });
 		log.info(`machine ${id} went back to ${name}`);
 		bus.emit({ type: "machine.checkpoints", machineId: id });
@@ -1080,10 +1314,11 @@ const lastAuto = new Map<string, number>();
 const AUTO_GAP_MS = 30 * 60_000;
 
 /**
- * Before a risky command on a bot's own Proxmox machine: a checkpoint, at most every 30 minutes per machine.
- * Returns a line for the tool result, or null when none was made (not risky, too soon, or it can't).
+ * Before a risky command on a bot's Proxmox machine: a checkpoint, at most every 30 minutes per machine (also
+ * for a bot sharing it, `member`: the machine's owner can roll back). Returns a line for the tool result, or null
+ * when none was made (not risky, too soon, or it can't).
  */
-export async function checkpointBefore(m: Machine, command: string): Promise<string | null> {
+export async function checkpointBefore(m: Machine, command: string, member = false): Promise<string | null> {
 	if (m.provider !== "proxmox" || !vmidOf(m) || !isRiskyCommand(command)) return null;
 	// Full backups take too long to make before every risky command: only snapshots are automatic.
 	if (modes.get(m.id)?.mode === "backup") return null;
@@ -1092,7 +1327,9 @@ export async function checkpointBefore(m: Machine, command: string): Promise<str
 	lastAuto.set(m.id, now);
 	try {
 		const cp = await makeCheckpoint(m.id, `Before \`${command.replace(/\s+/g, " ").slice(0, 80)}\``, true);
-		return `Saved a checkpoint first (${cp.name}); machine_checkpoint can roll back to it if this breaks something.`;
+		return member
+			? `Saved a checkpoint of the machine first (${cp.name}); its owner can roll back to it if this breaks something.`
+			: `Saved a checkpoint first (${cp.name}); machine_checkpoint can roll back to it if this breaks something.`;
 	} catch (err) {
 		log.debug(`no checkpoint before a risky command on ${m.name}: ${errorMessage(err)}`);
 		return null;

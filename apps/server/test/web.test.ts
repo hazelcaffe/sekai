@@ -150,12 +150,17 @@ describe("what the model reads", () => {
 
 describe("the engine's environment", () => {
 	test("a third-party binary never sees Sekai's own secrets", () => {
+		const saved = { ...process.env };
 		process.env.DATABASE_URL = "postgres://secret@db/sekai";
 		process.env.GATEWAY_API_KEY = "gw-secret";
-		const env = agentEnv(engineEnv(settings({ mode: "here", apiKey: "fc-k" }), "/data", null, "t"));
-		expect(env.DATABASE_URL).toBeUndefined();
-		expect(env.GATEWAY_API_KEY).toBeUndefined();
-		expect(env.FIRECRAWL_API_KEY).toBe("fc-k");
-		expect(env.PATH).toBeDefined();
+		try {
+			const env = agentEnv(engineEnv(settings({ mode: "here", apiKey: "fc-k" }), "/data", null, "t"));
+			expect(env.DATABASE_URL).toBeUndefined();
+			expect(env.GATEWAY_API_KEY).toBeUndefined();
+			expect(env.FIRECRAWL_API_KEY).toBe("fc-k");
+			expect(env.PATH).toBeDefined();
+		} finally {
+			process.env = saved;
+		}
 	});
 });

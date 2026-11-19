@@ -3,7 +3,7 @@ import { z } from "zod";
 import { deleteCodeIndex, indexFolder, listCodeIndexes, searchCode, waitForIndex } from "../../code/indexer.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { driverFor } from "../../machines/drivers.ts";
-import { listMachines } from "../../machines/manager.ts";
+import { machinesForBot } from "../../machines/seats.ts";
 import { askOn, machineTarget, onMachine, peek, riskOn } from "./targets.ts";
 import { defineTool, ToolError } from "./types.ts";
 
@@ -35,7 +35,7 @@ function pickIndexes(all: CodeIndex[], ref?: string): CodeIndex[] {
 	);
 }
 
-const hasMachine = async (agent: { id: string }) => (await listMachines({ agentId: agent.id })).length > 0;
+const hasMachine = async (agent: { id: string }) => (await machinesForBot(agent.id)).length > 0;
 const hasIndex = async (agent: { id: string }) => (await listCodeIndexes(agent.id)).length > 0;
 
 export const codeTools = [
@@ -77,7 +77,7 @@ export const codeTools = [
 				throw new ToolError("That folder name has characters Sekai won't pass to a shell.");
 			if (!root.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(root)) {
 				// Relative to the home folder: the machine knows where that is.
-				const driver = await driverFor(m);
+				const driver = await driverFor(m, ctx.agent.id);
 				const r = await driver.exec(`cd ${JSON.stringify(root)} && pwd`, {
 					timeoutMs: 15_000,
 					signal: ctx.signal,

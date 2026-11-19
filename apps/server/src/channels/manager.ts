@@ -26,7 +26,6 @@ import { agentOwner } from "../events/scope.ts";
 import { errorMessage, notFound, parse } from "../lib/errors.ts";
 import { newId, randomChars } from "../lib/ids.ts";
 import { log } from "../lib/log.ts";
-import { seal } from "../lib/secrets.ts";
 import { truncate } from "../lib/text.ts";
 import { getAgent, listAgents, listOwnAgents, requireOwnedAgent } from "../services/agents.ts";
 import { createConversation, getConversation, updateConversation } from "../services/conversations.ts";
@@ -37,6 +36,7 @@ import { autocomplete, COMMANDS, type CommandEnv, runAction, runCommand } from "
 import { discordAdapter } from "./discord.ts";
 import { discordUserAdapter } from "./discord-user.ts";
 import { fromPlatformMentions, type ParsedCommand, parseTextCommand } from "./render.ts";
+import { slackAdapter } from "./slack.ts";
 import {
 	agentBots,
 	allPostedFor,
@@ -53,6 +53,7 @@ import {
 	type Running,
 	recordPlatformMessage,
 	running,
+	sealSecrets,
 	sekaiMessageId,
 	setStatus,
 	status,
@@ -75,6 +76,7 @@ import type {
 const FACTORIES: Record<string, AdapterFactory> = {
 	discord: discordAdapter,
 	"discord-user": discordUserAdapter,
+	slack: slackAdapter,
 };
 
 /** Adds or replaces a platform adapter (also how tests plug in a fake platform). */
@@ -91,6 +93,7 @@ const pairings = new Map<string, ChannelPairing & { chatId: string }>();
 const approvalCodes = new Map<string, { toolCallId: string; expiresAt: number }>();
 /** Approval requests posted on platforms, so they can be closed when you answer anywhere. */
 const approvalPosts = new Map<string, { channelId: string; chatId: string; messageId: string; text: string }[]>();
+const approvalDeciders = new Map<string, string>();
 /** Platform messages already taken by one bot, when several bots share a linked chat. */
 const claims = new Map<string, number>();
 
@@ -101,7 +104,9 @@ function code(len = 6): string {
 }
 
 function pairingsChanged(): void {
-	bus.emit({ type: "pairing.changed", pending: pairings.size }, { to: "everyone" });
+	const me = currentActor()?.userId;
+	if (me)
+		void listPairings().then((mine) => bus.emit({ type: "pairing.changed", pending: mine.length }, { to: [me] }));
 }
 
 /**
@@ -156,6 +161,8 @@ export async function listChannels(filter: { agentId?: string } = {}): Promise<C
 export async function createChannel(input: ChannelCreateInput): Promise<ChannelWithStatus> {
 	const data = parse(ChannelCreate, input);
 	requirePermission("channels");
+	const own = await ownAgentIds();
+	if (own && !own.has(data.agentId)) throw notFound("Bot");
 	const agent = await requireOwnedAgent(data.agentId);
 	const now = Date.now();
 	const row: Channel = {
@@ -166,15 +173,19 @@ export async function createChannel(input: ChannelCreateInput): Promise<ChannelW
 		createdAt: now,
 		updatedAt: now,
 	};
-	// A personal account's token is sealed at rest; bot tokens stay as Discord issued them.
-	if (row.type === "discord-user" && row.secrets.userToken && !row.secrets.userToken.startsWith("v1:")) {
-		row.secrets = { ...row.secrets, userToken: seal(row.secrets.userToken) };
-	}
+	row.secrets = sealSecrets(row.secrets);
 	await db.insert(schema.channels).values(row);
 	if (row.enabled) void startChannel(row.id);
 	bus.emit({ type: "channel.changed", channelId: row.id });
 	return publicChannel(row);
 }
+
+/** A secret as sent back by the app: masked (keep the stored one), empty, or a new one. */
+const isNewSecret = (v: string | undefined) => Boolean(v?.trim() && !v.includes("…") && v !== "••••");
+
+/** Whether a request brings new credentials (then it wants a recent sign-in). */
+export const newSecrets = (secrets: Record<string, string> | undefined) =>
+	Object.values(secrets ?? {}).some(isNewSecret);
 
 export async function updateChannel(id: string, input: ChannelUpdateInput): Promise<ChannelWithStatus> {
 	const patch = parse(ChannelUpdate, input);
@@ -189,12 +200,7 @@ export async function updateChannel(id: string, input: ChannelUpdateInput): Prom
 	// Secrets come back masked: keep the stored value unless a real new one was sent.
 	const secrets = { ...current.secrets };
 	for (const [k, v] of Object.entries(patch.secrets ?? {})) {
-		if (v && !v.includes("…") && v !== "••••") {
-			secrets[k] =
-				current.type === "discord-user" && k === "userToken" && !v.trim().startsWith("v1:")
-					? seal(v.trim())
-					: v.trim();
-		}
+		if (isNewSecret(v)) secrets[k] = sealSecrets({ [k]: v })[k] ?? "";
 	}
 	const next: Channel = {
 		...current,
@@ -324,6 +330,9 @@ export async function startChannel(id: string): Promise<void> {
 			botName: me.botName,
 			inviteUrl: me.inviteUrl,
 			readsAll: me.readsAll,
+			workspaceId: me.workspaceId,
+			workspaceName: me.workspaceName,
+			appId: me.appId,
 			connectedAt: Date.now(),
 		});
 		log.info(`channel ${channel.name} connected as ${me.botName}`);
@@ -558,6 +567,62 @@ async function tryTrust(channel: Channel, entry: Running, msg: InboundMessage): 
 /** The Sekai conversation a platform chat feeds: every DM and channel gets its own (listed under it in the sidebar). */
 /** One binding being made per platform chat at a time (two quick first messages must share one chat). */
 const bindingsInFlight = new Map<string, Promise<ChannelBinding>>();
+const threadsInFlight = new Map<string, Promise<void>>();
+
+async function inheritThread(channel: Channel, msg: InboundMessage, parent: ChannelBinding): Promise<ChannelBinding> {
+	const key = `${currentActor()?.userId}:${msg.chatId}`;
+	const busy = threadsInFlight.get(key);
+	if (busy) {
+		await busy;
+		return (await findBinding(channel.id, msg.chatId)) ?? bindingFor(channel, msg);
+	}
+	const work = (async () => {
+		if (await findBinding(channel.id, msg.chatId)) return;
+		const previous = await getConversation(parent.conversationId);
+		if (previous?.kind !== "group") {
+			// A proactive DM began at the top level. Its first threaded reply continues that conversation.
+			if (!msg.isGroup && msg.replyToId && (await sekaiMessageId(parent.externalChatId, msg.replyToId))) {
+				await upsertBinding({
+					channelId: channel.id,
+					externalChatId: msg.chatId,
+					conversationId: parent.conversationId,
+					chatName: msg.chatName,
+					isGroup: false,
+					listen: false,
+				});
+				await deleteBindings([parent.id]);
+				return;
+			}
+			const b = await bindingFor(channel, msg);
+			if (parent.listen) await updateBindings([b.id], { listen: true });
+			return;
+		}
+		const conversation = await createConversation({
+			kind: "group",
+			memberIds: previous.memberIds,
+			title: msg.chatName,
+			settings: { purpose: previous.settings.purpose, maxTurns: previous.settings.maxTurns },
+		});
+		for (const p of await bindingsForChat(parent.externalChatId)) {
+			if (p.conversationId !== previous.id) continue;
+			await upsertBinding({
+				channelId: p.channelId,
+				externalChatId: msg.chatId,
+				conversationId: conversation.id,
+				chatName: msg.chatName,
+				isGroup: true,
+				listen: p.listen,
+			});
+		}
+	})();
+	threadsInFlight.set(key, work);
+	try {
+		await work;
+	} finally {
+		if (threadsInFlight.get(key) === work) threadsInFlight.delete(key);
+	}
+	return (await findBinding(channel.id, msg.chatId)) ?? bindingFor(channel, msg);
+}
 
 async function bindingFor(channel: Channel, chat: ChatRef): Promise<ChannelBinding> {
 	const key = `${channel.id}:${chat.chatId}`;
@@ -597,13 +662,31 @@ async function bindingForNow(channel: Channel, chat: ChatRef): Promise<ChannelBi
  */
 export async function ownerDm(
 	agentId: string,
-): Promise<{ conversationId: string; channelId: string; botName: string } | null> {
+	platform?: "slack" | "discord",
+): Promise<{ conversationId: string; channelId: string; botName: string; type: Channel["type"] } | null> {
+	const own = await ownAgentIds();
+	if (own && !own.has(agentId)) return null;
 	for (const [id, entry] of running) {
 		const ch = entry.channel;
+		if (platform && ch.type !== platform && !(platform === "discord" && ch.type === "discord-user")) continue;
 		if (ch.agentId !== agentId || !ch.enabled || status(id).state !== "connected") continue;
 		const owner = ch.allowFrom[0];
 		if (!owner || !entry.adapter.openDirect) continue;
 		const dm = await entry.adapter.openDirect(owner);
+		// Where each thread is its own chat, a message from the bot goes on in your latest DM thread.
+		if (entry.adapter.threads) {
+			const threads = (await listBindings(ch.id))
+				.filter((b) => !b.isGroup && b.externalChatId.startsWith(`${dm.chatId}:`))
+				.sort((a, b) => (b.lastInboundAt ?? b.createdAt) - (a.lastInboundAt ?? a.createdAt));
+			const recent = threads[0];
+			if (recent && (await getConversation(recent.conversationId)))
+				return {
+					conversationId: recent.conversationId,
+					channelId: id,
+					botName: status(id).botName ?? ch.type,
+					type: ch.type,
+				};
+		}
 		const binding = await bindingFor(ch, {
 			chatId: dm.chatId,
 			chatName: dm.name,
@@ -612,7 +695,12 @@ export async function ownerDm(
 			senderId: owner,
 			senderName: dm.name.replace(/^DM with /, ""),
 		});
-		return { conversationId: binding.conversationId, channelId: id, botName: status(id).botName ?? ch.type };
+		return {
+			conversationId: binding.conversationId,
+			channelId: id,
+			botName: status(id).botName ?? ch.type,
+			type: ch.type,
+		};
 	}
 	return null;
 }
@@ -628,6 +716,8 @@ export function channelsOf(agentId: string): { id: string; channel: Channel; ada
 export async function accountsOf(
 	agentId: string,
 ): Promise<{ type: Channel["type"]; name: string; connected: boolean }[]> {
+	const own = await ownAgentIds();
+	if (own && !own.has(agentId)) return [];
 	const out: { type: Channel["type"]; name: string; connected: boolean }[] = [];
 	for (const [id, entry] of running) {
 		if (entry.channel.agentId !== agentId || !entry.channel.enabled) continue;
@@ -729,9 +819,11 @@ async function handleInbound(channelId: string, msg: InboundMessage): Promise<vo
 	if (bots.has(msg.senderId)) return;
 	if (msg.senderIsBot && !channel.allowFrom.includes(msg.senderId)) return;
 
-	const binding = await findBinding(channel.id, msg.chatId);
+	let binding = await findBinding(channel.id, msg.chatId);
+	const parent = !binding && msg.parentChatId ? await findBinding(channel.id, msg.parentChatId) : null;
+	const addressed = msg.addressed || Boolean(msg.threadReply && binding && !msg.mentions.some((m) => bots.has(m.id)));
 	// Owner-only trust management, in plain words: "@bot trust @fern", "trust everyone in this GC" (also in the owner's DM).
-	if (isOwner(channel, msg) && (msg.addressed || !msg.isGroup)) {
+	if (isOwner(channel, msg) && (addressed || !msg.isGroup)) {
 		const trusted = await tryTrust(channel, entry, msg);
 		if (trusted) {
 			await sendReply(adapter, msg.chatId, trusted, msg.messageId);
@@ -741,9 +833,9 @@ async function handleInbound(channelId: string, msg: InboundMessage): Promise<vo
 	if (msg.isGroup) {
 		// Servers: only allowed people, and only when they mention the bot (or it listens here).
 		if (channel.groupPolicy === "disabled" || !channel.allowFrom.includes(msg.senderId)) return;
-		if (!msg.addressed && !binding?.listen) return;
+		if (!addressed && !binding?.listen && !parent?.listen) return;
 		// Listening isn't eavesdropping: a message for other bots (and not this one) is theirs.
-		if (!msg.addressed && msg.mentions.some((m) => bots.has(m.id))) return;
+		if (!addressed && msg.mentions.some((m) => bots.has(m.id))) return;
 	} else if (!mayUse(channel, msg)) {
 		if (channel.dmPolicy === "pairing" && !msg.senderIsBot)
 			await adapter.send(msg.chatId, await pairingText(channel, msg));
@@ -752,6 +844,10 @@ async function handleInbound(channelId: string, msg: InboundMessage): Promise<vo
 
 	const agent = await getAgent(channel.agentId);
 	if (!agent) return;
+	// A channel-wide /listen or group link applies to new Slack threads, but each thread keeps its own history.
+	if (!binding && parent && msg.parentChatId) {
+		binding = await inheritThread(channel, msg, parent);
+	}
 	const conversation = binding ? await getConversation(binding.conversationId) : null;
 	const linked = conversation?.kind === "group";
 	const me = status(channelId).botId;
@@ -772,6 +868,11 @@ async function handleInbound(channelId: string, msg: InboundMessage): Promise<vo
 	}
 	const parsed = commandText.startsWith("/") ? parseTextCommand(commandText, COMMANDS) : voicePhrase(commandText);
 	if (parsed) {
+		// The people a typed /trust mentions (their names in the text are just names by now).
+		if (parsed.name === "trust")
+			parsed.options.who = [parsed.options.who ?? "", ...msg.mentions.filter((m) => m.id !== me).map((m) => m.id)]
+				.join(" ")
+				.trim();
 		if (linked && me && !msg.mentions.some((m) => m.id === me)) {
 			const otherBotMentioned = msg.mentions.some((m) => bots.has(m.id));
 			const host = (await bindingsForChat(msg.chatId))[0];
@@ -794,7 +895,7 @@ async function handleInbound(channelId: string, msg: InboundMessage): Promise<vo
 	}
 	if (linked) {
 		// Every bot in a linked chat sees the same message; the first one takes it.
-		const key = `${msg.chatId}:${msg.messageId}`;
+		const key = `${binding?.conversationId}:${msg.chatId}:${msg.messageId}`;
 		if (claims.has(key)) return;
 		claims.set(key, Date.now());
 		if (await sekaiMessageId(msg.chatId, msg.messageId)) return;
@@ -899,7 +1000,7 @@ async function commandEnv(
 			unlinkGroup: () => unlinkGroup(ref),
 			setListen: async (on) => setListen(channel, await binding(), on),
 			resendApprovals: (b) => resendApprovals(entry, ref.chatId, b),
-			decideApproval: (c, choice) => answerApproval(c, choice),
+			decideApproval: (c, choice) => answerApproval(c, choice, chat.senderName),
 			trust: async (ids, remove) => {
 				const me = status(channel.id).botId;
 				const targets = ids.filter((id) => id && id !== me && id !== channel.allowFrom[0]);
@@ -1002,8 +1103,8 @@ async function handleAction(channelId: string, action: ActionInvocation): Promis
 	if (!GUEST_ACTIONS.has(action.id.split(":")[0] ?? "") && !isOwner(channel, action)) return { whisper: OWNER_ONLY };
 	if (action.id.startsWith("ap:")) {
 		const [, token, choice] = action.id.split(":");
-		const result = await answerApproval(token ?? "", (choice ?? "deny") as ApprovalChoice);
 		const post = [...approvalPosts.values()].flat().find((p) => p.messageId === action.messageId);
+		const result = await answerApproval(token ?? "", (choice ?? "deny") as ApprovalChoice, action.senderName);
 		return { update: { text: `${post?.text ?? ""}\n**${result}**`.trim() } };
 	}
 	const agent = await getAgent(channel.agentId);
@@ -1040,7 +1141,7 @@ async function newChat(channel: Channel, binding: ChannelBinding): Promise<void>
 
 /** Makes a server channel one group chat: every member answers through their own bot, if it's there. */
 async function linkGroup(channel: Channel, chat: ChatRef, agentIds: string[]): Promise<string> {
-	const all = await listAgents();
+	const all = await listOwnAgents();
 	const members = all.filter((a) => agentIds.includes(a.id));
 	if (members.length < 2) return "A group chat needs at least two bots.";
 	if (members.length > 8) return "A group chat can have up to 8 bots.";
@@ -1138,16 +1239,22 @@ async function setListen(channel: Channel, binding: ChannelBinding, on: boolean)
 
 // ---------------------------------------------------------------- approvals
 
-async function answerApproval(token: string, choice: ApprovalChoice): Promise<string> {
+/** Decides an approval from a chat (who decided shows on the request, which may be in a group). */
+async function answerApproval(token: string, choice: ApprovalChoice, by: string): Promise<string> {
 	const entry = approvalCodes.get(token.toUpperCase());
 	if (!entry) return "That request was already handled or has expired";
+	const pending = listPendingApprovals().find((p) => p.toolCallId === entry.toolCallId);
+	if (!pending) return "That request was already handled or has expired";
 	approvalCodes.delete(token.toUpperCase());
+	approvalDeciders.set(entry.toolCallId, by);
+	// Always-ask requests are decided one at a time, whatever was pressed.
+	const scoped = choice === "approve_chat" && !pending.alwaysAsk;
 	const ok = await decideApproval(entry.toolCallId, {
 		approve: choice !== "deny",
-		scope: choice === "approve_chat" ? "conversation" : "once",
+		scope: scoped ? "conversation" : "once",
 	});
 	if (!ok) return "That request was already handled";
-	return choice === "deny" ? "Denied" : choice === "approve_chat" ? "Approved for this chat" : "Approved";
+	return `${choice === "deny" ? "Denied" : scoped ? "Approved for this chat" : "Approved"} by ${by}`;
 }
 
 function approvalReply(token: string, part: ToolPart, subtext: (s: string) => string): Reply {
@@ -1161,8 +1268,10 @@ function approvalReply(token: string, part: ToolPart, subtext: (s: string) => st
 	return {
 		text: `✋ **${part.title ?? part.name}**\n${part.reason ?? "This action needs your approval."}\n\`\`\`\n${details}\n\`\`\`\n${subtext(`Or type /approve ${token} or /deny ${token}`)}`,
 		buttons: [
-			{ id: `ap:${token}:approve`, label: "Approve", style: "success" },
-			{ id: `ap:${token}:approve_chat`, label: "Allow in this chat", style: "secondary" },
+			{ id: `ap:${token}:approve`, label: "Approve once", style: "success" },
+			...(part.alwaysAsk
+				? []
+				: [{ id: `ap:${token}:approve_chat`, label: "Allow in this chat", style: "secondary" as const }]),
 			{ id: `ap:${token}:deny`, label: "Deny", style: "danger" },
 		],
 	};
@@ -1225,7 +1334,9 @@ async function closeApproval(part: ToolPart): Promise<void> {
 	if (!posts) return;
 	approvalPosts.delete(part.id);
 	for (const [c, a] of approvalCodes) if (a.toolCallId === part.id) approvalCodes.delete(c);
-	const outcome = part.status === "denied" ? "Denied" : "Approved";
+	const by = approvalDeciders.get(part.id);
+	approvalDeciders.delete(part.id);
+	const outcome = `${part.status === "denied" ? "Denied" : "Approved"}${by ? ` by ${by}` : ""}`;
 	for (const p of posts) {
 		await live(p.channelId)
 			?.adapter.edit(p.chatId, p.messageId, { text: `${p.text}\n**${outcome}**` })
@@ -1305,6 +1416,10 @@ export async function targetsFor(m: Message): Promise<StreamTarget[]> {
 function stopTyping(d: Delivery): void {
 	if (d.typing) clearInterval(d.typing);
 	d.typing = null;
+	for (const stream of d.streams)
+		void live(stream.target.channelId)
+			?.adapter.idle?.(stream.target.chatId)
+			.catch(() => {});
 }
 
 function finishDelivery(id: string): void {

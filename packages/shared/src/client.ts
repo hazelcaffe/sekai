@@ -82,8 +82,14 @@ import type {
 	Machine,
 	MachineAccess,
 	MachineCreate,
+	MachineMember,
+	MachineSeat,
 	MachineUpdate,
+	MemberAdd,
 	SavedLogin,
+	SharedBrowser,
+	SharedBrowserInput,
+	SharedBrowserUpdate,
 } from "./machine.ts";
 import type { McpServerCreate, McpServerStatus, McpServerUpdate, McpServerWithStatus } from "./mcp.ts";
 import type {
@@ -501,19 +507,28 @@ export function createApiClient(options: ApiClientOptions) {
 			start: (id: string) => post<Machine>(`/machines/${id}/start`),
 			stop: (id: string) => post<Machine>(`/machines/${id}/stop`),
 			restart: (id: string) => post<Machine>(`/machines/${id}/restart`),
-			/** You're using the computer (VNC in the app): the bot waits until you hand it back. */
-			takeover: (id: string, active: boolean) => post<{ ok: true }>(`/machines/${id}/takeover`, { active }),
-			/** WebSocket URL for the app's VNC viewer. */
-			vncUrl: (id: string) => {
+			/**
+			 * You're using the computer (VNC in the app): the bot waits until you hand it back. agentId: a member
+			 * bot's own screen on a shared computer (without it, the computer's own bot).
+			 */
+			takeover: (id: string, active: boolean, agentId?: string) =>
+				post<{ ok: true }>(`/machines/${id}/takeover`, { active, agentId }),
+			/** WebSocket URL for the app's VNC viewer (agentId: a member bot's own screen). */
+			vncUrl: (id: string, agentId?: string) => {
 				const token = options.getToken?.();
 				const here = (globalThis as { location?: { origin: string } }).location?.origin ?? "";
 				const origin = base || here;
-				return `${origin.replace(/^http/, "ws")}/api/machines/${id}/vnc${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+				const query = new URLSearchParams();
+				if (agentId) query.set("agent", agentId);
+				if (token) query.set("token", token);
+				const q = query.toString();
+				return `${origin.replace(/^http/, "ws")}/api/machines/${id}/vnc${q ? `?${q}` : ""}`;
 			},
 			/** Machines added over SSH: try connecting again. */
 			retry: (id: string) => post<Machine>(`/machines/${id}/retry`),
-			/** Usernames, passwords and the bot's SSH key. */
-			access: (id: string) => get<MachineAccess>(`/machines/${id}/access`),
+			/** Usernames, passwords and the bot's SSH key (agentId: a member bot's own account). */
+			access: (id: string, agentId?: string) =>
+				get<MachineAccess>(`/machines/${id}/access`, agentId ? { agent: agentId } : undefined),
 			/** Snapshots of a bot's computer or devbox, newest first. */
 			checkpoints: {
 				list: (id: string) => get<CheckpointList>(`/machines/${id}/checkpoints`),
@@ -523,10 +538,21 @@ export function createApiClient(options: ApiClientOptions) {
 					post<{ ok: true }>(`/machines/${id}/checkpoints/${encodeURIComponent(name)}/restore`),
 				delete: (id: string, name: string) => del(`/machines/${id}/checkpoints/${encodeURIComponent(name)}`),
 			},
-			/** A fresh PNG of the computer's screen (add a cache-busting query). */
-			screenUrl: (id: string) => {
+			/** Other bots sharing the machine, each with its own account (and screen, on a computer). */
+			members: {
+				list: (id: string) => get<MachineMember[]>(`/machines/${id}/members`),
+				add: (id: string, body: MemberAdd) => post<MachineMember>(`/machines/${id}/members`, body),
+				remove: (id: string, memberId: string) => del(`/machines/${id}/members/${memberId}`),
+				/** Sets a seat that had a problem up again. */
+				retry: (id: string, memberId: string) =>
+					post<MachineMember>(`/machines/${id}/members/${memberId}/retry`),
+			},
+			/** Your machines this bot has a seat on (another bot's computer or devbox shared with it). */
+			seats: (agentId: string) => get<MachineSeat[]>("/machines/seats", { agentId }),
+			/** A fresh PNG of the computer's screen (add a cache-busting query; agentId: a member bot's own screen). */
+			screenUrl: (id: string, agentId?: string) => {
 				const token = options.getToken?.();
-				return `${base}/api/machines/${id}/screen?t=${Date.now()}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+				return `${base}/api/machines/${id}/screen?t=${Date.now()}${agentId ? `&agent=${encodeURIComponent(agentId)}` : ""}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
 			},
 			testProxmox: () =>
 				post<{
@@ -536,6 +562,14 @@ export function createApiClient(options: ApiClientOptions) {
 					nodes: string[];
 					storages: string[];
 				}>("/machines/proxmox/test"),
+		},
+
+		/** Browsers several bots use: on the server or one of your computers, with shared or separate sign-ins. */
+		sharedBrowsers: {
+			list: (query?: { agentId?: string }) => get<SharedBrowser[]>("/shared-browsers", query),
+			create: (body: SharedBrowserInput) => post<SharedBrowser>("/shared-browsers", body),
+			update: (id: string, body: SharedBrowserUpdate) => patch<SharedBrowser>(`/shared-browsers/${id}`, body),
+			delete: (id: string) => del(`/shared-browsers/${id}`),
 		},
 
 		credentials: {

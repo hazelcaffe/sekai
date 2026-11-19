@@ -2,26 +2,28 @@ import type { Machine, ToolRisk } from "@sekai/shared";
 import { z } from "zod";
 import { deviceSettings } from "../../machines/bridge.ts";
 import { hasDesktop, pickMachine } from "../../machines/drivers.ts";
-import { isTakenOver, listMachines, touchMachine } from "../../machines/manager.ts";
+import { isTakenOver, touchMachine } from "../../machines/manager.ts";
+import { type BotMachine, machinesForBot } from "../../machines/seats.ts";
 import { type ToolContext, ToolError } from "./types.ts";
 
 /**
- * Which machine a tool acts on: the bot's own computer, a devbox, or the user's computer lent through the
- * desktop app ("device"). Shared by the computer_, machine and browser tools.
+ * Which machine a tool acts on: the bot's own computer, a devbox, another bot's machine shared with it (where it
+ * works in its own seat), or the user's computer lent through the desktop app ("device"). Shared by the
+ * computer_, machine and browser tools. Only the machines the bot may use in this run count (machinesForBot).
  */
 
 export const onDesktop = z
 	.string()
 	.optional()
 	.describe(
-		'Whose screen: "computer" (yours, the default) or "device" (the user\'s computer, if they lent it to you)',
+		'Whose screen: "computer" (yours, the default; else a shared computer you have a seat on), a shared computer\'s name, or "device" (the user\'s computer, if they lent it to you)',
 	);
 
 export const onMachine = z
 	.string()
 	.optional()
 	.describe(
-		'Which machine: "computer" (default), a devbox name, or "device" (the user\'s computer, if they lent it to you)',
+		'Which machine: "computer" (default), a devbox or shared machine by name, or "device" (the user\'s computer, if they lent it to you)',
 	);
 
 function label(m: Machine): string {
@@ -37,9 +39,9 @@ function unavailable(m: Machine): string {
 	return `${m.name} is ${m.status}${m.statusDetail ? ` (${m.statusDetail})` : ""}; it isn't ready.`;
 }
 
-/** A machine with a screen the bot can use now. Without `on`: its computer, else the only lent computer. */
-export async function desktopTarget(ctx: ToolContext, on?: string): Promise<Machine> {
-	const all = await listMachines({ agentId: ctx.agent.id });
+/** A machine with a screen the bot can use now. Without `on`: its computer, else the only other screen. */
+export async function desktopTarget(ctx: ToolContext, on?: string): Promise<BotMachine> {
+	const all = await machinesForBot(ctx.agent.id);
 	let m = pick(all, on);
 	if (!m && !on) {
 		const screens = all.filter(hasDesktop);
@@ -54,16 +56,20 @@ export async function desktopTarget(ctx: ToolContext, on?: string): Promise<Mach
 	}
 	if (m.kind === "devbox") throw new ToolError(`${m.name} is a devbox: it has no screen. Use run_command there.`);
 	if (!hasDesktop(m)) throw new ToolError(unavailable(m));
-	if (m.kind === "computer" && isTakenOver(m.id)) {
-		throw new ToolError("The user is using your computer right now. Wait for them to hand it back, or ask them.");
+	if (m.kind === "computer" && isTakenOver(m.id, ctx.agent.id)) {
+		throw new ToolError(
+			m.seat
+				? `The user is using your screen on ${m.name} right now. Wait for them to hand it back, or ask them.`
+				: "The user is using your computer right now. Wait for them to hand it back, or ask them.",
+		);
 	}
 	void touchMachine(m.id);
 	return m;
 }
 
 /** A machine for commands and files. Without `machine`: the computer, else the only machine there is. */
-export async function machineTarget(ctx: ToolContext, ref?: string): Promise<Machine> {
-	const all = await listMachines({ agentId: ctx.agent.id });
+export async function machineTarget(ctx: ToolContext, ref?: string): Promise<BotMachine> {
+	const all = await machinesForBot(ctx.agent.id);
 	let m = pick(all, ref);
 	if (!m && !ref) {
 		// The user's computer is never the default when the bot has its own machines.
@@ -100,7 +106,7 @@ export function askOn(m: Machine | null, risk: ToolRisk): string | null {
 	return deviceSettings(m.remoteId)?.askEachAction ? `You asked to approve every action on ${m.name}.` : null;
 }
 
-/** Whether a bot has any screen to use: its running computer, or a lent computer that's online. */
+/** Whether a bot has any screen to use in this run: a running computer (its own or shared), or a lent one online. */
 export async function anyDesktop(agentId: string): Promise<boolean> {
-	return (await listMachines({ agentId })).some(hasDesktop);
+	return (await machinesForBot(agentId)).some(hasDesktop);
 }

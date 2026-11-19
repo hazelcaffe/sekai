@@ -20,7 +20,7 @@ const PERSONAL = new Set<keyof Settings>(["timezone", "userName", "approvalMode"
 
 const KEY = "app";
 
-function defaults(): Settings {
+export function defaultSettings(): Settings {
 	return {
 		gatewayUrl: config.gateway.url,
 		gatewayApiKey: config.gateway.apiKey,
@@ -54,6 +54,8 @@ function defaultMachineSettings(): MachineSettings {
 		tailscaleAuthKey: process.env.TAILSCALE_AUTH_KEY ?? "",
 		computerSpecs: DEFAULT_COMPUTER_SPECS,
 		devboxSpecs: DEFAULT_DEVBOX_SPECS,
+		computerBackend: "vm",
+		devboxBackend: "lxc",
 		devboxTtlHours: 24,
 		maxDevboxesPerAgent: 3,
 		agentRequests: "ask",
@@ -91,10 +93,12 @@ export async function getSettings(): Promise<Settings> {
 
 /** The server's own settings (no one's personal ones). */
 export async function serverSettings(): Promise<Settings> {
-	const o = await loadOverrides();
-	const base = defaults();
+	return withDefaults(defaultSettings(), await loadOverrides());
+}
+
+/** Saved settings over the defaults. Saved before a field existed (a machine backend, say): the default fills it in. */
+export function withDefaults(base: Settings, o: Partial<Settings>): Settings {
 	const merged = { ...base, ...o };
-	// Saved before a field existed: fill it in from the defaults.
 	merged.machines = {
 		...base.machines,
 		...o.machines,

@@ -11,10 +11,11 @@ For the rules every change must keep (who owns what, how requests become a perso
 apps/server      Bun + Hono API, Postgres (Drizzle), SSE event bus
   src/agent        runtime (per-chat run queue), tool loop, strategies, approvals, context, prompt
   src/agent/tools  built-in tools; one defineTool() each
-  src/channels     platform adapters (Discord), manager (access, routing, group links, approvals),
+  src/channels     platform adapters (Discord, Slack Socket Mode), manager (access, routing, group links, approvals),
                    commands, streaming delivery
   src/providers    BYOS: ACP client, Claude Agent SDK runner, Sekai tools bridge (MCP), turn composer
-  src/machines     computers and devboxes: Proxmox client, cloud-init seed (ISO writer), SSH, desktop helper, VNC bridge;
+  src/machines     computers and devboxes: Proxmox client, setup (cloud-init seed or SSH script), SSH, desktop helper,
+                   VNC bridge;
                    your own servers and devices (master key, per-bot access, tailnet)
   src/voice        calls (speech to text → the bot → text to speech), dictation, read-aloud, voice messages (Ogg Opus),
                    custom voices; providers for ElevenLabs and Fish Audio

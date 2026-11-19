@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { byosModelId, isByosModel, type Provider, parseByosModel } from "@sekai/shared";
 import { authorizeToolCall, type ToolCallEnv } from "../src/agent/loop.ts";
@@ -23,6 +23,15 @@ describe("BYOS model ids", () => {
 });
 
 describe("agent process environment", () => {
+	// Tests in other files read the real environment (DATABASE_URL), so each test puts it back.
+	let saved = { ...process.env };
+	beforeEach(() => {
+		saved = { ...process.env };
+	});
+	afterEach(() => {
+		process.env = saved;
+	});
+
 	test("Sekai's own secrets never reach agent CLIs; provider env wins", () => {
 		process.env.GATEWAY_API_KEY = "secret-gateway";
 		process.env.SEKAI_AUTH_TOKEN = "secret-auth";

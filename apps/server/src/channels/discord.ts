@@ -22,6 +22,7 @@ import {
 } from "discord.js";
 import { errorMessage } from "../lib/errors.ts";
 import { truncate } from "../lib/text.ts";
+import { channelSecret } from "./state.ts";
 import {
 	type ChannelAdapter,
 	type ChannelHandlers,
@@ -195,7 +196,7 @@ function displayName(user: { globalName: string | null; username: string }, memb
  * it sees DMs and messages that mention it; with it (turned on in the Developer Portal) it can /listen too.
  */
 export function discordAdapter(channel: Channel): ChannelAdapter {
-	const token = channel.secrets.botToken?.trim() ?? "";
+	const token = channelSecret(channel, "botToken");
 	let client: Client | null = null;
 	let rest: REST | null = null;
 	let appId = "";
@@ -329,6 +330,9 @@ export function discordAdapter(channel: Channel): ChannelAdapter {
 
 	return {
 		maxText: 1900,
+		help: {
+			tips: "Right-click one of my messages → Apps → **Retry**, **Retry with another model** or **Erase and retry**.",
+		},
 		mention: (userId) => `<@${userId}>`,
 		subtext: (text) =>
 			text

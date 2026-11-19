@@ -1,5 +1,14 @@
-import type { Access, Agent, AgentContextTool, Conversation, ModelInfo, Permission } from "@sekai/shared";
-import { useQuery } from "@tanstack/react-query";
+import type {
+	Access,
+	Agent,
+	AgentContextTool,
+	Conversation,
+	Machine,
+	MachineMember,
+	ModelInfo,
+	Permission,
+} from "@sekai/shared";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "./api.ts";
 import { qk } from "./query.ts";
 
@@ -79,6 +88,60 @@ export const useChannelBindings = (channelId: string | null) =>
 export const usePairings = () => useQuery({ queryKey: qk.pairings, queryFn: api.channels.pairings });
 export const useMachines = (agentId?: string) =>
 	useQuery({ queryKey: qk.machines(agentId), queryFn: () => api.machines.list(agentId ? { agentId } : undefined) });
+/** Other bots sharing one of your machines. */
+export const useMachineMembers = (machineId: string, enabled = true) =>
+	useQuery({ queryKey: qk.machineMembers(machineId), queryFn: () => api.machines.members.list(machineId), enabled });
+/**
+ * The bot's computer and devboxes other bots share, with those bots (for "deleting it deletes its computer, which
+ * N other bots use"). Fetched only while `enabled`.
+ */
+export function useMachineUsers(
+	agentId: string | null | undefined,
+	enabled = true,
+): { machine: Machine; members: MachineMember[] }[] {
+	const { data: machines = [] } = useQuery({
+		queryKey: qk.machines(agentId ?? ""),
+		queryFn: () => api.machines.list({ agentId: agentId ?? "" }),
+		enabled: enabled && Boolean(agentId),
+	});
+	const shareable = machines.filter((m) => m.kind !== "device");
+	const lists = useQueries({
+		queries: shareable.map((m) => ({
+			queryKey: qk.machineMembers(m.id),
+			queryFn: () => api.machines.members.list(m.id),
+			enabled,
+		})),
+	});
+	return shareable
+		.map((machine, i) => ({ machine, members: lists[i]?.data ?? [] }))
+		.filter((x) => x.members.length > 0);
+}
+
+/** "Deleting Ada deletes its computer, which 2 other bots use." (null when nobody else uses its machines). */
+export function sharedMachinesNote(
+	botName: string,
+	users: { machine: Machine; members: MachineMember[] }[],
+): string | null {
+	if (users.length === 0) return null;
+	const bots = new Set(users.flatMap((u) => u.members.map((m) => m.agentId))).size;
+	const what =
+		users.length === 1
+			? users[0]?.machine.kind === "computer"
+				? "its computer"
+				: `its devbox ${users[0]?.machine.name}`
+			: "its computer and devboxes";
+	return `Deleting ${botName} deletes ${what}, which ${bots} other bot${bots === 1 ? "" : "s"} use${bots === 1 ? "s" : ""}.`;
+}
+
+/** Your machines this bot has a seat on. */
+export const useSeats = (agentId: string, enabled = true) =>
+	useQuery({ queryKey: qk.seats(agentId), queryFn: () => api.machines.seats(agentId), enabled });
+/** Your shared browsers (with agentId: the ones that bot is in). */
+export const useSharedBrowsers = (agentId?: string) =>
+	useQuery({
+		queryKey: qk.sharedBrowsers(agentId),
+		queryFn: () => api.sharedBrowsers.list(agentId ? { agentId } : undefined),
+	});
 export const useDocuments = () => useQuery({ queryKey: qk.documents, queryFn: api.documents.list });
 export const useCheckpoints = (machineId: string, enabled = true) =>
 	useQuery({ queryKey: qk.checkpoints(machineId), queryFn: () => api.machines.checkpoints.list(machineId), enabled });

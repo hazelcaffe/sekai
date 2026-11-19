@@ -19,6 +19,10 @@ export interface InboundMention {
 export interface InboundMessage {
 	/** Where to reply: a DM, channel, thread or group id on the platform. */
 	chatId: string;
+	/** Parent channel for thread-level bindings and inherited /listen or group settings. */
+	parentChatId?: string;
+	/** A reply inside a thread: once bound, allowed people can continue without mentioning the bot again. */
+	threadReply?: boolean;
 	chatName: string;
 	isGroup: boolean;
 	/** The server the chat belongs to, if any. */
@@ -152,6 +156,9 @@ export interface BotIdentity {
 	botName: string;
 	inviteUrl: string | null;
 	readsAll: boolean;
+	workspaceId?: string;
+	workspaceName?: string;
+	appId?: string;
 }
 
 /**
@@ -161,6 +168,13 @@ export interface BotIdentity {
 export interface ChannelAdapter {
 	/** Longest text one platform message can hold (with headroom for formatting). */
 	readonly maxText: number;
+	/**
+	 * Every top-level message starts a thread and each thread is its own chat (Slack). Messages carry the chat
+	 * the thread is in (parentChatId), whose /listen and group link new threads inherit.
+	 */
+	readonly threads?: boolean;
+	/** What /help says about this platform: how to talk to the bot, and tips for its commands. */
+	readonly help?: { intro?: string; tips?: string };
 	/** How this platform writes a mention of someone in text, e.g. <@123>. */
 	mention(userId: string): string;
 	/** Small print under a message (Discord: -# subtext). */
@@ -173,6 +187,8 @@ export interface ChannelAdapter {
 	remove(chatId: string, messageId: string): Promise<void>;
 	react(chatId: string, messageId: string, emoji: string): Promise<void>;
 	typing(chatId: string): Promise<void>;
+	/** Clears a progress indicator, including replies that finished without text. */
+	idle?(chatId: string): Promise<void>;
 	/** Whether the bot can see and post in this chat (it's in that server and has access). */
 	canPost(chatId: string): Promise<boolean>;
 	/** Publishes the bot's commands so the platform can offer them (Discord: slash commands). */
@@ -205,17 +221,46 @@ export type AdapterFactory = (channel: Channel) => ChannelAdapter;
 
 export const MAX_INBOUND_BYTES = 20 * 1024 * 1024;
 
-/** Downloads an attachment with a size cap (from the internet only: the address comes from a message). */
-export async function download(url: string, init?: RequestInit): Promise<Uint8Array | null> {
+/**
+ * Downloads an attachment with a size cap, read as it streams in (from the internet only: the address comes from a
+ * message). Null when it fails, is too big, or (maxRedirects: 0) the server redirects.
+ */
+export async function download(
+	url: string | URL,
+	init: { headers?: Record<string, string>; maxRedirects?: number; signal?: AbortSignal } = {},
+): Promise<Uint8Array | null> {
+	const signal = init.signal
+		? AbortSignal.any([init.signal, AbortSignal.timeout(60_000)])
+		: AbortSignal.timeout(60_000);
 	let res: Response;
 	try {
-		res = await guardedFetch(new URL(url), { ...init, signal: AbortSignal.timeout(60_000) });
+		res = await guardedFetch(new URL(url), { headers: init.headers, maxRedirects: init.maxRedirects, signal });
 	} catch {
 		return null;
 	}
-	if (!res.ok) return null;
-	const length = Number(res.headers.get("content-length") ?? 0);
-	if (length > MAX_INBOUND_BYTES) return null;
-	const buf = new Uint8Array(await res.arrayBuffer());
-	return buf.byteLength > MAX_INBOUND_BYTES ? null : buf;
+	if (!res.ok || !res.body || Number(res.headers.get("content-length") ?? 0) > MAX_INBOUND_BYTES) {
+		await res.body?.cancel().catch(() => {});
+		return null;
+	}
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	try {
+		for await (const chunk of res.body) {
+			size += chunk.byteLength;
+			if (size > MAX_INBOUND_BYTES) {
+				await res.body.cancel().catch(() => {});
+				return null;
+			}
+			chunks.push(chunk);
+		}
+	} catch {
+		return null;
+	}
+	const out = new Uint8Array(size);
+	let at = 0;
+	for (const c of chunks) {
+		out.set(c, at);
+		at += c.byteLength;
+	}
+	return out;
 }
