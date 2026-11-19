@@ -25,7 +25,7 @@ OpenAI-compatible gateway or API provider (OpenAI, Anthropic, Gemini, OpenRouter
 subscriptions you already pay for (Codex, Claude Code, Gemini CLI, Grok…) as a bot's brain.
 
 Sekai runs on [Bun](https://bun.sh) and Postgres, with a responsive web app you can install on your phone, an admin
-app, and an optional desktop app. It's free software under the [GNU AGPL v3](LICENSE).
+app, a browser extension, and an optional desktop app. It's free software under the [GNU AGPL v3](LICENSE).
 
 ## Highlights
 
@@ -38,6 +38,9 @@ app, and an optional desktop app. It's free software under the [GNU AGPL v3](LIC
 - **They get things done.** Routines on a schedule or when something happens (a webhook, a device going offline),
   reminders, a morning digest, a document library they search by meaning, code search, apps over MCP (50+ with
   one-click sign-in), skills, and the web.
+- **The web, read properly.** Turn on [Firecrawl Local](docs/guide.md#web-reading) and bots read pages as clean
+  Markdown (PDFs and Word files too), search, list a site's pages and crawl a set of them. Scraping runs on your
+  server; only search leaves it, and you can turn that off.
 - **Teamwork.** Group chats where bots answer when @mentioned or picked, hand work to each other and ask each other
   questions.
 - **Approvals like a coding agent.** Read-only, ask every time, auto (a reviewer model checks risky actions), your
@@ -55,6 +58,9 @@ app, and an optional desktop app. It's free software under the [GNU AGPL v3](LIC
   Discord accounts and X accounts.
 - **Computers of their own.** On a Proxmox server, a bot can have a desktop VM it uses by itself while you watch or
   take over, and devboxes for development. With the desktop app you can lend it your own computer too.
+- **Your browser, beside you.** Chat in a Chromium/Firefox sidebar or Safari popover/companion window, and share
+  only the tabs you choose with a bot. Actions ask first; Stop sharing ends control. See the
+  [browser extension guide](apps/extension/README.md) for installation, permissions and Safari signing.
 - **Usage at a glance.** Tokens and cost by hour or day, by model, bot and person, with the period before to
   compare, a heatmap of busy hours, and CSV export.
 - **Everywhere.** Phones, foldables, tablets and desktops, in six themes (light and dark), with live updates.
@@ -122,6 +128,7 @@ updates.
 - [User guide](docs/guide.md): people and roles, approvals, routines, memory, the library, voice, Discord and X,
   apps, computers, your own devices, subscriptions as brains.
 - [Architecture](docs/architecture.md): how the code fits together, and how to extend it.
+- [Browser extension](apps/extension/README.md): builds, connection, tools, privacy and GitHub Actions releases.
 - [AGENTS.md](AGENTS.md): the guide for contributors and coding agents.
 
 ## Contributing

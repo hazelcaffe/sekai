@@ -1,6 +1,7 @@
 # Architecture
 
-Sekai is a Bun monorepo: one server (API, live events, WebSockets, background work) and three apps that talk to it.
+Sekai is a Bun monorepo: one server (API, live events, WebSockets, background work) and web, admin, desktop
+and browser-extension clients that talk to it.
 For the rules every change must keep (who owns what, how requests become a person, events, permissions), read
 [AGENTS.md](../AGENTS.md) and the `AGENTS.md` next to the code.
 
@@ -20,8 +21,11 @@ apps/server      Bun + Hono API, Postgres (Drizzle), SSE event bus
   src/outreach     bots messaging and calling you
   src/x            X accounts and the mention listener
   src/code         code index: chunking, incremental indexing, hybrid search (pgvector + full text)
+  src/web          the web engine: Firecrawl Local started and watched here, or one you run elsewhere
   src/push.ts      Web Push (VAPID) for every notification
+  src/mobile       push for the phone apps: Firebase (FCM HTTP v1) and Apple (APNs over HTTP/2), each person's phones
   src/browser      Playwright sessions (bot's computer or headless on the server) and sign-in requests
+                   extension.ts: short-lived, owner/token/bot/chat-scoped grants and non-replayed command delivery
   src/mcp          MCP client manager, OAuth sign-in for apps
   src/auth         accounts, sessions, roles, two-factor sign-in, single sign-on, the actor (who a request runs as)
   src/events       the live event bus, and who gets each event
@@ -30,6 +34,8 @@ apps/web         React 19, Vite, Tailwind 4, TanStack Query, Radix; service work
 apps/admin       the admin app (overview, models, apps, voice, approvals, computers, Tailscale, account)
 apps/desktop     Electron shell (sandboxed renderer, minimal preload bridge, auto-update from your server); src/local
                  lends the computer to bots (bridge client, Windows/macOS/Linux helpers, browser, commands, files)
+apps/extension   Manifest V3, React panel, isolated DOM bridge; explicit per-tab and per-origin local grants;
+                 native Chromium/Firefox sidebars, Safari popover or companion window; optional site permissions
 packages/shared  zod schemas, event types and the typed API client used by every app
 packages/client  React hooks and components shared by the web and admin apps
 packages/ui      the design system (shadcn/ui based)
@@ -43,6 +49,13 @@ bot's owner. Services scope every query to that person, so someone else's bot, c
 Live events go only to the people they're about, and roles' permissions and limits are checked on the server.
 
 ## Extending Sekai
+
+**Browser extension.** The panel authenticates with a dedicated `extension` token, limited to `/api/extension/*`
+(except token issuance). Server routes re-check ownership and the browser permission. `extension_browsers` and
+`extension_browser` are normal approved tools, also available through BYOS. The panel heartbeats a 12-second
+in-memory lease and executes commands only against its local allowlist. Closing it or losing contact ends control;
+restart restores nothing. Commands aren't replayed, refs stay in an isolated world, and page URLs/origins are checked
+again before acting. There is no externally callable page-to-extension channel or general JavaScript evaluator.
 
 - **A built-in tool:** add a `defineTool({ name, category, description, parameters, risk, title, execute })` to a module in `apps/server/src/agent/tools/` and list it in `BUILTIN_TOOLS`. Approvals, the Brain view, the Tools tab and the BYOS bridge pick it up automatically.
 - **A model strategy:** extend `ModelStrategy` in `packages/shared/src/agent.ts` and add a case to `apps/server/src/agent/strategies.ts`.

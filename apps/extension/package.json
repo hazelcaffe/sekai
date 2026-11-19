@@ -1,0 +1,28 @@
+{
+	"name": "@sekai/extension",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "bun run build.ts",
+		"build:safari": "bash scripts/build-safari.sh",
+		"typecheck": "tsc --noEmit -p .",
+		"test:e2e": "bun run test/e2e.ts"
+	},
+	"dependencies": {
+		"@sekai/shared": "workspace:*",
+		"@sekai/ui": "workspace:*",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.3.5",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "^6.3.0",
+		"fflate": "^0.8.3",
+		"playwright-core": "1.65.1",
+		"tailwindcss": "^4.3.5",
+		"vite": "^8.3.8"
+	}
+}

@@ -1,7 +1,8 @@
-import { EmailConfig, patchOf, SmsConfig } from "@sekai/shared";
+import { EmailConfig, MobilePushSettings, patchOf, SmsConfig } from "@sekai/shared";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { badRequest } from "../lib/errors.ts";
+import { mobileStatus, saveMobileSettings } from "../mobile/settings.ts";
 import { body, ok, readJson } from "../routes/util.ts";
 import {
 	publicEmailConfig,
@@ -26,8 +27,8 @@ import {
 } from "./users.ts";
 
 /**
- * Admin: people, roles and how they sign in (/api/admin, admins only). Changes ask the admin to confirm it's them
- * when they last did a while ago.
+ * Admin: people, roles, how they sign in, and push for the phone apps (/api/admin, admins only). Changes ask the
+ * admin to confirm it's them when they last did a while ago.
  */
 
 const me = (c: Context) => c.get("actor").userId;
@@ -94,4 +95,8 @@ export const adminRoutes = new Hono()
 		if (!/^\+[1-9]\d{6,14}$/.test(to)) throw badRequest("Use the number with its country code, like +15551234567");
 		await sendSms(to, "This is a test from Sekai: text messages work.");
 		return c.json(ok);
-	});
+	})
+
+	// The phone apps' push: Firebase (Android) and Apple push (iOS)
+	.get("/mobile", async (c) => c.json(await mobileStatus()))
+	.put("/mobile", async (c) => c.json(await saveMobileSettings(await body(c, patchOf(MobilePushSettings)))));

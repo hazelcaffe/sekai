@@ -2,6 +2,8 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    # Updates land on dev with everything else new, and reach main with the next release.
+    target-branch: dev
     schedule:
       interval: weekly
     groups:
@@ -9,6 +11,7 @@ updates:
         patterns: ["*"]
   - package-ecosystem: bun
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -17,5 +20,6 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly

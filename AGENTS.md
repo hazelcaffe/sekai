@@ -7,13 +7,14 @@ the web app (PWA), the admin app and an Electron desktop app.
 
 Read this file first, then the one next to the code you're changing:
 
-| Area                                                            | Doc                                              |
-| --------------------------------------------------------------- | ------------------------------------------------ |
-| API server (Bun, Hono, Postgres)                                | [apps/server/AGENTS.md](apps/server/AGENTS.md)   |
-| Web app (chats, bot panel)                                      | [apps/web/AGENTS.md](apps/web/AGENTS.md)         |
-| Admin app                                                       | [apps/admin/AGENTS.md](apps/admin/AGENTS.md)     |
-| Desktop app (Electron)                                          | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md) |
-| Shared packages (`@sekai/shared`, `@sekai/client`, `@sekai/ui`) | [packages/AGENTS.md](packages/AGENTS.md)         |
+| Area                                                            | Doc                                                  |
+| --------------------------------------------------------------- | ---------------------------------------------------- |
+| API server (Bun, Hono, Postgres)                                | [apps/server/AGENTS.md](apps/server/AGENTS.md)       |
+| Web app (chats, bot panel)                                      | [apps/web/AGENTS.md](apps/web/AGENTS.md)             |
+| Admin app                                                       | [apps/admin/AGENTS.md](apps/admin/AGENTS.md)         |
+| Desktop app (Electron)                                          | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md)     |
+| Browser extension (Chromium, Firefox, Safari)                   | [apps/extension/AGENTS.md](apps/extension/AGENTS.md) |
+| Shared packages (`@sekai/shared`, `@sekai/client`, `@sekai/ui`) | [packages/AGENTS.md](packages/AGENTS.md)             |
 
 The user-facing docs are [README.md](README.md) (overview, quick start) and [docs/](docs/): `install.md` (installing,
 hosting, configuration), `guide.md` (every feature) and `architecture.md`. Keep them in step with what you add or
@@ -50,6 +51,7 @@ apps/server     API + SSE event bus + WebSockets (VNC, voice, desktop bridge); s
 apps/web        React 19 + Vite chat app (sidebar, chats, bot panel, settings, PWA service worker)
 apps/admin      React admin app at /admin (models, subscriptions, apps, voice, approvals, machines, Tailscale…)
 apps/desktop    Electron shell; src/local lends the user's computer to bots
+apps/extension  WebExtension sidebar/popover, local per-tab sharing and a scoped server bridge
 packages/shared zod schemas, TypeScript types, ServerEvent union, and the typed API client (createApiClient)
 packages/client React hooks/components shared by web and admin (TanStack Query data hooks, ModelPicker, voice)
 packages/ui     design system (shadcn/ui restyled) + Sekai building blocks (Section, SettingsPanel, ContextMenu…)

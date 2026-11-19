@@ -14,8 +14,8 @@ target="${1:-$root/../sekai-public}"
 message="${2:-Update from the private repository}"
 cd "$root"
 if [ -n "$(git status --porcelain)" ]; then
-	echo "Commit or stash your changes first (the export takes what's committed)." >&2
-	exit 1
+	# Only what's committed is exported (git archive HEAD); other work in progress here stays out.
+	echo "Note: uncommitted changes here aren't included (the export takes what's committed)." >&2
 fi
 if [ -n "$update" ]; then
 	if [ ! -d "$target/.git" ]; then

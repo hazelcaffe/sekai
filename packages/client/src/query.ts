@@ -58,6 +58,7 @@ export const qk = {
 	savedLogins: (agentId?: string) => ["savedLogins", agentId ?? "all"] as const,
 	providers: ["providers"] as const,
 	apiProviders: ["apiProviders"] as const,
+	webEngine: ["web"] as const,
 	embeddingModels: ["embeddingModels"] as const,
 	runs: (agentId?: string) => ["runs", agentId ?? "all"] as const,
 	context: (agentId: string, conversationId?: string) => ["context", agentId, conversationId ?? "main"] as const,

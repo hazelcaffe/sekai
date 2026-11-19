@@ -28,6 +28,7 @@ import { failStreamingMessages } from "./services/messages.ts";
 import { failActiveRuns } from "./services/runs.ts";
 import { seedBuiltinSkills } from "./services/skills.ts";
 import { upgradeVoice, type VoiceSocket, voiceWebSocket } from "./voice/ws.ts";
+import { startWebEngine, stopWebEngine } from "./web/engine.ts";
 import { startXMentions, stopXMentions } from "./x/mentions.ts";
 
 // A misbehaving library (or a dropped connection deep inside one) must never take the whole server down.
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
 	startPush();
 	void resumeCodeIndexes().catch(() => {});
 	void resumeLibrary().catch(() => {});
+	void startWebEngine();
 
 	let stopping = false;
 	const shutdown = async (signal: string) => {
@@ -122,6 +124,7 @@ async function main(): Promise<void> {
 		stopHousekeeping();
 		stopXMentions();
 		stopCodeIndexes();
+		await stopWebEngine();
 		cancelAllRuns();
 		leaveAllVoice();
 		await shutdownChannels();

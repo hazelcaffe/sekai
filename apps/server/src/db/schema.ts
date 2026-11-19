@@ -710,7 +710,7 @@ export const authTickets = pgTable(
 	"auth_tickets",
 	{
 		id: text().primaryKey(),
-		kind: text().$type<"mfa" | "code" | "invite" | "reset" | "sso">().notNull(),
+		kind: text().$type<"mfa" | "code" | "invite" | "reset" | "sso" | "app" | "app_code">().notNull(),
 		userId: text().references(() => users.id, { onDelete: "cascade" }),
 		tokenHash: text().notNull(),
 		/** A code sent by email or text (hashed). */
@@ -754,7 +754,7 @@ export const sessions = pgTable(
 		userId: text()
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
-		method: text().$type<"password" | "passkey" | "setup" | "sso" | "invite">().notNull(),
+		method: text().$type<"password" | "passkey" | "setup" | "sso" | "invite" | "app">().notNull(),
 		/**
 		 * Signed in, but owes a step before anything else: choose their own password (an admin set a temporary one),
 		 * or set up two-factor sign-in (their role requires it).
@@ -780,7 +780,7 @@ export const apiTokens = pgTable(
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
 		name: text().notNull(),
-		scope: text().$type<"full" | "bridge">().notNull(),
+		scope: text().$type<"full" | "bridge" | "extension">().notNull(),
 		tokenHash: text().notNull(),
 		/** The first characters, so you can tell tokens apart. */
 		prefix: text().notNull(),

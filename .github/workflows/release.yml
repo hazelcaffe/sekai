@@ -1,21 +1,64 @@
 name: Release
 
-# Push a tag like v0.2.0: the Docker image goes to GitHub's container registry (ghcr.io/<owner>/<repo>), for amd64
-# and arm64, and a GitHub release is made with notes from the merged pull requests.
+# Push a tag like v0.2.0 (or v0.2.0-beta.1 for a pre-release) and this:
+# - checks everything, as CI does;
+# - publishes the server's Docker image to GitHub's container registry (ghcr.io/<owner>/<repo>, amd64 and arm64);
+# - builds the desktop app for Windows, macOS and Linux, and the browser extensions (Chromium, Firefox, Safari);
+# - makes a GitHub release with all of them, their SHA-256 checksums, and notes.
+# Run it by hand (Actions → Release → Run workflow) to build everything without publishing: the files are then
+# the run's artifacts.
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  packages: write
-  attestations: write
-  id-token: write
+  contents: read
 
 env:
+  # electron-builder downloads Electron itself when it packages the desktop app.
   ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 
 jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      base: ${{ steps.v.outputs.base }}
+      build: ${{ steps.v.outputs.build }}
+      publish: ${{ steps.v.outputs.publish }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN: ${{ github.run_number }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            version="${REF_NAME#v}"
+            publish=true
+          else
+            version="$(jq -r .version package.json)-dev.$RUN"
+            publish=false
+          fi
+          if ! [[ $version =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tags look like v1.2.3 or v1.2.3-beta.1."
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            # The browser extensions take plain numbers: 1.2.3 (and the phone apps, on dev, a build number too).
+            echo "base=${BASH_REMATCH[1]}"
+            echo "build=$RUN"
+            echo "publish=$publish"
+            echo "prerelease=$([ -n "${BASH_REMATCH[2]}" ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $version (build $RUN)"
+
   check:
     name: Check before releasing
     runs-on: ubuntu-latest
@@ -46,9 +89,15 @@ jobs:
 
   image:
     name: Docker image
-    needs: check
+    needs: [version, check]
+    if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
@@ -64,8 +113,8 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.version.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.prerelease == 'false' }}
       - id: push
         uses: docker/build-push-action@v7
         with:
@@ -82,12 +131,92 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  release:
-    name: GitHub release
-    needs: image
-    runs-on: ubuntu-latest
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            args: --win --x64
+          # Not notarized: signed ad hoc, so macOS asks once ("Open anyway") instead of calling it damaged.
+          - name: macOS
+            os: macos-latest
+            args: --mac --x64 --arm64 -c.mac.identity=- -c.mac.hardenedRuntime=false
+          - name: Linux
+            os: ubuntu-latest
+            args: --linux --x64 --arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Build the installers
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARGS: ${{ matrix.args }}
+        run: |
+          bun run build
+          # shellcheck disable=SC2086 # ARGS is a list of options
+          bunx electron-builder --config electron-builder.yml $ARGS --publish never -c.extraMetadata.version="$VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.name }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          if-no-files-found: error
+
+  extension:
+    name: Browser extensions
+    needs: version
+    uses: ./.github/workflows/extension.yml
+    with:
+      version: ${{ needs.version.outputs.base }}
+
+  release:
+    name: GitHub release
+    needs: [version, image, desktop, extension]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: desktop-*
+          path: files
+          merge-multiple: true
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: sekai-browser-extensions*
+          path: files
+          merge-multiple: true
+      - name: Checksums and notes
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          # The extensions' own checksum file is replaced by one for everything.
+          rm -f files/SHA256SUMS.txt
+          (cd files && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          sed -e "s|{version}|$VERSION|g" -e "s|{repo}|$REPO|g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@v3
         with:
+          name: Sekai ${{ needs.version.outputs.version }}
+          body_path: ${{ runner.temp }}/notes.md
           generate_release_notes: true
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+          files: files/*
+          fail_on_unmatched_files: true

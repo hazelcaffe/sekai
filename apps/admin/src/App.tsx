@@ -27,12 +27,14 @@ import { SubscriptionsPanel } from "./pages/SubscriptionsPage.tsx";
 import { TailscalePanel } from "./pages/TailscalePanel.tsx";
 import { UsagePanel } from "./pages/UsagePanel.tsx";
 import { VoicePanel } from "./pages/VoicePanel.tsx";
+import { WebPanel } from "./pages/WebPanel.tsx";
 
 const PANELS: Record<Exclude<Tab, "overview">, ComponentType> = {
 	models: ModelsPanel,
 	subscriptions: SubscriptionsPanel,
 	apps: AppsPanel,
 	voice: VoicePanel,
+	web: WebPanel,
 	memory: MemoryPanel,
 	usage: UsagePanel,
 	compare: ComparePanel,

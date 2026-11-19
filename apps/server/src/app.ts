@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
+import { isExtensionOrigin } from "@sekai/shared";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { requirePermission } from "./auth/actor.ts";
@@ -23,6 +24,7 @@ import { conversationRoutes, messageRoutes } from "./routes/conversations.ts";
 import { desktopRoutes } from "./routes/desktop.ts";
 import { digestRoutes } from "./routes/digest.ts";
 import { documentRoutes } from "./routes/documents.ts";
+import { extensionRoutes } from "./routes/extension.ts";
 import { hookRoutes } from "./routes/hooks.ts";
 import { hostRoutes } from "./routes/hosts.ts";
 import { mcpRoutes, skillRoutes } from "./routes/library.ts";
@@ -34,6 +36,7 @@ import { systemRoutes } from "./routes/system.ts";
 import { tailscaleRoutes } from "./routes/tailscale.ts";
 import { adminOnly, needs } from "./routes/util.ts";
 import { voiceRoutes } from "./routes/voice.ts";
+import { webRoutes } from "./routes/web.ts";
 import { memoryRoutes, noteRoutes, routineRoutes } from "./routes/workspace.ts";
 import { xRoutes } from "./routes/x.ts";
 
@@ -108,7 +111,8 @@ export function createApp(): Hono {
 	app.use(
 		"/api/*",
 		cors({
-			origin: (origin) => corsOrigin(origin),
+			origin: (origin, c) =>
+				c.req.path.startsWith("/api/extension/") && isExtensionOrigin(origin) ? origin : corsOrigin(origin),
 			credentials: false,
 			allowHeaders: ["authorization", "content-type"],
 			allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
@@ -128,6 +132,7 @@ export function createApp(): Hono {
 		.use("/api-providers/*", adminOnly)
 		.use("/hosts/*", adminOnly)
 		.use("/tailscale/*", adminOnly)
+		.use("/web/*", adminOnly)
 		.use("/backups/*", adminOnly)
 		.use("/admin/*", adminOnly)
 		.use("/compare/*", needs("compare"))
@@ -157,6 +162,10 @@ export function createApp(): Hono {
 			"/tailscale/*",
 			recentAuthFor((c) => c.req.method !== "GET"),
 		)
+		.use(
+			"/web/*",
+			recentAuthFor((c) => c.req.method !== "GET" && !c.req.path.endsWith("/check")),
+		)
 		.route("/auth", authRoutes)
 		.route("/admin", adminRoutes)
 		.route("/", systemRoutes)
@@ -173,6 +182,7 @@ export function createApp(): Hono {
 		.route("/providers", providerRoutes)
 		.route("/api-providers", apiProviderRoutes)
 		.route("/voice", voiceRoutes)
+		.route("/web", webRoutes)
 		.route("/x", xRoutes)
 		.route("/instagram", instagramRoutes)
 		.route("/tiktok", tiktokRoutes)
@@ -186,6 +196,7 @@ export function createApp(): Hono {
 		.route("/digest", digestRoutes)
 		.route("/compare", compareRoutes)
 		.route("/documents", documentRoutes)
+		.route("/extension", extensionRoutes)
 		.route("/code", codeRoutes)
 		.route("/machines", machineRoutes)
 		.route("/credentials", credentialRoutes);

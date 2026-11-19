@@ -1,0 +1,126 @@
+name: Browser extensions
+
+on:
+  pull_request:
+    paths:
+      - apps/extension/**
+      - apps/server/**
+      - apps/web/**
+      - packages/shared/**
+      - packages/ui/**
+      - bun.lock
+      - package.json
+      - .github/workflows/extension.yml
+  push:
+    # Branches only: a release tag builds the extensions through the release workflow.
+    branches: ["**"]
+    paths:
+      - apps/extension/**
+      - apps/server/src/browser/extension.ts
+      - apps/server/src/routes/extension.ts
+      - packages/shared/src/extension.ts
+      - .github/workflows/extension.yml
+  workflow_dispatch:
+  # The release workflow builds them with this, for its version.
+  workflow_call:
+    inputs:
+      version:
+        description: "Version, like 0.2.0 (empty: the one in apps/extension/package.json)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Its own group name, so it never shares one with a workflow that calls it; release builds are never cancelled.
+concurrency:
+  group: extension-${{ github.ref }}-${{ inputs.version || 'ci' }}
+  cancel-in-progress: ${{ !inputs.version }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      SEKAI_EXTENSION_TEST_DATABASE_URL: postgres://sekai:sekai@127.0.0.1:5433/sekai_extension_test
+      SEKAI_EXTENSION_TEST_FIREFOX: "1"
+      SEKAI_EXTENSION_TEST_OUTPUT: /tmp/extension-screenshots
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: sekai
+          POSTGRES_PASSWORD: sekai
+          POSTGRES_DB: sekai_extension_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U sekai -d sekai_extension_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # After installing: the lockfile records this package's version.
+      - name: Set the version
+        if: inputs.version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The version must look like 0.2.0."
+            exit 1
+          fi
+          jq --arg v "$VERSION" '.version = $v' apps/extension/package.json > "$RUNNER_TEMP/package.json"
+          mv "$RUNNER_TEMP/package.json" apps/extension/package.json
+      - run: bun run --cwd apps/extension typecheck
+      - run: bun test apps/server/test/extension.test.ts
+      - run: bun run build:extension
+      - run: bun run build:web
+      - run: bun x --no-install playwright-core install --with-deps chromium firefox
+        working-directory: apps/extension
+      - run: bun run --cwd apps/extension test:e2e
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: extension-screenshots
+          path: /tmp/extension-screenshots/*.png
+          if-no-files-found: ignore
+      - name: Package the extensions
+        run: bun run apps/extension/release.ts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sekai-browser-extensions
+          path: apps/extension/release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  safari:
+    name: Safari macOS app (unsigned)
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: sekai-browser-extensions
+          path: extension-release
+      - name: Unpack the Safari source
+        run: |
+          mkdir -p "$RUNNER_TEMP/safari-source"
+          unzip -q extension-release/sekai-safari-webextension-source-*.zip -d "$RUNNER_TEMP/safari-source"
+      - name: Convert and compile without signing
+        run: bash apps/extension/scripts/build-safari.sh "$RUNNER_TEMP/safari-source"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sekai-browser-extensions-safari-macos
+          path: apps/extension/release/sekai-safari-macos-unsigned-*.zip
+          if-no-files-found: error
+          retention-days: 30

@@ -153,3 +153,6 @@ export const useVoiceModels = () =>
 	useQuery({ queryKey: qk.voiceModels, queryFn: api.voice.models, staleTime: 60_000 });
 export const useEmbeddingModels = () =>
 	useQuery({ queryKey: qk.embeddingModels, queryFn: api.apiProviders.embeddingModels, staleTime: 5 * 60_000 });
+/** Web reading: Firecrawl Local's state and settings (admins only). */
+export const useWebEngine = (enabled = true) =>
+	useQuery({ queryKey: qk.webEngine, queryFn: api.web.status, enabled, staleTime: 10_000 });

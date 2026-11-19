@@ -5,13 +5,15 @@ import { eventVisibleTo } from "./events/scope.ts";
 import { errorMessage } from "./lib/errors.ts";
 import { log } from "./lib/log.ts";
 import { seal, unseal } from "./lib/secrets.ts";
+import { peopleWithDevices, pushToDevices } from "./mobile/devices.ts";
 import { readKey, writeKey } from "./services/kv.ts";
 import { allPrefs, readPref, writePref } from "./services/prefs.ts";
 
 /**
  * Web Push: notifications on your phone or browser even when Sekai isn't open. Each browser that turns it on
  * (Settings → Notifications) gets every notification the app would show its person; the service worker skips them
- * while you're looking at Sekai. Subscriptions are each person's own (in their settings).
+ * while you're looking at Sekai. Subscriptions are each person's own (in their settings). Phones with the iOS or
+ * Android app get the same notifications through Apple's and Google's push services (mobile/devices.ts).
  */
 
 interface Subscription {
@@ -79,9 +81,11 @@ export async function removeSubscription(endpoint: string): Promise<void> {
 	);
 }
 
-/** Sends to the signed-in person's browsers. */
+/** Sends to the signed-in person's browsers and phones. */
 export async function pushToMe(payload: PushPayload): Promise<number> {
-	return pushTo(requireActorId(), payload);
+	const userId = requireActorId();
+	const [web, phones] = await Promise.all([pushTo(userId, payload), pushToDevices(userId, payload)]);
+	return web + phones;
 }
 
 interface PushPayload {
@@ -128,15 +132,19 @@ async function pushTo(userId: string, payload: PushPayload): Promise<number> {
 	return sent;
 }
 
-/** Every notification the app would show someone also goes to their browsers as a push. */
+/** Every notification the app would show someone also goes to their browsers and phones as a push. */
 export function startPush(): () => void {
 	return bus.subscribe((ev, audience) => {
 		if (ev.type !== "notification") return;
 		void (async () => {
-			for (const { userId } of await allPrefs<Subscription[]>(SUBS)) {
+			const people = new Set([
+				...(await allPrefs<Subscription[]>(SUBS)).map((p) => p.userId),
+				...(await peopleWithDevices()),
+			]);
+			for (const userId of people) {
 				const who = await actorFor(userId).catch(() => null);
 				if (!who || !(await eventVisibleTo(ev, audience, who))) continue;
-				await pushTo(userId, {
+				const payload: PushPayload = {
 					title: ev.title,
 					body: ev.body,
 					url: ev.url ?? (ev.conversationId ? `/c/${ev.conversationId}` : "/"),
@@ -146,7 +154,8 @@ export function startPush(): () => void {
 					...(ev.approval && !ev.approval.alwaysAsk
 						? { approval: { toolCallId: ev.approval.toolCallId } }
 						: {}),
-				});
+				};
+				await Promise.all([pushTo(userId, payload), pushToDevices(userId, payload)]);
 			}
 		})().catch((err: unknown) => log.warn(`push failed: ${errorMessage(err)}`));
 	});

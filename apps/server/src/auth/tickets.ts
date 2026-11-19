@@ -9,7 +9,7 @@ import { randomSecret, safeEqual, sha256 } from "./request.ts";
  * its SHA-256 is kept. A ticket can also hold a code sent by email or text (hashed), with a limited number of tries.
  */
 
-export type TicketKind = "mfa" | "code" | "invite" | "reset" | "sso";
+export type TicketKind = "mfa" | "code" | "invite" | "reset" | "sso" | "app" | "app_code";
 type Row = typeof schema.authTickets.$inferSelect;
 
 export const TICKET_MS: Record<TicketKind, number> = {
@@ -18,6 +18,8 @@ export const TICKET_MS: Record<TicketKind, number> = {
 	invite: 7 * 86_400_000,
 	reset: 60 * 60_000,
 	sso: 10 * 60_000,
+	app: 15 * 60_000,
+	app_code: 2 * 60_000,
 };
 /** Wrong codes before a ticket is used up. */
 export const MAX_ATTEMPTS = 5;

@@ -14,12 +14,12 @@ src/components/AdminShell.tsx  AdminFrame: sidebar on large screens (grouped nav
                              appears once the page title scrolls away)
 src/lib/nav.tsx              NAV groups/items (label, icon, tone, blurb, search keywords); searchNav()
 src/lib/attention.ts         useAttention(): what needs the owner (approvals, gateway down, subscriptions to
-                             sign in again, MCP apps, Discord offline, Tailscale keys, devices bots can't
-                             reach, no passkey) + worst tone per page for nav dots
+                             sign in again, MCP apps, the web engine, Discord offline, Tailscale keys, devices
+                             bots can't reach, no passkey) + worst tone per page for nav dots
 src/pages/OverviewPanel.tsx  Needs you, At a glance (desktop), the page list with search (phones)
-src/pages/*Panel.tsx         one per page: Models (+ ApiProviders), Subscriptions, Apps, Voice, Memory, Approvals,
-                             Computers (ComputerSettings), Tailscale (+ HostsSection), Account, Devices
-                             ("Sign-ins & tokens"), About
+src/pages/*Panel.tsx         one per page: Models (+ ApiProviders), Subscriptions, Apps, Voice, Web reading
+                             (Firecrawl Local), Memory, Approvals, Computers (ComputerSettings), Tailscale
+                             (+ HostsSection), Account, Devices ("Sign-ins & tokens"), About
 src/lib/settings.ts          useSaveSettings(): PATCH settings + quiet "Saved" toast
 src/lib/theme.ts             theme shared with the main app (localStorage "sekai.theme")
 ```

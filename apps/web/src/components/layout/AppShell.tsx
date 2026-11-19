@@ -1,4 +1,4 @@
-import { desktop, useApprovals, useCredentialRequests, usePairings } from "@sekai/client";
+import { desktop, mobile, useApprovals, useCredentialRequests, usePairings } from "@sekai/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { WifiOff } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { Outlet, useNavigate } from "react-router";
 import { connectEvents } from "../../lib/events.ts";
 import { useHotkey, useLayout } from "../../lib/hooks.ts";
+import { syncPhonePush } from "../../lib/notifications.ts";
 import { useUi } from "../../stores/ui.ts";
 import { CredentialPrompt } from "../computer/CredentialPrompt.tsx";
 import { CommandPalette } from "../dialogs/CommandPalette.tsx";
@@ -61,22 +62,29 @@ export function AppShell() {
 	const ui = useUi();
 
 	useEffect(() => connectEvents(qc), [qc]);
+	// Phone app: keep the server told where to send this phone's pushes.
+	useEffect(() => syncPhonePush(), []);
 
-	// Desktop app: the dock/taskbar badge counts approvals waiting for you.
+	// Desktop and phone apps: the dock/taskbar or app icon badge counts what's waiting for you.
 	const { data: approvals } = useApprovals();
 	const { data: pairings } = usePairings();
 	const { data: logins } = useCredentialRequests();
 	const waiting = (approvals?.length ?? 0) + (pairings?.length ?? 0) + (logins?.length ?? 0);
-	useEffect(() => desktop?.setBadge(waiting), [waiting]);
+	useEffect(() => {
+		desktop?.setBadge(waiting);
+		mobile?.setBadge(waiting);
+	}, [waiting]);
 
-	// Notification clicks (browser, service worker or desktop app) navigate inside the app.
+	// Notification clicks (browser, service worker, desktop or phone app) navigate inside the app.
 	useEffect(() => {
 		const onNav = (e: Event) => navigate((e as CustomEvent<string>).detail);
 		window.addEventListener("sekai:navigate", onNav);
 		const off = desktop?.onNavigate((path) => navigate(path));
+		const offPhone = mobile?.onNavigate((path) => navigate(path));
 		return () => {
 			window.removeEventListener("sekai:navigate", onNav);
 			off?.();
+			offPhone?.();
 		};
 	}, [navigate]);
 
