@@ -2,7 +2,7 @@
 // slack-routing.test.ts runs it as its own process. Never point it at a live Sekai's database.
 import { rmSync } from "node:fs";
 
-import type { ToolPart } from "@sekai/shared";
+import { slackDmThreads, type ToolPart } from "@sekai/shared";
 import { requestApproval } from "../../src/agent/approvals.ts";
 import { createApp } from "../../src/app.ts";
 import { actorFor, currentActor, runAs } from "../../src/auth/actor.ts";
@@ -20,6 +20,7 @@ import type { ChannelAdapter, ChannelHandlers, InboundMessage, Reply } from "../
 import { config } from "../../src/config.ts";
 import { closeDb, db, initDb, schema } from "../../src/db/index.ts";
 import { bus } from "../../src/events/bus.ts";
+import { messageUser } from "../../src/outreach/messages.ts";
 import { createAgent, updateAgent } from "../../src/services/agents.ts";
 import { createMessage, listMessages } from "../../src/services/messages.ts";
 
@@ -32,7 +33,7 @@ registerAdapter(
 	"slack",
 	(channel): ChannelAdapter => ({
 		maxText: 3900,
-		threads: true,
+		threads: slackDmThreads(channel),
 		mention: (id) => `<@${id}>`,
 		subtext: (s) => s,
 		start: async (h) => {
@@ -248,6 +249,51 @@ try {
 				})
 			).text === "Only my owner can do that.";
 		report.threadBindings = (await listBindings(ca.id)).length;
+
+		// DMs: the bot's own messages go on in your latest thread or, with the DM kept as one chat, in the DM itself.
+		const dmThread = {
+			chatId: "slack:T1:D1:300.000001",
+			chatName: "DM with Hazel: hi",
+			isGroup: false,
+			serverId: null,
+			senderId: "UOWNER",
+			senderName: "Hazel",
+		};
+		await ha.onCommand({ ...dmThread, name: "new", sub: null, options: {}, targetMessageId: null });
+		const threadChat = (await bindingsForChat(dmThread.chatId))[0]?.conversationId;
+		const toThread = await messageUser(a, { text: "Threaded hello", via: "slack" });
+		await wait(() => posts.some((p) => text(p.content) === "Threaded hello"));
+		report.dmThreads =
+			Boolean(threadChat) &&
+			toThread.conversationId === threadChat &&
+			posts.find((p) => text(p.content) === "Threaded hello")?.chatId === dmThread.chatId;
+		await updateChannel(ca.id, { config: { dmThreads: "off" } });
+		await wait(() => status(ca.id).state === "connected");
+		const toDm = await messageUser(a, { text: "Top-level hello", via: "slack" });
+		await wait(() => posts.some((p) => text(p.content) === "Top-level hello"));
+		const sent = posts.find((p) => text(p.content) === "Top-level hello");
+		report.dmOneChat = sent?.chatId === "slack:T1:D1" && toDm.conversationId !== threadChat;
+		// A thread you start under one of its messages is a chat of its own, and the DM keeps its chat.
+		const sideChat = `slack:T1:D1:${sent?.id}`;
+		await callbacks.get(ca.id)?.onMessage({
+			...dmThread,
+			chatId: sideChat,
+			parentChatId: "slack:T1:D1",
+			senderIsBot: false,
+			text: "Replying in a thread",
+			messageId: "300.000002",
+			replyToId: sent?.id ?? null,
+			threadReply: true,
+			addressed: true,
+			mentions: [],
+			attachments: [],
+		});
+		const top = (await bindingsForChat("slack:T1:D1")).find((x) => x.channelId === ca.id);
+		const side = (await bindingsForChat(sideChat)).find((x) => x.channelId === ca.id);
+		report.dmKeepsItsChat =
+			top?.conversationId === toDm.conversationId &&
+			Boolean(side) &&
+			side?.conversationId !== toDm.conversationId;
 	});
 } catch (error) {
 	report.error = error instanceof Error ? error.stack : String(error);

@@ -351,6 +351,49 @@ describe("Slack Socket Mode", () => {
 			thread_ts: "1000.000002",
 			text: "*Hello!*",
 		});
+		expect(adapter.threads).toBe(true);
+	});
+	test("a DM kept as one chat is answered in the DM, in order, while threads and channels keep their own chats", async () => {
+		const got: InboundMessage[] = [];
+		const fake = fakeSlack();
+		cleanups.push(() => fake.stop());
+		const adapter = slackAdapter({ ...channel(), config: { dmThreads: "off" } }, fake.transport);
+		cleanups.push(() => adapter.stop());
+		await adapter.start(
+			handlers({
+				onMessage: async (m) => {
+					got.push(m);
+				},
+			}),
+		);
+		expect(adapter.threads).toBe(false);
+		for (const event of [
+			{ channel: "D1", channel_type: "im", ts: "1000.000001", text: "Hi" },
+			{ channel: "D1", channel_type: "im", ts: "1000.000002", text: "Again" },
+			{ channel: "D1", channel_type: "im", ts: "1000.000003", thread_ts: "1000.000001", text: "In a thread" },
+			{ channel: "C1", channel_type: "channel", ts: "1000.000004", text: "<@UBOTA> hi" },
+		])
+			fake.emit("A", "events_api", { team_id: "T1", event: { type: "message", user: "UOWNER", ...event } });
+		await until(() => got.length === 4);
+		const dm = got.filter((m) => m.chatId === "slack:T1:D1");
+		expect(dm.map((m) => m.messageId)).toEqual(["1000.000001", "1000.000002"]);
+		expect(dm[0]).toMatchObject({ chatName: "DM with Hazel", isGroup: false, threadReply: false });
+		expect(got.find((m) => m.messageId === "1000.000003")).toMatchObject({
+			chatId: "slack:T1:D1:1000.000001",
+			threadReply: true,
+		});
+		expect(got.find((m) => m.messageId === "1000.000004")?.chatId).toBe("slack:T1:C1:1000.000004");
+		await adapter.typing("slack:T1:D1");
+		await adapter.send("slack:T1:D1", "Hello");
+		// No thread to show Slack's own "is thinking…" in: a reaction on your latest message stands in for it.
+		expect(fake.calls.some((c) => c.method === "assistant.threads.setStatus")).toBe(false);
+		expect(fake.calls.find((c) => c.method === "reactions.add")?.body).toMatchObject({
+			channel: "D1",
+			timestamp: "1000.000002",
+		});
+		const post = fake.calls.find((c) => c.method === "chat.postMessage")?.body;
+		expect(post).toMatchObject({ channel: "D1", text: "Hello" });
+		expect(post?.thread_ts).toBeUndefined();
 	});
 	test("mentions, ordinary messages and thread replies translate without executing edits or own messages", async () => {
 		const got: InboundMessage[] = [];

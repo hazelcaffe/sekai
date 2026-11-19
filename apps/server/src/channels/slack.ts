@@ -1,4 +1,4 @@
-import type { Channel } from "@sekai/shared";
+import { type Channel, slackDmThreads } from "@sekai/shared";
 import { errorMessage } from "../lib/errors.ts";
 import { guardedFetch } from "../lib/net.ts";
 import { truncate } from "../lib/text.ts";
@@ -176,11 +176,13 @@ const pause = (ms: number, signal: AbortSignal) =>
 
 /**
  * One Slack app per Sekai bot: a real bot user, connected out over Socket Mode (no public address needed) and
- * talking through the Web API. Every top-level message starts a thread, and each thread is its own chat.
+ * talking through the Web API. Every top-level message starts a thread, and each thread is its own chat; DMs can
+ * be one ongoing chat instead (slackDmThreads).
  */
 export function slackAdapter(channel: Channel, transport: SlackTransport = {}): ChannelAdapter {
 	const botToken = channelSecret(channel, "botToken");
 	const appToken = channelSecret(channel, "appToken");
+	const dmThreads = slackDmThreads(channel);
 	const apiBase = transport.api ?? "https://slack.com/api";
 	const request = transport.fetch ?? fetch;
 	const http = transport.http ?? guardedFetch;
@@ -285,6 +287,12 @@ export function slackAdapter(channel: Channel, transport: SlackTransport = {}): 
 		if (seen.size > 5000) seen.delete(seen.keys().next().value ?? "");
 		return true;
 	}
+	/** The thread a message belongs to: its own for a new one, none for a DM kept as one chat. */
+	function threadOf(event: SlackEvent): string | undefined {
+		if (event.thread_ts) return event.thread_ts;
+		const dm = event.channel_type === "im" || Boolean(event.channel?.startsWith("D"));
+		return dm && !dmThreads ? undefined : event.ts;
+	}
 	/** Runs work for one thread after the work before it there, while other threads go on. */
 	function inLane(key: string, fn: () => Promise<void>): Promise<void> {
 		const task = (lanes.get(key) ?? Promise.resolve()).then(() => (stopped ? undefined : fn()));
@@ -312,7 +320,7 @@ export function slackAdapter(channel: Channel, transport: SlackTransport = {}): 
 		if (event.subtype && !WRITTEN.has(event.subtype)) return;
 		// The message and app_mention subscriptions both deliver a message that mentions the bot.
 		if (!remember(`message:${event.channel}:${event.ts}`)) return;
-		const thread = event.thread_ts ?? event.ts;
+		const thread = threadOf(event);
 		const text = event.text ?? "";
 		const ids = [
 			...new Set([...text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]+)?>/g)].flatMap((m) => (m[1] ? [m[1]] : []))),
@@ -428,7 +436,7 @@ export function slackAdapter(channel: Channel, transport: SlackTransport = {}): 
 				return;
 			}
 			if ((event.type === "message" || event.type === "app_mention") && event.channel) {
-				task = inLane(`${event.channel}:${event.thread_ts ?? event.ts}`, () => message(event));
+				task = inLane(`${event.channel}:${threadOf(event) ?? ""}`, () => message(event));
 			}
 		} else if (envelope.type === "slash_commands" || envelope.type === "interactive") {
 			task = interaction(p, envelope.type === "slash_commands");
@@ -614,9 +622,11 @@ export function slackAdapter(channel: Channel, transport: SlackTransport = {}): 
 	return {
 		// Slack advises keeping messages under 4,000 characters (it truncates far longer ones).
 		maxText: 3900,
-		threads: true,
+		threads: dmThreads,
 		help: {
-			intro: "**Talk to me** in my Messages tab, or mention me in a channel I'm in. Each thread is its own chat: reply in it to go on.",
+			intro: dmThreads
+				? "**Talk to me** in my Messages tab, or mention me in a channel I'm in. Each thread is its own chat: reply in it to go on."
+				: "**Talk to me** in my Messages tab, where we keep one ongoing chat (/new starts fresh), or mention me in a channel I'm in, where each thread is its own chat.",
 			tips: "My Slack command (see me in Sekai) takes status, new, stop, model or help. In a thread, mention me and type the command: @me /status.",
 		},
 		mention: (id) => `<@${id}>`,
