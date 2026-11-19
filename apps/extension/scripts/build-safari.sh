@@ -22,13 +22,15 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/sekai-safari.XXXXXX")"
 # Only this script's unique temporary directory is removed.
 trap 'rm -rf "$work"' EXIT
 
+# The same id as the iOS and Android apps; the extension's must start with the app's.
+app_id="${SEKAI_SAFARI_APP_ID:-io.github.hazelcaffe.sekai.browser}"
 tool=safari-web-extension-converter
 if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
     tool=safari-web-extension-packager
 fi
 xcrun "$tool" "$source_dir" \
     --project-location "$work/project" \
-    --app-name Sekai --bundle-identifier app.sekai.browser \
+    --app-name Sekai --bundle-identifier "$app_id" \
     --macos-only --swift --no-open --no-prompt
 
 project="$(find "$work/project" -name '*.xcodeproj' -type d -print -quit)"
@@ -47,6 +49,21 @@ if not matches:
 print(matches[0])
 PY
 )"
+# Some converter versions give the host app a different id from the one asked for: set both, so the
+# extension's id always starts with the app's (Xcode refuses to embed it otherwise).
+pbxproj="$project/project.pbxproj"
+python3 - "$pbxproj" "$app_id" <<'PY'
+import re, sys
+path, app_id = sys.argv[1], sys.argv[2]
+text = open(path).read()
+def fix(m):
+    value = m.group(2).strip('"')
+    new = f"{app_id}.Extension" if value.lower().endswith("extension") else app_id
+    return f'{m.group(1)}"{new}";'
+text = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER = )("?[^;\n]+"?);', fix, text)
+open(path, "w").write(text)
+PY
+grep -h "PRODUCT_BUNDLE_IDENTIFIER" "$pbxproj" | sort -u
 xcodebuild -project "$project" -scheme "$scheme" -configuration Release \
     -sdk macosx -derivedDataPath "$work/build" \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
