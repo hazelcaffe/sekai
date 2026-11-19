@@ -203,20 +203,20 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: desktop-*
           path: files
           merge-multiple: true
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: sekai-android
           path: files
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: sekai-ios
           path: files
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: sekai-browser-extensions*
           path: files
