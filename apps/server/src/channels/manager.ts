@@ -569,7 +569,12 @@ async function tryTrust(channel: Channel, entry: Running, msg: InboundMessage): 
 const bindingsInFlight = new Map<string, Promise<ChannelBinding>>();
 const threadsInFlight = new Map<string, Promise<void>>();
 
-async function inheritThread(channel: Channel, msg: InboundMessage, parent: ChannelBinding): Promise<ChannelBinding> {
+async function inheritThread(
+	channel: Channel,
+	msg: InboundMessage,
+	parent: ChannelBinding,
+	dmThreads: boolean,
+): Promise<ChannelBinding> {
 	const key = `${currentActor()?.userId}:${msg.chatId}`;
 	const busy = threadsInFlight.get(key);
 	if (busy) {
@@ -580,8 +585,14 @@ async function inheritThread(channel: Channel, msg: InboundMessage, parent: Chan
 		if (await findBinding(channel.id, msg.chatId)) return;
 		const previous = await getConversation(parent.conversationId);
 		if (previous?.kind !== "group") {
-			// A proactive DM began at the top level. Its first threaded reply continues that conversation.
-			if (!msg.isGroup && msg.replyToId && (await sekaiMessageId(parent.externalChatId, msg.replyToId))) {
+			// A proactive DM began at the top level. Its first threaded reply continues that conversation, unless
+			// the DM is one ongoing chat: then the top level keeps it, and the thread is a chat of its own.
+			if (
+				dmThreads &&
+				!msg.isGroup &&
+				msg.replyToId &&
+				(await sekaiMessageId(parent.externalChatId, msg.replyToId))
+			) {
 				await upsertBinding({
 					channelId: channel.id,
 					externalChatId: msg.chatId,
@@ -846,7 +857,7 @@ async function handleInbound(channelId: string, msg: InboundMessage): Promise<vo
 	if (!agent) return;
 	// A channel-wide /listen or group link applies to new Slack threads, but each thread keeps its own history.
 	if (!binding && parent && msg.parentChatId) {
-		binding = await inheritThread(channel, msg, parent);
+		binding = await inheritThread(channel, msg, parent, Boolean(adapter.threads));
 	}
 	const conversation = binding ? await getConversation(binding.conversationId) : null;
 	const linked = conversation?.kind === "group";

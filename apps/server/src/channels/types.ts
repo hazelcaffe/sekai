@@ -169,8 +169,9 @@ export interface ChannelAdapter {
 	/** Longest text one platform message can hold (with headroom for formatting). */
 	readonly maxText: number;
 	/**
-	 * Every top-level message starts a thread and each thread is its own chat (Slack). Messages carry the chat
-	 * the thread is in (parentChatId), whose /listen and group link new threads inherit.
+	 * Every top-level message starts a thread and each thread is its own chat, DMs included (Slack, unless its DMs
+	 * are one chat), so the bot's own messages go on in your latest DM thread. Messages carry the chat the thread
+	 * is in (parentChatId), whose /listen and group link new threads inherit.
 	 */
 	readonly threads?: boolean;
 	/** What /help says about this platform: how to talk to the bot, and tips for its commands. */

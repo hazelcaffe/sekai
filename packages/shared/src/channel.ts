@@ -35,6 +35,15 @@ export type GroupPolicy = z.infer<typeof GroupPolicy>;
 export const ChannelDelivery = z.enum(["smart", "replies", "all"]);
 export type ChannelDelivery = z.infer<typeof ChannelDelivery>;
 
+/**
+ * Slack DMs, kept in a Slack channel's config as dmThreads: "on" (the default) starts a thread for every message,
+ * each its own chat, and the bot's own messages go on in your latest thread; "off" keeps the DM one ongoing chat,
+ * answered in the DM itself (a thread you start there is still its own chat). Channels always use threads.
+ */
+export function slackDmThreads(channel: Pick<Channel, "config">): boolean {
+	return channel.config.dmThreads !== "off";
+}
+
 export const Channel = z.object({
 	id: z.string(),
 	agentId: z.string(),

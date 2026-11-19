@@ -19,6 +19,7 @@ import {
 	type ChannelWithStatus,
 	type DmPolicy,
 	type GroupPolicy,
+	slackDmThreads,
 } from "@sekai/shared";
 import {
 	Badge,
@@ -71,6 +72,19 @@ const DELIVERY: { value: ChannelDelivery; label: string; description: string }[]
 	},
 	{ value: "replies", label: "Replies only", description: "Only answers to what you send here." },
 	{ value: "all", label: "Everything", description: "Mirror every message the bot posts in linked chats." },
+];
+
+const SLACK_DMS: { value: "on" | "off"; label: string; description: string }[] = [
+	{
+		value: "on",
+		label: "A thread per message",
+		description: "Each message you send starts its own thread and chat. Its messages to you go in your latest one.",
+	},
+	{
+		value: "off",
+		label: "One ongoing chat",
+		description: "It answers right in the DM, and its messages to you land there too. /new starts fresh.",
+	},
 ];
 
 function StatusLine({ channel }: { channel: ChannelWithStatus }) {
@@ -262,8 +276,8 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 						<p className="text-xs leading-5 text-fg-subtle">
 							Connected to {s.workspaceName ?? "your workspace"}. Invite it to a channel (
 							<span className="font-mono text-fg-muted">/invite @{current?.name ?? "it"}</span>), then
-							mention it there. Each thread is its own chat, and /listen on lets it answer there without a
-							mention.
+							mention it there. Each thread in a channel is its own chat, and /listen on lets it answer
+							there without a mention.
 						</p>
 					) : (
 						<p className="text-xs leading-5 text-fg-subtle">
@@ -318,6 +332,15 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 				title="Chats"
 				description="Each DM, channel and thread keeps its own history. Use /group link to bring several bots into one conversation."
 			>
+				{channel.type === "slack" && (
+					<Field label="Your DMs with it">
+						<Select
+							value={slackDmThreads(channel) ? "on" : "off"}
+							onValueChange={(v) => update.mutate({ config: { dmThreads: v } })}
+							options={SLACK_DMS}
+						/>
+					</Field>
+				)}
 				{bindings.length === 0 ? (
 					<p className="text-[13px] text-fg-subtle">No chats yet. Message the bot on {def.title}.</p>
 				) : (

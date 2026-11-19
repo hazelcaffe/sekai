@@ -53,6 +53,9 @@ test.skipIf(!dbReady)(
 			ownerApproved: true,
 			ownerOnlyModel: true,
 			threadBindings: 2,
+			dmThreads: true,
+			dmOneChat: true,
+			dmKeepsItsChat: true,
 		});
 	},
 	30_000,

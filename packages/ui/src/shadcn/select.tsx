@@ -56,7 +56,7 @@ function SelectContent({
 				position={position}
 				sideOffset={sideOffset}
 				className={cn(
-					"relative z-[80] max-h-[min(var(--radix-select-content-available-height),420px)] min-w-[max(var(--radix-select-trigger-width),8rem)] overflow-hidden rounded-2xl border border-border bg-popover p-1 text-popover-foreground shadow-pop",
+					"relative z-[80] max-h-[min(var(--radix-select-content-available-height),420px)] max-w-[min(var(--radix-select-content-available-width),28rem)] min-w-[max(var(--radix-select-trigger-width),8rem)] overflow-hidden rounded-2xl border border-border bg-popover p-1 text-popover-foreground shadow-pop",
 					floatingMotion,
 					className,
 				)}
