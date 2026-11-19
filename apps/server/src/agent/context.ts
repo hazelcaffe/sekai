@@ -74,6 +74,7 @@ export async function prepareContext(opts: {
 		webSearch: agent.capabilities.webSearch,
 		hasMcpTools: toolset.tools.some((t) => t.source === "mcp"),
 		hasLibrary: toolset.tools.some((t) => t.name === "library_search"),
+		webTools: toolset.tools.filter((t) => t.category === "web").map((t) => t.name),
 		approvalMode,
 		channel: opts.channel ?? null,
 		voiceCall: opts.voiceCall,

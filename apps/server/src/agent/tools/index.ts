@@ -13,6 +13,7 @@ import { codeTools } from "./code.ts";
 import { computerTools } from "./computer.ts";
 import { contactTools } from "./contact.ts";
 import { discordUserTools } from "./discord-user.ts";
+import { extensionTools } from "./extension.ts";
 import { hostTools } from "./hosts.ts";
 import { libraryTools } from "./library.ts";
 import { machineTools } from "./machines.ts";
@@ -49,6 +50,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
 	...agentTools,
 	...webTools,
 	...browserTools,
+	...extensionTools,
 	...discordUserTools,
 	...socialTools,
 	...computerTools,

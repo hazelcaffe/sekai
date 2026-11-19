@@ -47,6 +47,26 @@
         "electron-builder": "^26.18.0",
       },
     },
+    "apps/extension": {
+      "name": "@sekai/extension",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sekai/shared": "workspace:*",
+        "@sekai/ui": "workspace:*",
+        "react": "^19.3.1",
+        "react-dom": "^19.3.1",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "^4.3.5",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
+        "@vitejs/plugin-react": "^6.3.0",
+        "fflate": "^0.8.3",
+        "playwright-core": "1.65.1",
+        "tailwindcss": "^4.3.5",
+        "vite": "^8.3.8",
+      },
+    },
     "apps/server": {
       "name": "@sekai/server",
       "version": "0.1.0",
@@ -569,6 +589,8 @@
     "@sekai/client": ["@sekai/client@workspace:packages/client"],
 
     "@sekai/desktop": ["@sekai/desktop@workspace:apps/desktop"],
+
+    "@sekai/extension": ["@sekai/extension@workspace:apps/extension"],
 
     "@sekai/server": ["@sekai/server@workspace:apps/server"],
 

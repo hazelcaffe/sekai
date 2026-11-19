@@ -34,6 +34,7 @@ import {
 	ChevronRight,
 	Clock,
 	Download,
+	Globe,
 	Laptop,
 	LogOut,
 	MessageSquareText,
@@ -47,6 +48,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { BrowserExtensionSettings } from "../components/computer/BrowserExtensionSettings.tsx";
 import { ThisComputerSettings } from "../components/computer/ThisComputerSettings.tsx";
 import { Page } from "../components/layout/PageHeader.tsx";
 import {
@@ -478,6 +480,7 @@ const TABS = [
 	{ value: "profile", label: "Profile", icon: <UserRound /> },
 	{ value: "appearance", label: "Appearance", icon: <Palette /> },
 	{ value: "notifications", label: "Notifications", icon: <Bell /> },
+	{ value: "browser", label: "Browser extension", icon: <Globe /> },
 	...(desktop?.localComputer ? [{ value: "computer", label: "This computer", icon: <Laptop /> }] : []),
 ];
 
@@ -498,6 +501,13 @@ export function SettingsPage() {
 				</SettingsPanel>
 				<SettingsPanel value="appearance" title="Appearance">
 					<AppearanceTab />
+				</SettingsPanel>
+				<SettingsPanel
+					value="browser"
+					title="Browser extension"
+					description="Lend a bot the tabs you choose, not your whole browser."
+				>
+					<BrowserExtensionSettings />
 				</SettingsPanel>
 				<SettingsPanel
 					value="notifications"

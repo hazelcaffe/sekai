@@ -159,7 +159,7 @@ function TokenRow({ t, onRevoke }: { t: ApiTokenInfo; onRevoke: () => void }) {
 	return (
 		<div className="flex items-center gap-3 px-4 py-3">
 			<span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground [&_svg]:size-[18px]">
-				{t.scope === "bridge" ? <Laptop /> : <TerminalSquare />}
+				{t.scope === "bridge" ? <Laptop /> : t.scope === "extension" ? <Globe /> : <TerminalSquare />}
 			</span>
 			<div className="min-w-0 flex-1">
 				<div className="truncate text-sm font-medium">{t.name}</div>
@@ -193,6 +193,7 @@ function Tokens() {
 	const revoke = useMutation({ mutationFn: (id: string) => api.auth.revokeToken(id), onSuccess: refresh });
 	const desktops = (list.data ?? []).filter((t) => t.scope === "bridge");
 	const scripts = (list.data ?? []).filter((t) => t.scope === "full");
+	const browsers = (list.data ?? []).filter((t) => t.scope === "extension");
 	const close = () => {
 		setCreating(false);
 		setCreated(null);
@@ -220,6 +221,19 @@ function Tokens() {
 					</div>
 				)}
 			</Section>
+			{browsers.length > 0 && (
+				<Section
+					title="Browser extensions"
+					icon={<Globe />}
+					description="Each one can chat with your bots and lend them the tabs you share, nothing else. Make them in Settings → Browser extension."
+				>
+					<div className="divide-y divide-border rounded-2xl border border-border bg-card">
+						{browsers.map((t) => (
+							<TokenRow key={t.id} t={t} onRevoke={() => setRevoking(t)} />
+						))}
+					</div>
+				</Section>
+			)}
 			<Section
 				title="API tokens"
 				icon={<KeyRound />}
@@ -293,7 +307,9 @@ function Tokens() {
 				description={
 					revoking?.scope === "bridge"
 						? "That desktop app stops lending its computer until you turn lending on there again."
-						: "Anything using it stops working right away."
+						: revoking?.scope === "extension"
+							? "That browser stops chatting and sharing tabs until you connect it again with a new token."
+							: "Anything using it stops working right away."
 				}
 				confirmLabel="Revoke"
 				danger

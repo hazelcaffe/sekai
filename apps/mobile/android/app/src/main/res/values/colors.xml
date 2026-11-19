@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The web app's own backgrounds (Virtual Singers light, Nightcord at 25:00 dark), so nothing flashes. -->
+    <color name="background">#FFFFFF</color>
+    <color name="foreground">#0B1716</color>
+    <color name="muted">#4C5F5D</color>
+    <color name="accent">#33CCBB</color>
+    <color name="on_accent">#03302B</color>
+    <color name="icon_background">#FFFFFF</color>
+</resources>

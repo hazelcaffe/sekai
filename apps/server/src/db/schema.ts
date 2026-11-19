@@ -780,7 +780,7 @@ export const apiTokens = pgTable(
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
 		name: text().notNull(),
-		scope: text().$type<"full" | "bridge">().notNull(),
+		scope: text().$type<"full" | "bridge" | "extension">().notNull(),
 		tokenHash: text().notNull(),
 		/** The first characters, so you can tell tokens apart. */
 		prefix: text().notNull(),

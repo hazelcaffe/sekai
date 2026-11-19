@@ -3,8 +3,8 @@ name: Release
 # Push a tag like v0.2.0 (or v0.2.0-beta.1 for a pre-release) and this:
 # - checks everything, as CI does;
 # - publishes the server's Docker image to GitHub's container registry (ghcr.io/<owner>/<repo>, amd64 and arm64);
-# - builds the desktop app for Windows, macOS and Linux, and the phone apps (a signed Android APK, an unsigned
-#   iOS .ipa);
+# - builds the desktop app for Windows, macOS and Linux, the phone apps (a signed Android APK, an unsigned
+#   iOS .ipa) and the browser extensions (Chromium, Firefox, Safari);
 # - makes a GitHub release with all of them, their SHA-256 checksums, and notes.
 # Run it by hand (Actions → Release → Run workflow) to build everything without publishing: the files are then
 # the run's artifacts.
@@ -186,9 +186,16 @@ jobs:
       build: ${{ fromJSON(needs.version.outputs.build) }}
     secrets: inherit
 
+  extension:
+    name: Browser extensions
+    needs: version
+    uses: ./.github/workflows/extension.yml
+    with:
+      version: ${{ needs.version.outputs.base }}
+
   release:
     name: GitHub release
-    needs: [version, image, desktop, mobile]
+    needs: [version, image, desktop, mobile, extension]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -209,11 +216,18 @@ jobs:
         with:
           name: sekai-ios
           path: files
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: sekai-browser-extensions*
+          path: files
+          merge-multiple: true
       - name: Checksums and notes
         env:
           VERSION: ${{ needs.version.outputs.version }}
           REPO: ${{ github.repository }}
         run: |
+          # The extensions' own checksum file is replaced by one for everything.
+          rm -f files/SHA256SUMS.txt
           (cd files && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
           sed -e "s|{version}|$VERSION|g" -e "s|{repo}|$REPO|g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@v3

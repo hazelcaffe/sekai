@@ -211,7 +211,7 @@ export interface PasskeyInfo {
 	lastUsedAt: number | null;
 }
 
-export const API_TOKEN_SCOPES = ["full", "bridge"] as const;
+export const API_TOKEN_SCOPES = ["full", "bridge", "extension"] as const;
 export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
 
 export interface ApiTokenInfo {

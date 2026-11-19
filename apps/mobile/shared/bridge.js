@@ -120,11 +120,46 @@
 			return false;
 		}
 	}
+	// The server's CSP doesn't let the page fetch blob: or data: addresses, so the bridge keeps the Blobs the page
+	// makes links for and reads data: links itself. Revoked ones are kept a minute: pages revoke right after click().
+	const blobs = new Map();
+	const createObjectURL = URL.createObjectURL;
+	const revokeObjectURL = URL.revokeObjectURL;
+	URL.createObjectURL = (obj) => {
+		const url = createObjectURL.call(URL, obj);
+		if (obj instanceof Blob) {
+			blobs.set(url, obj);
+			// Links pages never revoke (image previews…) mustn't pile up: keep the newest 50.
+			if (blobs.size > 50) blobs.delete(blobs.keys().next().value);
+		}
+		return url;
+	};
+	URL.revokeObjectURL = (url) => {
+		setTimeout(() => blobs.delete(url), 60_000);
+		return revokeObjectURL.call(URL, url);
+	};
+	function dataBlob(href) {
+		const comma = href.indexOf(",");
+		const meta = href.slice(5, comma);
+		const body = href.slice(comma + 1);
+		const base64 = meta.endsWith(";base64");
+		const type = (base64 ? meta.slice(0, -7) : meta).split(";")[0] || "text/plain";
+		const bytes = base64
+			? Uint8Array.from(atob(body), (c) => c.charCodeAt(0))
+			: new TextEncoder().encode(decodeURIComponent(body));
+		return new Blob([bytes], { type });
+	}
+	async function blobOf(href) {
+		const kept = blobs.get(href);
+		if (kept) return kept;
+		if (href.startsWith("data:")) return dataBlob(href);
+		const res = await fetch(href, { credentials: "include" });
+		if (!res.ok) throw new Error(String(res.status));
+		return res.blob();
+	}
 	async function save(a) {
 		try {
-			const res = await fetch(a.href, { credentials: "include" });
-			if (!res.ok) throw new Error(String(res.status));
-			const blob = await res.blob();
+			const blob = await blobOf(a.href);
 			const base64 = await new Promise((resolve, reject) => {
 				const reader = new FileReader();
 				reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "");

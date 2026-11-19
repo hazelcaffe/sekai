@@ -1,0 +1,14 @@
+@import "@sekai/ui/styles.css";
+@source "../../../packages/ui/src";
+
+html {
+	min-width: 320px;
+	min-height: 100%;
+	background: var(--surface);
+	color: var(--fg);
+}
+
+body {
+	margin: 0;
+	font-family: "Inter Variable", sans-serif;
+}

@@ -59,7 +59,12 @@ src/machines/     bots' computers: manager.ts (also checkpoints = Proxmox disk s
                   run_command), drivers.ts, proxmox.ts, ssh.ts, vnc.ts, keys.ts;
                   hosts.ts (your devices: master key, per-bot per-account grants), tailscale.ts (CLI + API)
 src/browser/      Playwright sessions on a bot's computer or headless on the server; sign-in requests
+                  extension.ts: short-lived browser-extension grants and commands (routes/extension.ts);
+                  separate extension_ tools, bound to person, token, bot and chat, no persisted control
 src/mcp/          MCP client manager, OAuth for apps, app icons
+src/web/          the web engine: Firecrawl Local started and watched here (engine.ts: loopback, own token,
+                  no --allow-private) or one elsewhere; settings.ts (kv "web", sealed key and token); the web tools
+                  (web_fetch, web_search, web_map, web_crawl) and routes/web.ts (Admin → Web reading) use it
 src/code/         code index: chunking, incremental indexing, hybrid search (pgvector + tsvector, RRF)
 src/x/, src/social/  X (emusks), Instagram, TikTok accounts; x/mentions.ts polls and answers
 src/outreach/     message_user / call_user (bots reaching you), voice messages

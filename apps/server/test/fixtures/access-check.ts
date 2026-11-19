@@ -31,12 +31,13 @@ const report: Record<string, unknown> = {};
 async function call(
 	method: string,
 	path: string,
-	opts: { body?: unknown; cookie?: string; form?: FormData; jar?: Jar } = {},
+	opts: { body?: unknown; cookie?: string; form?: FormData; jar?: Jar; token?: string } = {},
 ) {
 	const headers: Record<string, string> = { origin: base };
 	if (opts.body !== undefined) headers["content-type"] = "application/json";
 	const cookie = opts.jar ? opts.jar.header() : opts.cookie;
 	if (cookie) headers.cookie = cookie;
+	if (opts.token) headers.authorization = `Bearer ${opts.token}`;
 	const res = await fetch(`${base}${path}`, {
 		method,
 		headers,
@@ -156,6 +157,34 @@ try {
 		updatedAt: Date.now(),
 	});
 	report.memberSearch = (await call("GET", "/api/search/messages?q=platypus", { jar: member })).data.length;
+
+	// Browser tokens see only their owner's bots/chats and cannot reach setup or other people's grants.
+	const browserToken = (await call("POST", "/api/extension/token", { jar: admin, body: { name: "test browser" } }))
+		.data;
+	const browserSession = await call("POST", "/api/extension/sessions", {
+		token: browserToken.token,
+		body: { agentId: adminBot.id, conversationId: adminChat.data.id, name: "Browser" },
+	});
+	const memberToken = (await call("POST", "/api/extension/token", { jar: member, body: { name: "member browser" } }))
+		.data;
+	report.browserExtension = {
+		connected: browserSession.status,
+		otherChat: (await call("GET", `/api/extension/chat/${adminChat.data.id}`, { token: memberToken.token })).status,
+		otherGrant: (
+			await call("POST", `/api/extension/sessions/${browserSession.data.id}/poll`, { token: memberToken.token })
+		).status,
+		sharedBot: (
+			await call("POST", "/api/extension/sessions", {
+				token: memberToken.token,
+				body: { agentId: adminBot.id, conversationId: chat.data.id, name: "No" },
+			})
+		).status,
+		setupBlocked: (await call("GET", "/api/settings", { token: browserToken.token })).status,
+		tokenMintBlocked: (
+			await call("POST", "/api/extension/token", { token: browserToken.token, body: { name: "No" } })
+		).status,
+	};
+	await call("DELETE", `/api/extension/sessions/${browserSession.data.id}`, { token: browserToken.token });
 
 	// Server setup is for admins; personal settings are each person's.
 	report.memberBackups = (await call("GET", "/api/backups", { jar: member })).status;

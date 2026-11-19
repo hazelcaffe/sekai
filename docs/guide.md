@@ -18,6 +18,7 @@
 - [Tailscale, and your servers and devices](#tailscale-and-your-servers-and-devices)
 - [Code search](#code-search)
 - [Computers, devboxes and the web](#computers-devboxes-and-the-web) and [your own computer](#your-own-computer)
+- [Your browser extension](#your-browser-extension)
 - [Subscriptions as brains](#subscriptions-as-brains)
 
 ## Bots and chats
@@ -257,6 +258,20 @@ Bots never get the master key, access is listed per device (remove it with one c
 
 A bot that works in a codebase can index it: `code_index` on a folder on its computer, a devbox or your lent computer. Sekai reads the files on that machine (skipping dependencies, builds, binaries and lock files), splits them into pieces at natural boundaries, and embeds them through the gateway (`text-embedding-3-small` by default). `code_search` then finds code by what it does ("where are sessions checked") or by name, mixing meaning and keyword matches. Indexing again reads only files that changed. See and manage indexes in the bot's panel under **Memory → Code**.
 
+## Web reading
+
+Bots read the web with `web_fetch`, which fetches a page and strips it to text. Turn on **Admin → Web reading** and that gets much better: Sekai runs [Firecrawl Local](https://github.com/firecrawl/firecrawl/tree/main/apps/local), one small Rust binary that turns a page into clean Markdown (no navigation, adverts or cookie banners), reads PDFs, Word and other documents, and renders pages that need JavaScript in the Chrome your server already has. Bots also get:
+
+- `web_search` — search the web and get the best pages with a snippet each.
+- `web_map` — every page of a site, from its sitemaps and front page, optionally filtered ("pricing").
+- `web_crawl` — follow links from a page and read up to 25 of them in one go, with `include`/`exclude` path patterns.
+
+**Where it runs.** _On this server_ lets Sekai start and watch it. **Install it** builds it with Rust's cargo in the background (a few minutes; install Rust from [rustup.rs](https://rustup.rs) if the button says this server hasn't got it). Sekai then starts it on 127.0.0.1 with a fresh token and a free port, restarts it if it stops, clears away one a crash left behind, and says on the page when something is wrong. _Somewhere else_ points at a `firecrawl-local serve` you run yourself — another machine, or a container next to Sekai: give its address and its `--token`, if it has one. The Docker image can include the binary: `docker compose build --build-arg WITH_WEB_ENGINE=1`.
+
+**What leaves your server.** Reading, listing and crawling happen on your machine and send nothing to Firecrawl. Searching has to go to Firecrawl's cloud, because there's no search index on your machine, and a page that refuses your server can be fetched by them instead. One setting decides: _nothing leaves_ (bots have no `web_search`), _searches only_ (the default), or _searches and refused pages_. Search works without an account, with low limits; a [Firecrawl key](https://www.firecrawl.dev/app/api-keys) raises them, and it's kept encrypted like every other secret.
+
+**Safety.** The engine listens on loopback only and never gets `--allow-private`, so it refuses your own network, the Sekai server itself and cloud metadata by itself, after redirects and DNS too. Addresses on your network stay with `web_fetch`, which asks you first. It identifies itself as `FirecrawlLocal` and reads `robots.txt` when crawling. **Try a page** on the Admin page reads one page the way a bot would, so you can see it working.
+
 ## Computers, devboxes and the web
 
 **A computer of its own.** Any bot can have its own computer: a VM on your Proxmox server running Debian 13 with XFCE (plus xfce-goodies) and Google Chrome. You create it from the bot's computer panel (the monitor icon in the chat header, or **⋯ → Give it a computer**), or the bot asks for one and you approve. Default size: 4 cores, 8 GB RAM with ballooning down to 2 GB, and a 64 GB disk; change it per computer (**Resize**), as the default in Settings, or let the bot ask for more.
@@ -289,6 +304,28 @@ The panel shows the screen live. **Take over** opens it full screen in Sekai (VN
 2. On the image storage (usually `local`), enable the content types **ISO image**, **Container template** and **Import**. Sekai downloads the official Debian 13 cloud image and container template there once, and keeps each computer's cloud-init seed there until the computer is ready.
 3. Enter the URL (`https://<host>:8006`), node, token, disk storage and bridge, then **Test connection**.
 4. Optional: a reusable, pre-approved Tailscale auth key.
+
+## Your browser extension
+
+The Sekai extension puts chats and approvals next to the page you're using. Chromium and Firefox use native
+sidebars; Safari uses a toolbar popover or a companion window because it has no equivalent WebExtension sidebar API.
+
+Download it from the [latest release](https://github.com/hazelcaffe/sekai/releases/latest), where every Sekai release
+includes it, or build it with `bun run build:extension`. Load the Chromium folder unpacked or Firefox's manifest as a temporary add-on. Safari
+needs signing with Xcode on macOS; downloads include source and a CI-built unsigned macOS host app, not a signed
+installer or an iOS app. The source can be converted with Xcode too. Permanent Firefox
+installs require Mozilla signing too. [Full installation and release instructions](../apps/extension/README.md).
+
+In Sekai, go to **Settings → Browser extension**, make a browser token, and paste it and your server address into
+the extension. Choose your own bot and a direct chat, then **Choose tabs to share**. Only shared tabs are visible
+to the bot, and host permission alone never shares a tab. Mutations always ask, even in YOLO. Opening and sharing
+a new tab also asks locally in the extension. Switching sites requires sharing again.
+
+**Stop sharing**, unshare the tab, change bot/chat, disconnect, or close the panel to stop control. Grants aren't
+saved or restored. Revoke saved browser tokens on the same Settings page. The browser tools are `extension_browsers`
+and `extension_browser`, with the **Using the user's browser** built-in skill; they remain separate from the bot's
+own browser tools and sign-ins. Screenshots require selecting the shared tab and invoking Sekai's toolbar icon there.
+The extension doesn't expose cookies, arbitrary JavaScript, browser settings, private windows or file access.
 
 ## Your own computer
 

@@ -7,6 +7,7 @@ import {
 	Blocks,
 	Brain,
 	Columns3,
+	Globe,
 	Info,
 	KeyRound,
 	LayoutDashboard,
@@ -30,6 +31,7 @@ export type Tab =
 	| "subscriptions"
 	| "apps"
 	| "voice"
+	| "web"
 	| "memory"
 	| "compare"
 	| "usage"
@@ -112,6 +114,14 @@ export const NAV: NavGroup[] = [
 				tone: "danger",
 				blurb: "Voices, calls and dictation",
 				keywords: "elevenlabs fish audio tts stt speech calls voices clone dictation transcription",
+			},
+			{
+				value: "web",
+				label: "Web reading",
+				icon: <Globe />,
+				tone: "info",
+				blurb: "Firecrawl Local: pages as clean Markdown",
+				keywords: "firecrawl local scrape crawl map search web fetch markdown pages browser cloud engine",
 			},
 			{
 				value: "memory",

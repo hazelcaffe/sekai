@@ -51,6 +51,13 @@ import type { CompareEvent, CompareRequest } from "./compare.ts";
 import type { Conversation, ConversationCreate, ConversationUpdate, MessageSearchHit } from "./conversation.ts";
 import type { DigestConfigUpdate, DigestStatus } from "./digest.ts";
 import type { CallRing } from "./events.ts";
+import type {
+	ExtensionChat,
+	ExtensionCommand,
+	ExtensionConnect,
+	ExtensionResult,
+	ExtensionSession,
+} from "./extension.ts";
 import type { HealthReport } from "./health.ts";
 import type {
 	AccessGrant,
@@ -121,6 +128,7 @@ import type {
 	VoiceSettings,
 	VoiceSettingsUpdate,
 } from "./voice.ts";
+import type { WebEngineCheck, WebEngineSettingsUpdate, WebEngineStatus } from "./web.ts";
 import type { XAccount, XConnect, XUpdate } from "./x.ts";
 
 export class ApiError extends Error {
@@ -140,7 +148,7 @@ export interface ApiClientOptions {
 	/** Server origin, e.g. "http://127.0.0.1:7420". Empty string means same origin. */
 	baseUrl: string;
 	getToken?: () => string | null | undefined;
-	fetch?: typeof fetch;
+	fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 	/**
 	 * The server wants you to confirm it's you before a sensitive change: show the dialog and resolve true once
 	 * you did (the request is then sent again), false if you cancelled.
@@ -246,6 +254,25 @@ export function createApiClient(options: ApiClientOptions) {
 
 		info: () => get<ServerInfo>("/info"),
 
+		extension: {
+			createToken: (name: string) => post<CreatedApiToken>("/extension/token", { name }),
+			agents: () => get<Pick<Agent, "id" | "name">[]>("/extension/agents"),
+			chats: (agentId: string) => get<Conversation[]>(`/extension/chats/${agentId}`),
+			createChat: (agentId: string) => post<Conversation>("/extension/chats", { agentId }),
+			chat: (id: string) => get<ExtensionChat>(`/extension/chat/${id}`),
+			send: (id: string, text: string) => post<MessageSendResult>(`/extension/chat/${id}/messages`, { text }),
+			stop: (id: string) => post<{ cancelled: number }>(`/extension/chat/${id}/stop`),
+			approve: (id: string, toolCallId: string, approve: boolean) =>
+				post<{ ok: true }>(`/extension/chat/${id}/approve`, { toolCallId, approve }),
+			connect: (input: ExtensionConnect) => post<ExtensionSession>("/extension/sessions", input),
+			poll: (id: string) => post<ExtensionCommand | null>(`/extension/sessions/${id}/poll`),
+			check: (id: string, commandId: string) =>
+				post<{ ok: true }>(`/extension/sessions/${id}/check`, { commandId }),
+			result: (id: string, result: ExtensionResult) =>
+				post<{ ok: true }>(`/extension/sessions/${id}/result`, result),
+			disconnect: (id: string) => del(`/extension/sessions/${id}`),
+		},
+
 		voice: {
 			/** WebSocket for dictation: send 24 kHz mono 16-bit PCM, get the words back. In a chat, its bot's model. */
 			dictateUrl: (conversationId?: string | null) =>
@@ -319,6 +346,17 @@ export function createApiClient(options: ApiClientOptions) {
 			search: (id: string, query: string, limit?: number) =>
 				post<CodeSearchHit[]>(`/code/${id}/search`, { query, limit }),
 			delete: (id: string) => del(`/code/${id}`),
+		},
+
+		/** Web reading: Firecrawl Local, run here by Sekai or reached somewhere else (Admin → Web reading). */
+		web: {
+			status: () => get<WebEngineStatus>("/web"),
+			save: (body: WebEngineSettingsUpdate) => patch<WebEngineStatus>("/web/settings", body),
+			/** Installs Firecrawl Local on this server with cargo, then starts it. */
+			install: () => post<WebEngineStatus>("/web/install"),
+			restart: () => post<WebEngineStatus>("/web/restart"),
+			/** Reads one page through the engine, to see that it works. */
+			check: (url: string) => post<WebEngineCheck>("/web/check", { url }),
 		},
 
 		push: {

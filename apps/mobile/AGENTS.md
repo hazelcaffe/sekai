@@ -101,6 +101,14 @@ The app's user agent ends with ` SekaiApp/<version> (<Android|iOS>)`.
   `sekai_phone` (Pixel 8, Android 16): `sg kvm -c "$ANDROID_HOME/emulator/emulator -avd sekai_phone -no-window
   -no-audio -gpu swiftshader_indirect"` (drop `-no-window` to see it); a dev server on this machine is
   `http://10.0.2.2:<port>` from the emulator; screenshots with `adb exec-out screencap -p > shot.png`.
+- Android, more: the app id is `applicationId` in `android/app/build.gradle.kts`. Gradle copies `shared/` into the
+  assets at build time; the icons in `res/` are made from `shared/icon.png` by `android/scripts/icons.sh`
+  (ImageMagick). `./gradlew testDebugUnitTest lintDebug` for the unit tests and lint. Release builds are minified and
+  signed with `SEKAI_KEYSTORE`, `SEKAI_KEYSTORE_PASSWORD`, `SEKAI_KEY_ALIAS` and `SEKAI_KEY_PASSWORD` when
+  `SEKAI_KEYSTORE` is set (else with the debug key), to `app/build/outputs/apk/release/`. Debug builds allow
+  remote debugging of the web view: `adb forward tcp:9222 localabstract:webview_devtools_remote_$(adb shell pidof
+  io.github.hazelcaffe.sekai)`, then chrome://inspect or the DevTools protocol on port 9222. The mic needs a secure
+  context, so test calls at `http://localhost:<port>` after `adb reverse tcp:<port> tcp:<port>`.
 - iOS: `cd apps/mobile/ios && xcodegen && open Sekai.xcodeproj` on a Mac, or `.github/workflows/mobile.yml` on
   GitHub's Macs (simulator build, unit tests, a smoke test with screenshots, and an unsigned `.ipa` to sign
   yourself). The app id is `SEKAI_APP_ID` in `ios/project.yml`; set your team in Xcode (Signing & Capabilities).

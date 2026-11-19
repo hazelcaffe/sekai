@@ -30,10 +30,17 @@ export async function authenticate(req: Request): Promise<Principal | null> {
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
- * Checks a principal may use the API for this request: bridge tokens only open the desktop bridge, and requests
+ * Checks a principal may use the API for this request: extension tokens only reach their bridge/chat routes,
+ * bridge tokens only open the desktop bridge, and requests
  * that change things with a cookie must come from Sekai's own pages (the browser's Origin matches the host).
  */
 export function denyReason(p: Principal, req: Request, opts: { websocket?: boolean } = {}): string | null {
+	if (p.kind === "token" && p.scope === "extension") {
+		const path = new URL(req.url).pathname;
+		return !opts.websocket && path.startsWith("/api/extension/") && path !== "/api/extension/token"
+			? null
+			: "This token only connects the Sekai browser extension.";
+	}
 	if (p.kind === "token" && p.scope !== "full") return "This token only lets a desktop app lend its computer";
 	if (p.kind === "session" && (opts.websocket || !SAFE_METHODS.has(req.method)) && !sameOrigin(req)) {
 		return "Blocked a request from another site";

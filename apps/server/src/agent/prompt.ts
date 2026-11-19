@@ -25,6 +25,8 @@ export interface PromptInput {
 	timezone: string;
 	trigger: RunTrigger;
 	webSearch: boolean;
+	/** The web tools the bot actually has (web_fetch, and web_search/web_map/web_crawl with the web engine on). */
+	webTools?: string[];
 	hasMcpTools: boolean;
 	/** The user has documents in their library (library_search is available). */
 	hasLibrary?: boolean;
@@ -72,6 +74,12 @@ export function identity(agent: Agent, userName: string): string {
 	return lines.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
 }
 
+/** The web tools to name in the manual: the model's own search, then whatever the toolset holds. */
+function webToolList(input: PromptInput): string {
+	const tools = input.webTools?.length ? input.webTools : ["web_fetch"];
+	return [input.webSearch ? "built-in web search" : "", ...tools].filter(Boolean).join(", ");
+}
+
 function manual(input: PromptInput): string {
 	return `# Operating manual: running your own workspace
 You manage your workspace in Sekai through tools. Use them proactively; that's what makes you useful over time.
@@ -80,10 +88,11 @@ You manage your workspace in Sekai through tools. Use them proactively; that's w
 - **Reminders and routines** (reminder_create, routine_create, routine_list, routine_update, routine_delete, routine_run_now): one-off reminders and recurring work. They fire even when nobody is watching and post into a conversation. When you set one, restate the schedule in words with the time zone and the next run. If asked to do something later or regularly, actually create the routine; don't just promise.
 - **Skills** (skill_list, skill_load, skill_create, skill_update): reusable playbooks. Load the relevant skill before doing a task it covers. Once a new method works, offer to save it as a skill.
 - **Team** (agent_list, agent_ask, agent_message, team_chat_start, agent_create, agent_update_self): other agents with their own jobs. agent_ask asks a teammate and waits for the answer; agent_message hands off work asynchronously; team_chat_start opens a group discussion. Send complete, self-contained requests, one owner per step, and don't ping-pong.
-- **Web** (${input.webSearch ? "built-in web search, " : ""}web_fetch): current information. Cite links for facts you looked up.
+- **Web** (${webToolList(input)}): current information. Cite links for facts you looked up.${input.webTools?.includes("web_crawl") ? " web_map lists a site's pages and web_crawl reads a set of them in one go." : ""}
 - **Images** (attach_image): put a picture in your reply: an image link from the web, a screenshot you just took (screenshot: true), or an image file on a machine. When asked to send, show or share an image or screenshot, attach it; never say you can't.
 ${input.hasLibrary ? "- **Library** (library_search, library_read): documents the user uploaded (manuals, papers, notes, contracts…). When a question might be answered by them, search first and cite the document's title and page; say so when the library doesn't cover it.\n" : ""}- **Code search** (code_index, code_search): for a codebase you'll work in more than once, index its folder once, then code_search it by meaning or name before opening files. Index again after big changes.
 - **Devices** (hosts_list, host_request_access, host_run): the user's own servers and devices (their laptop, a home server…) and teammates' computers and devboxes. When a task needs one, ask for access with a clear reason (or ask the primary bot, who can grant it with host_grant), then use host_run. Give access back (host_revoke) when you're done with a one-off task.
+- **The user's browser** (extension_browsers, extension_browser): when available, these control only tabs the user explicitly shared through the Sekai extension in this chat, with their real sign-ins. Load the browser-extension skill first. They are separate from your own browser_open browser. Never switch to another browser to bypass sharing or approval.
 - **Notifications** (notify_user): only for things that need attention now.${
 		input.hasMcpTools
 			? "\n- **Connected apps** (tools prefixed mcp__): external services the user connected for you. Respect what they're for."

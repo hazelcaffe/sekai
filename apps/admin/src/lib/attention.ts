@@ -8,6 +8,7 @@ import {
 	useChannels,
 	useInfo,
 	useMcpServers,
+	useWebEngine,
 } from "@sekai/client";
 import type { Tone } from "@sekai/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -47,6 +48,7 @@ export function useAttention(): {
 	const { data: mcp = [] } = useMcpServers();
 	const { data: channels = [] } = useChannels();
 	const { data: agents = [] } = useAgents();
+	const { data: web } = useWebEngine(admin);
 	const { data: ts } = useQuery({
 		queryKey: ["tailscale"],
 		queryFn: api.tailscale.overview,
@@ -111,6 +113,16 @@ export function useAttention(): {
 			title: m.status.state === "needs_auth" ? `${m.name} needs you to sign in` : `${m.name} isn't connecting`,
 			detail: m.status.error ?? "Its tools are unavailable until then",
 			tab: "apps",
+			action: "Fix",
+		});
+	}
+	if (web && (web.state === "error" || web.state === "missing")) {
+		items.push({
+			id: "web-engine",
+			tone: "warning",
+			title: web.state === "missing" ? "Firecrawl Local isn't installed" : "Web reading isn't working",
+			detail: web.error ?? "Bots read pages the simple way until it's fixed",
+			tab: "web",
 			action: "Fix",
 		});
 	}

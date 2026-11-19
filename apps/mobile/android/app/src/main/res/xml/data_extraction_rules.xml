@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    No cloud backups: the web view's data holds your sign-in. Moving to a new phone brings the list of servers
+    and nothing else (you sign in again there).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="servers.xml" />
+    </device-transfer>
+</data-extraction-rules>
