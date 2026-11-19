@@ -155,8 +155,12 @@ export class OutboundStream {
 
 	/** The bot's attached images, once the reply is complete (as files, after the text). */
 	private async sendImages(adapter: ChannelAdapter, chatId: string): Promise<void> {
-		for (const part of this.message.parts) {
-			if (part.type !== "image" || this.media.has(part.url)) continue;
+		const media = [
+			...this.message.parts.filter((p) => p.type === "image"),
+			...this.message.attachments.map((a) => ({ url: a.url, alt: a.name })),
+		];
+		for (const part of media) {
+			if (this.media.has(part.url)) continue;
 			this.media.add(part.url);
 			const id = part.url.match(/\/api\/uploads\/([\w-]+)/)?.[1];
 			const row = id ? await getUploadRow(id).catch(() => null) : null;
@@ -164,7 +168,7 @@ export class OutboundStream {
 			const data = new Uint8Array(await Bun.file(row.path).arrayBuffer());
 			await adapter
 				.send(chatId, {
-					text: part.alt ? `-# ${part.alt}` : "",
+					text: part.alt ? adapter.subtext(part.alt) : "",
 					files: [{ name: row.name, data, mime: row.mime }],
 				})
 				.catch((err: unknown) => log.warn(`couldn't post an image: ${errorMessage(err)}`));

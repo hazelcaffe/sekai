@@ -2,7 +2,7 @@ import { z } from "zod";
 import { errorMessage } from "../../lib/errors.ts";
 import { guardedFetch, reachOf } from "../../lib/net.ts";
 import { driverFor } from "../../machines/drivers.ts";
-import { listMachines } from "../../machines/manager.ts";
+import { machinesForBot } from "../../machines/seats.ts";
 import { getUploadRow, saveUpload } from "../../services/uploads.ts";
 import { machineTarget, onMachine, peek, riskOn } from "./targets.ts";
 import { defineTool, ToolError, ToolOutput } from "./types.ts";
@@ -119,14 +119,14 @@ export const mediaTools = [
 					);
 				picked = await fromUrl(last, ctx.signal);
 			} else if (args.path) {
-				const all = await listMachines({ agentId: ctx.agent.id });
+				const all = await machinesForBot(ctx.agent.id);
 				if (!all.length)
 					throw new ToolError("You don't have a computer, devbox or lent computer to read files from.");
 				const m = await machineTarget(ctx, args.machine);
 				const mime = mimeFromName(args.path);
 				if (!mime)
 					throw new ToolError("That file doesn't look like an image (png, jpg, gif, webp, svg or avif).");
-				const driver = await driverFor(m);
+				const driver = await driverFor(m, ctx.agent.id);
 				const quoted = `'${args.path.replace(/'/g, `'\\''`)}'`;
 				let r = await driver.exec(`base64 < ${quoted} | tr -d '\\n'`, {
 					timeoutMs: 60_000,

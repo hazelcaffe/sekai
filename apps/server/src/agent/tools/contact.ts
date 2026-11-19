@@ -21,11 +21,11 @@ export const contactTools = [
 		name: "message_user",
 		category: "contact",
 		description:
-			"Message the user right now, on your own: a Discord DM from your bot if you have one (via auto/discord), otherwise in your chat in the Sekai app, with a notification either way. voice: true sends it as a voice message in your voice. For reminders, things they asked to be told about, finished work, or anything that needs them. Not for replying in this chat (just answer; for a voice message here, use voice_message).",
+			"Message the user right now, on your own: a Slack or Discord DM from your bot if you have one (via auto/slack/discord), otherwise in your chat in the Sekai app, with a notification either way. voice: true sends audio in your voice. For reminders, things they asked to be told about, finished work, or anything that needs them. Not for replying in this chat (just answer; for a voice message here, use voice_message).",
 		parameters: z.object({
 			text: z.string().min(1).max(4000),
 			voice: z.boolean().optional().describe("Send as a voice message"),
-			via: z.enum(["auto", "app", "discord"]).optional(),
+			via: z.enum(["auto", "app", "discord", "slack"]).optional(),
 		}),
 		risk: "external",
 		title: (a) =>
@@ -35,7 +35,7 @@ export const contactTools = [
 				const r = await messageUser(ctx.agent, args);
 				return {
 					sent: true,
-					where: r.where === "discord" ? "Discord DM" : "the Sekai app",
+					where: r.where === "slack" ? "Slack DM" : r.where === "discord" ? "Discord DM" : "the Sekai app",
 					as: r.voice ? "voice message" : "text",
 				};
 			} catch (err) {

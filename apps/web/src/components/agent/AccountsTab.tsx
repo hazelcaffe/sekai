@@ -100,14 +100,6 @@ export function AccountsTab({
 		);
 	}
 
-	const discord = (channels ?? []).filter((c) => c.type === "discord");
-	const live = discord.filter((c) => c.status.state === "connected");
-	const discordStatus =
-		discord.length === 0
-			? "Not set up"
-			: live.length
-				? `${live.map((c) => c.status.botName ?? "Bot").join(", ")} · connected`
-				: (discord[0]?.status.error ?? "Not connected");
 	const accounts = (channels ?? []).filter((c) => c.type === "discord-user");
 	const accountLive = accounts.filter((c) => c.enabled && c.status.state === "connected");
 	const accountStatus =
@@ -127,13 +119,29 @@ export function AccountsTab({
 				<Spinner />
 			) : (
 				<div className="flex flex-col divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
-					<Row
-						icon={<ChannelIcon type="discord" size={34} />}
-						title="Discord"
-						status={discordStatus}
-						tone={live.length ? "on" : discord.length ? "warn" : "off"}
-						onClick={() => onView("channels")}
-					/>
+					{(["discord", "slack"] as const).map((type) => {
+						const bots = (channels ?? []).filter((c) => c.type === type);
+						const live = bots.filter((c) => c.enabled && c.status.state === "connected");
+						const on = bots.filter((c) => c.enabled);
+						const status =
+							bots.length === 0
+								? "Not set up"
+								: live.length
+									? `${live.map((c) => c.status.botName ?? "Bot").join(", ")} · connected`
+									: on.length
+										? (on[0]?.status.error ?? "Not connected")
+										: "Off";
+						return (
+							<Row
+								key={type}
+								icon={<ChannelIcon type={type} size={34} />}
+								title={type === "slack" ? "Slack" : "Discord"}
+								status={status}
+								tone={live.length ? "on" : on.length ? "warn" : "off"}
+								onClick={() => onView("channels")}
+							/>
+						);
+					})}
 					<Row
 						icon={<ChannelIcon type="discord-user" size={34} />}
 						title="Discord (personal account)"

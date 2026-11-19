@@ -8,6 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { currentActor } from "../auth/actor.ts";
 import { db, schema } from "../db/index.ts";
 import { bus } from "../events/bus.ts";
+import { agentOwner } from "../events/scope.ts";
 import { notFound, parse } from "../lib/errors.ts";
 import { newId } from "../lib/ids.ts";
 import { seal, unseal } from "../lib/secrets.ts";
@@ -78,7 +79,10 @@ export async function requestLogin(opts: {
 	signal: AbortSignal;
 }): Promise<(Login & { saved: boolean }) | null> {
 	const site = siteOf(opts.url);
-	const saved = await savedLogin(opts.agentId, site);
+	// A bot's saved logins are its owner's: they're used and kept only in its owner's own chats.
+	const actor = currentActor();
+	const own = !actor || (await agentOwner(opts.agentId)) === actor.userId;
+	const saved = own ? await savedLogin(opts.agentId, site) : null;
 	if (saved && !opts.ask && !opts.fields.includes("otp")) return { ...saved, saved: true };
 	const agent = await getAgent(opts.agentId);
 	const now = Date.now();
@@ -91,6 +95,7 @@ export async function requestLogin(opts: {
 		reason: opts.reason,
 		fields: opts.fields,
 		hasSaved: Boolean(saved),
+		canRemember: own,
 		createdAt: now,
 		expiresAt: opts.timeoutMs ? now + opts.timeoutMs : now + 24 * 3_600_000,
 	};
@@ -129,7 +134,7 @@ export async function answerCredentialRequest(id: string, input: CredentialAnswe
 		p.resolve(null);
 		return;
 	}
-	if (answer.remember && answer.username && answer.password) {
+	if (answer.remember && p.request.canRemember && answer.username && answer.password) {
 		await saveLogin(p.request.agentId, p.request.site, answer.username, answer.password);
 	}
 	p.resolve({ username: answer.username, password: answer.password, otp: answer.otp });

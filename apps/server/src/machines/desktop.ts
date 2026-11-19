@@ -1,5 +1,5 @@
-import { HELPER_PATH, installHelperScript } from "./cloudinit.ts";
 import helperSource from "./sekai-desktop.py" with { type: "text" };
+import { HELPER_PATH, installHelperScript } from "./setup.ts";
 
 /** The exit code COMMAND uses when the helper isn't installed. */
 const MISSING = 97;
@@ -80,7 +80,7 @@ export interface DesktopControl {
 	readClipboard(): Promise<string>;
 	writeClipboard(text: string): Promise<void>;
 	/** Starts the browser with remote debugging if it isn't running; returns its port on the machine. */
-	browser(port?: number): Promise<number>;
+	browser(port?: number, profile?: string): Promise<number>;
 	waitIdle(seconds?: number): Promise<unknown>;
 }
 
@@ -217,10 +217,19 @@ export class Desktop implements DesktopControl {
 		await this.run("clipboard set", text);
 	}
 
-	/** Starts Chrome with remote debugging if it isn't running; returns its port on the machine. */
-	async browser(port = 9222): Promise<number> {
-		const r = await this.run<{ port: number }>(`browser ${port}`);
-		return r.port;
+	/**
+	 * Starts Chrome with remote debugging if it isn't running; returns its port on the machine. profile: its folder
+	 * in the account's home (default ~/.config/sekai-chrome). A helper from before profiles is replaced first.
+	 */
+	async browser(port = 9222, profile?: string): Promise<number> {
+		const args = `browser ${port}${profile ? ` ${shq(profile)}` : ""}`;
+		try {
+			return (await this.run<{ port: number }>(args)).port;
+		} catch (err) {
+			if (!profile || !/bad arguments/i.test(err instanceof Error ? err.message : String(err))) throw err;
+			await sshText(this.target, installHelperScript(), { input: helperSource, timeoutMs: 60_000 });
+			return (await this.run<{ port: number }>(args)).port;
+		}
 	}
 
 	waitIdle(seconds = 3) {

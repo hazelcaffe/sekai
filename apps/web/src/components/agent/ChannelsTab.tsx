@@ -54,6 +54,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import { ChannelIcon } from "../channels/ChannelIcon.tsx";
+import { SlackSetup } from "./SlackSetup.tsx";
 
 const DM_POLICIES: { value: DmPolicy; label: string; description: string }[] = [
 	{ value: "pairing", label: "Pairing (recommended)", description: "Unknown senders get a code you approve here." },
@@ -151,7 +152,7 @@ function LinkedChat({ binding }: { binding: ChannelBinding }) {
 			<Link to={`/c/${binding.conversationId}`} className="min-w-0 flex-1">
 				<div className="truncate text-[13px] font-medium">{binding.chatName}</div>
 				<div className="truncate text-xs text-fg-subtle">
-					{group ? `Group chat with ${members}` : binding.isGroup ? "Server channel" : "Direct messages"} ·{" "}
+					{group ? `Group chat with ${members}` : binding.isGroup ? "Channel or thread" : "Direct messages"} ·{" "}
 					{binding.lastInboundAt ? timeAgo(binding.lastInboundAt) : `linked ${timeAgo(binding.createdAt)}`}
 				</div>
 			</Link>
@@ -243,19 +244,36 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 						)}
 						{s.botId && (
 							<Button variant="ghost" size="sm" asChild>
-								<a href={`https://discord.com/users/${s.botId}`} target="_blank" rel="noreferrer">
+								<a
+									href={
+										channel.type === "slack"
+											? `slack://user?team=${s.workspaceId}&id=${s.botId}`
+											: `https://discord.com/users/${s.botId}`
+									}
+									target="_blank"
+									rel="noreferrer"
+								>
 									<MessageCircle /> Message it
 								</a>
 							</Button>
 						)}
 					</div>
-					<p className="text-xs leading-5 text-fg-subtle">
-						{s.readsAll
-							? "It can read every message in channels it's in, so /listen works."
-							: "It sees DMs and messages that mention it. For /listen (answering without a mention), turn on Message Content Intent under Bot in the Developer Portal, then reconnect."}{" "}
-						Type <span className="font-mono text-fg-muted">/</span> in Discord for its commands, or
-						right-click a reply → Apps → Retry.
-					</p>
+					{channel.type === "slack" ? (
+						<p className="text-xs leading-5 text-fg-subtle">
+							Connected to {s.workspaceName ?? "your workspace"}. Invite it to a channel (
+							<span className="font-mono text-fg-muted">/invite @{current?.name ?? "it"}</span>), then
+							mention it there. Each thread is its own chat, and /listen on lets it answer there without a
+							mention.
+						</p>
+					) : (
+						<p className="text-xs leading-5 text-fg-subtle">
+							{s.readsAll
+								? "It can read every message in channels it's in, so /listen works."
+								: "It sees DMs and messages that mention it. For /listen (answering without a mention), turn on Message Content Intent under Bot in the Developer Portal, then reconnect."}{" "}
+							Type <span className="font-mono text-fg-muted">/</span> in Discord for its commands, or
+							right-click a reply → Apps → Retry.
+						</p>
+					)}
 				</div>
 			)}
 
@@ -298,7 +316,7 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 
 			<Section
 				title="Chats"
-				description="Your DMs continue the bot's main chat. Each server channel gets its own, and /group link makes a channel a group chat with other bots."
+				description="Each DM, channel and thread keeps its own history. Use /group link to bring several bots into one conversation."
 			>
 				{bindings.length === 0 ? (
 					<p className="text-[13px] text-fg-subtle">No chats yet. Message the bot on {def.title}.</p>
@@ -325,15 +343,21 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 					/>
 				</Field>
 				<Field
-					label="Servers"
+					label={channel.type === "slack" ? "Channels" : "Servers"}
 					hint="Only people on the list, and only when they mention it (or it listens there)."
 				>
 					<Select
 						value={channel.groupPolicy}
 						onValueChange={(v) => update.mutate({ groupPolicy: v as GroupPolicy })}
 						options={[
-							{ value: "mention", label: "Answer in servers" },
-							{ value: "disabled", label: "Ignore servers" },
+							{
+								value: "mention",
+								label: channel.type === "slack" ? "Answer in channels" : "Answer in servers",
+							},
+							{
+								value: "disabled",
+								label: channel.type === "slack" ? "Ignore channels" : "Ignore servers",
+							},
 						]}
 					/>
 				</Field>
@@ -365,6 +389,7 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 			</Section>
 
 			<Section title="Connection">
+				{channel.type === "slack" && current && <SlackSetup agent={current} />}
 				{def.fields.map((f) => (
 					<Field key={f.key} label={f.label} hint={f.hint}>
 						<Input
@@ -405,7 +430,7 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 				open={confirm}
 				onOpenChange={setConfirm}
 				title={`Remove ${def.title}?`}
-				description="The bot disconnects. Chats in Sekai are kept. Reset the token in the Developer Portal too if you won't use it again."
+				description={`The bot disconnects. Chats in Sekai are kept. Revoke its tokens in ${channel.type === "slack" ? "Slack's app settings" : "the Developer Portal"} too if you won't use it again.`}
 				confirmLabel="Remove"
 				danger
 				onConfirm={() => remove.mutate()}
@@ -414,7 +439,7 @@ function ChannelDetail({ channel, onBack }: { channel: ChannelWithStatus; onBack
 				open={moveTo !== null}
 				onOpenChange={(o) => !o && setMoveTo(null)}
 				title={`Give this account to ${moveTo?.name ?? ""}?`}
-				description={`${s.botName ?? "The bot"} reconnects and answers as ${moveTo?.name ?? "it"} from now on, with ${moveTo?.name ?? "its"}'s personality and memory. Its chats start fresh; what was said with ${current?.name ?? "the old bot"} stays in Sekai. Rename the bot and change its picture in the Discord Developer Portal to match.`}
+				description={`${s.botName ?? "The bot"} reconnects and answers as ${moveTo?.name ?? "it"} from now on, with ${moveTo?.name ?? "its"}'s personality and memory. Its chats start fresh; what was said with ${current?.name ?? "the old bot"} stays in Sekai. Rename the bot and change its picture in ${channel.type === "slack" ? "Slack's app settings" : "the Discord Developer Portal"} to match.`}
 				confirmLabel="Switch"
 				onConfirm={() => {
 					if (moveTo) move.mutate(moveTo.id);
@@ -514,6 +539,7 @@ function AddChannelDialog({
 				</div>
 			) : (
 				<div className="flex flex-col gap-5">
+					{type === "slack" && <SlackSetup agent={agent} />}
 					<ol className="flex flex-col gap-2 rounded-2xl bg-surface-2/50 p-4 text-[13px] leading-6">
 						{def.setup.map((step, i) => (
 							<li key={step} className="flex gap-3">
@@ -572,8 +598,8 @@ export function ChannelsTab({ agent }: { agent: Agent }) {
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between gap-3">
 				<p className="text-xs leading-5 text-fg-subtle">
-					Give {agent.name} its own Discord bot: chat in DMs or servers, use slash commands, and approve
-					actions with buttons. Only you (and anyone you allow) can use it.
+					Give {agent.name} its own Discord or Slack bot: chat in DMs or channels, use slash commands, and
+					approve actions with buttons. Only you (and anyone you allow) can use it.
 				</p>
 				<Button variant="secondary" size="xs" onClick={() => setAdding(true)} className="shrink-0">
 					<Plus /> Add
@@ -584,7 +610,7 @@ export function ChannelsTab({ agent }: { agent: Agent }) {
 			) : channels.length === 0 ? (
 				<EmptyState
 					title="No channels yet"
-					description="Chat with this bot from Discord on any device, get reminders there, and approve actions with a tap."
+					description="Chat from Discord or Slack on any device, get reminders there, and approve actions with a tap."
 					action={
 						<Button variant="primary" size="sm" onClick={() => setAdding(true)}>
 							<Plus /> Connect a platform

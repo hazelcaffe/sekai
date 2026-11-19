@@ -31,6 +31,7 @@ import { mcpRoutes, skillRoutes } from "./routes/library.ts";
 import { credentialRoutes, machineRoutes } from "./routes/machines.ts";
 import { providerRoutes } from "./routes/providers.ts";
 import { pushRoutes } from "./routes/push.ts";
+import { sharedBrowserRoutes } from "./routes/shared-browsers.ts";
 import { instagramRoutes, tiktokRoutes } from "./routes/social.ts";
 import { systemRoutes } from "./routes/system.ts";
 import { tailscaleRoutes } from "./routes/tailscale.ts";
@@ -199,6 +200,7 @@ export function createApp(): Hono {
 		.route("/extension", extensionRoutes)
 		.route("/code", codeRoutes)
 		.route("/machines", machineRoutes)
+		.route("/shared-browsers", sharedBrowserRoutes)
 		.route("/credentials", credentialRoutes);
 	app.route("/api", api);
 

@@ -278,16 +278,28 @@ export async function buildSystemPrompt(input: PromptInput): Promise<BuiltPrompt
 	}
 
 	const { deviceHello, osName } = await import("../machines/bridge.ts");
-	const { listMachines } = await import("../machines/manager.ts");
-	const machines = await listMachines({ agentId: agent.id });
-	if (machines.length > 0) {
+	const { backendOf } = await import("../machines/manager.ts");
+	const { machinesForBot } = await import("../machines/seats.ts");
+	const { browsersForBot } = await import("../browser/shared.ts");
+	// Only what it may use in this run (its own machines in its owner's chats, and what's shared with it).
+	const machines = await machinesForBot(agent.id);
+	const browsers = await browsersForBot(agent.id);
+	if (machines.length > 0 || browsers.length > 0) {
 		const lines = ["# Your machines"];
 		for (const m of machines) {
 			const state =
 				m.status === "running" ? "running" : `${m.status}${m.statusDetail ? ` (${m.statusDetail})` : ""}`;
-			if (m.kind === "computer") {
+			const backend = backendOf(m);
+			const runsAs = backend === "lxc" ? ", a container" : backend === "vm" ? ", a virtual machine" : "";
+			if (m.seat) {
 				lines.push(
-					`- Your computer "${m.name}" (${m.hostname}): ${state}. Debian 13 with XFCE and Google Chrome; you're ${m.username} with sudo. The user can watch and take over over VNC. Before a risky change Sekai saves a checkpoint you can go back to (machine_checkpoint).`,
+					m.kind === "computer"
+						? `- "${m.name}" (${m.hostname}), ${m.seat.ownerBot}'s computer shared with you${runsAs}: ${state}. You have your own account there (${m.username}, sudo) and your own screen and Chrome, apart from the other bots on it: the computer_ and browser_ tools use them with on: "${m.name}" (or by default when you have no computer of your own), run_command and the file tools with machine: "${m.name}". Powering, resizing, checkpoints and deleting it are its owner's.`
+						: `- Devbox "${m.name}" (${m.hostname}), ${m.seat.ownerBot}'s, shared with you${runsAs}: ${state}. You have your own account there (${m.username}, sudo); use run_command with machine "${m.name}".`,
+				);
+			} else if (m.kind === "computer") {
+				lines.push(
+					`- Your computer "${m.name}" (${m.hostname}): ${state}. Debian 13 with XFCE and Google Chrome${runsAs}; you're ${m.username} with sudo. The user can watch and take over over VNC. Before a risky change Sekai saves a checkpoint you can go back to (machine_checkpoint).`,
 				);
 			} else if (m.kind === "device") {
 				const hello = m.remoteId ? deviceHello(m.remoteId) : null;
@@ -299,9 +311,17 @@ export async function buildSystemPrompt(input: PromptInput): Promise<BuiltPrompt
 			} else {
 				const left = m.expiresAt ? `, deleted ${isoInZone(m.expiresAt, timezone)} unless you extend it` : "";
 				lines.push(
-					`- Devbox "${m.name}" (${m.hostname}): ${state}${left}. No desktop; use run_command with machine "${m.name}".`,
+					`- Devbox "${m.name}" (${m.hostname})${runsAs}: ${state}${left}. No desktop; use run_command with machine "${m.name}".`,
 				);
 			}
+		}
+		for (const b of browsers) {
+			const where = b.machine ? `Chrome on ${b.machine.name}` : "on the Sekai server";
+			lines.push(
+				b.signIns === "shared"
+					? `- Shared browser "${b.name}" (${where}): browser_open with on: "${b.name}" (the other browser_ tools then act there). Its sign-ins are shared with ${b.others.length ? b.others.join(", ") : "its other bots"}: a site one of you signs in to is signed in for all. You work in your own tabs; don't sign out or change others' accounts.`
+					: `- Shared browser "${b.name}" (${where}): browser_open with on: "${b.name}" (the other browser_ tools then act there). You have your own sign-ins in it.`,
+			);
 		}
 		if (machines.some((m) => (m.kind === "computer" || m.kind === "device") && m.status === "running")) {
 			lines.push(
@@ -341,10 +361,14 @@ export async function buildSystemPrompt(input: PromptInput): Promise<BuiltPrompt
 		const who = input.userName || "the user";
 		const lines = [`# Reaching ${who}`];
 		if (mine.length) lines.push(`Your accounts: ${mine.join("; ")}.`);
+		if (mine.some((m) => m.includes("Slack")))
+			lines.push(
+				"- Your Slack app is your own bot user. Normal replies and attached images go back to the originating Slack thread automatically; don't use message_user to reply there. message_user via: slack opens a DM with your owner. Slack huddles aren't supported.",
+			);
 		lines.push(
 			`- message_user sends ${who} a message right now, even when they're not chatting with you: in Sekai (with a notification)${mine.some((m) => m.includes("Discord")) ? ", or as a Discord DM from your bot" : ""}. voice: true sends it as a voice message in your voice. Use it when they asked to be told or reminded of something, or something needs them.`,
 			`- call_user rings ${who} (in the Sekai app${mine.some((m) => m.includes("Discord")) ? ", and in a Discord voice channel they're in" : ""}). Use it for urgent things or when they asked you to call. If they don't pick up, your message is sent instead.`,
-			"- voice_message sends a voice message right here, in this chat (Discord channel, Discord DM or Sekai), in your voice.",
+			"- voice_message sends audio right here, in this chat (a voice message in Discord or Sekai, an audio file in Slack), in your voice.",
 			"- Reminders and routines post where they were made; at that time, use call_user or message_user if they asked to be called or messaged.",
 		);
 		if (mine.some((m) => m.includes("Discord"))) {
@@ -361,7 +385,7 @@ export async function buildSystemPrompt(input: PromptInput): Promise<BuiltPrompt
 		}
 		if (!mine.length) {
 			lines.push(
-				"You have no accounts on other apps: for Discord or X, ask a teammate who has one (agent_ask), e.g. the primary bot.",
+				"You have no accounts on other apps: for Discord, Slack or X, ask a teammate who has one (agent_ask), e.g. the primary bot.",
 			);
 		}
 		sections.push(section("reach", "Reaching the user", lines.join("\n")));

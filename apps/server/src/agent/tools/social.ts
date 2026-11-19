@@ -26,7 +26,7 @@ async function socialSession(ctx: ToolContext, platform: SocialPlatform, on?: st
 	if (!account) {
 		throw new ToolError(`You don't have an ${TITLE[platform]} account; the user adds one under Accounts.`);
 	}
-	const s = await browserFor(ctx.agent.id, on);
+	const s = await browserFor(ctx.agent.id, on, { own: true });
 	// Inject the session cookie every time: it expires, and the store holds the newest.
 	const value = await socialSessionCookie(ctx.agent.id, platform);
 	if (value) {

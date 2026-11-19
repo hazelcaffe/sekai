@@ -3,21 +3,29 @@
 import { rmSync } from "node:fs";
 import { RoleLimits } from "@sekai/shared";
 import { eq } from "drizzle-orm";
+import { sharedReach, toolAllowed } from "../../src/agent/tools/index.ts";
 import { createApp } from "../../src/app.ts";
-import { actorFor } from "../../src/auth/actor.ts";
+import { actorFor, forgetActors, runAs } from "../../src/auth/actor.ts";
 import { resetRateLimits } from "../../src/auth/routes.ts";
 import { ensureSetupCode, resetAuthCaches, setupCodeForTests } from "../../src/auth/service.ts";
 import { base32Decode, base32Encode, currentStep, totpAt } from "../../src/auth/totp.ts";
+import { requestLogin, saveLogin } from "../../src/browser/credentials.ts";
+import { browsersForBot } from "../../src/browser/shared.ts";
+import { bindingsForChat, recordPlatformMessage, sekaiMessageId } from "../../src/channels/state.ts";
 import { config } from "../../src/config.ts";
 import { closeDb, db, initDb, schema } from "../../src/db/index.ts";
 import { eventVisibleTo } from "../../src/events/scope.ts";
+import { sealJson } from "../../src/lib/secrets.ts";
+import { machinesForBot } from "../../src/machines/seats.ts";
+import { forgetShares } from "../../src/services/visibility.ts";
 
 await initDb();
 await db.delete(schema.users);
-// Limits set by an earlier run.
+// Limits and permissions set by an earlier run.
+const MEMBER_PERMISSIONS = ["bots", "web", "browser", "routines", "library", "voice", "compare"] as const;
 await db
 	.update(schema.roles)
-	.set({ limits: RoleLimits.parse({}) })
+	.set({ limits: RoleLimits.parse({}), permissions: [...MEMBER_PERMISSIONS] })
 	.where(eq(schema.roles.id, "role_member"));
 resetAuthCaches();
 resetRateLimits();
@@ -138,6 +146,59 @@ try {
 		jar: admin,
 		body: { kind: "direct", agentId: adminBot.id },
 	});
+	const memberRole = (await call("GET", "/api/admin/roles", { jar: admin })).data.find(
+		(r: { id: string }) => r.id === "role_member",
+	);
+	await call("PATCH", "/api/admin/roles/role_member", {
+		jar: admin,
+		body: { permissions: [...memberRole.permissions, "channels"] },
+	});
+	const slack = await call("POST", "/api/channels", {
+		jar: admin,
+		body: {
+			agentId: adminBot.id,
+			type: "slack",
+			enabled: false,
+			secrets: { botToken: "xoxb-test-only", appToken: "xapp-test-only" },
+		},
+	});
+	const storedSlack = await db.query.channels.findFirst({ where: eq(schema.channels.id, String(slack.data.id)) });
+	await db.insert(schema.channelBindings).values({
+		id: "cb_slack_access",
+		channelId: String(slack.data.id),
+		externalChatId: "slack:T1:C1:100.000001",
+		conversationId: String(adminChat.data.id),
+		chatName: "Slack thread",
+		isGroup: true,
+		listen: true,
+		createdAt: Date.now(),
+	});
+	report.slack = {
+		created: slack.status,
+		sealed: Boolean(
+			storedSlack?.secrets.botToken?.startsWith("v1:") && storedSlack.secrets.appToken?.startsWith("v1:"),
+		),
+		masked: !JSON.stringify(slack.data.secrets).includes("test-only"),
+		otherList: (await call("GET", `/api/channels?agentId=${adminBot.id}`, { jar: member })).data.length,
+		otherPatch: (
+			await call("PATCH", `/api/channels/${slack.data.id}`, { jar: member, body: { allowFrom: ["UINTRUDER"] } })
+		).status,
+		otherBindings: (await call("GET", `/api/channels/${slack.data.id}/bindings`, { jar: member })).status,
+		otherBindingPatch: (
+			await call("PATCH", "/api/channels/bindings/cb_slack_access", { jar: member, body: { listen: false } })
+		).status,
+		otherChannelCreate: (
+			await call("POST", "/api/channels", {
+				jar: member,
+				body: { agentId: adminBot.id, type: "slack", enabled: false },
+			})
+		).status,
+		otherThreadLinks: await runAs(
+			await actorFor(memberId),
+			async () => (await bindingsForChat("slack:T1:C1:100.000001")).length,
+		),
+	};
+	await call("PATCH", "/api/admin/roles/role_member", { jar: admin, body: { permissions: memberRole.permissions } });
 	await db.insert(schema.messages).values({
 		id: "msg_admin_secret",
 		conversationId: String(adminChat.data.id),
@@ -156,6 +217,29 @@ try {
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
 	});
+	await recordPlatformMessage({
+		channelId: String(slack.data.id),
+		chatId: "slack:T1:C1:100.000001",
+		externalMessageId: "100.000002",
+		messageId: "msg_admin_secret",
+		direction: "in",
+	});
+	report.slack = {
+		...(report.slack as Record<string, unknown>),
+		otherMessageLookup: await runAs(await actorFor(memberId), () =>
+			sekaiMessageId("slack:T1:C1:100.000001", "100.000002"),
+		),
+		ownerSeesStatus: await eventVisibleTo(
+			{ type: "channel.changed", channelId: String(slack.data.id) },
+			"admins",
+			await actorFor(String(setup.data.user.id)),
+		),
+		otherSeesStatus: await eventVisibleTo(
+			{ type: "channel.changed", channelId: String(slack.data.id) },
+			"everyone",
+			await actorFor(memberId),
+		),
+	};
 	report.memberSearch = (await call("GET", "/api/search/messages?q=platypus", { jar: member })).data.length;
 
 	// Browser tokens see only their owner's bots/chats and cannot reach setup or other people's grants.
@@ -214,6 +298,161 @@ try {
 	report.memoryKeptApart = {
 		member: (await call("GET", `/api/memories?agentId=${adminBot.id}`, { jar: member })).data.length,
 		admin: (await call("GET", `/api/memories?agentId=${adminBot.id}`, { jar: admin })).data.length,
+	};
+
+	// Shared machines and browsers: Bo shares his bot with Ada; Ada shares her bot's computer and a browser with it.
+	await call("PATCH", "/api/admin/roles/role_member", {
+		jar: admin,
+		body: { permissions: [...MEMBER_PERMISSIONS, "share", "computers"] },
+	});
+	forgetActors();
+	const adminId = String((setup.data.user as { id: string }).id);
+	const boBot = (await call("GET", "/api/agents", { jar: member })).data.find(
+		(a: { name: string }) => a.name === "mine",
+	) as { id: string };
+	const secretBot = (await call("POST", "/api/agents", { jar: member, body: { name: "secret" } })).data as {
+		id: string;
+	};
+	await call("POST", `/api/agents/${boBot.id}/shares`, { jar: member, body: { kind: "user", userId: adminId } });
+	forgetShares();
+	const now = Date.now();
+	await db.insert(schema.machines).values({
+		id: "mch_access_test",
+		agentId: adminBot.id,
+		kind: "computer",
+		provider: "ssh",
+		backend: null,
+		name: "Ada's test computer",
+		status: "running",
+		statusDetail: null,
+		specs: { cores: 2, memoryMb: 4096, minMemoryMb: 0, diskGb: 32 },
+		hostname: "127.0.0.1",
+		username: "admins",
+		addresses: { lan: "127.0.0.1", tailscale: null },
+		ports: { ssh: 9, vnc: 9, rdp: null },
+		remoteId: null,
+		secrets: sealJson({ userPassword: "", rootPassword: "", vncPassword: null }),
+		expiresAt: null,
+		shareWithViewers: false,
+		createdBy: "user",
+		lastUsedAt: null,
+		createdAt: now,
+		updatedAt: now,
+	});
+	await db.insert(schema.machineMembers).values({
+		id: "mbr_access_test",
+		machineId: "mch_access_test",
+		agentId: boBot.id,
+		username: "mine",
+		display: 10,
+		vncPort: 5910,
+		cdpPort: 9232,
+		status: "ready",
+		statusDetail: null,
+		secrets: sealJson({ userPassword: "bo-seat-password", vncPassword: "vncpass" }),
+		createdAt: now,
+		updatedAt: now,
+	});
+	const ada = await actorFor(adminId);
+	const bo = await actorFor(memberId);
+	const seatsOf = async (agentId: string, who: typeof ada) =>
+		(await machinesForBot(agentId, who)).filter((m) => m.id === "mch_access_test").length;
+	const browserCount = async (agentId: string, who: typeof ada) => (await browsersForBot(agentId, who)).length;
+	const canRun = (agent: { id: string; userId: string }, who: typeof ada) =>
+		runAs(who, async () =>
+			toolAllowed({ name: "run_command", category: "machines" }, agent, await sharedReach(agent.id)),
+		);
+	const boBotRow = { id: boBot.id, userId: memberId };
+	const adminBotRow = { id: String(adminBot.id), userId: adminId };
+	const machines = {
+		othersMachine: (await call("GET", "/api/machines/mch_access_test", { jar: member })).status,
+		othersMembers: (await call("GET", "/api/machines/mch_access_test/members", { jar: member })).status,
+		othersScreen: (await call("GET", `/api/machines/mch_access_test/screen?agent=${boBot.id}`, { jar: member }))
+			.status,
+		othersAccess: (await call("GET", `/api/machines/mch_access_test/access?agent=${boBot.id}`, { jar: member }))
+			.status,
+		othersAdd: (
+			await call("POST", "/api/machines/mch_access_test/members", {
+				jar: member,
+				body: { agentId: secretBot.id },
+			})
+		).status,
+		othersViewers: (
+			await call("PATCH", "/api/machines/mch_access_test", { jar: member, body: { shareWithViewers: true } })
+		).status,
+		addUnsharedBot: (
+			await call("POST", "/api/machines/mch_access_test/members", { jar: admin, body: { agentId: secretBot.id } })
+		).status,
+		ownerSeesSeat: (await call("GET", `/api/machines/seats?agentId=${boBot.id}`, { jar: admin })).data.length,
+		botsOwnerSeesSeat: (await call("GET", `/api/machines/seats?agentId=${boBot.id}`, { jar: member })).data.length,
+		ownerSeesMembers: (await call("GET", "/api/machines/mch_access_test/members", { jar: admin })).data.map(
+			(m: { agentName: string; sharedBy: string | null; available: boolean }) =>
+				`${m.agentName}/${m.sharedBy}/${m.available}`,
+		),
+		sharedBotInOwnersChats: await seatsOf(boBot.id, ada),
+		sharedBotInItsOwnersChats: await seatsOf(boBot.id, bo),
+		ownersBotForViewerOff: await seatsOf(String(adminBot.id), bo),
+		toolsSharedBotInOwnersChats: await canRun(boBotRow, ada),
+		toolsOwnersBotForViewerOff: await canRun(adminBotRow, bo),
+	};
+	await call("PATCH", "/api/machines/mch_access_test", { jar: admin, body: { shareWithViewers: true } });
+	Object.assign(machines, {
+		ownersBotForViewerOn: await seatsOf(String(adminBot.id), bo),
+		toolsOwnersBotForViewerOn: await canRun(adminBotRow, bo),
+		sharedBotForViewerOn: await seatsOf(boBot.id, bo),
+		events: {
+			owner: await eventVisibleTo({ type: "machine.members", machineId: "mch_access_test" }, "everyone", ada),
+			other: await eventVisibleTo({ type: "machine.members", machineId: "mch_access_test" }, "everyone", bo),
+		},
+	});
+	report.sharedMachines = machines;
+
+	const browser = await call("POST", "/api/shared-browsers", {
+		jar: admin,
+		body: { name: "Team", agentIds: [adminBot.id, boBot.id] },
+	});
+	const browsers = {
+		created: browser.status,
+		unsharedBot: (
+			await call("POST", "/api/shared-browsers", { jar: admin, body: { name: "No", agentIds: [secretBot.id] } })
+		).status,
+		othersList: (await call("GET", "/api/shared-browsers", { jar: member })).data.length,
+		othersPatch: (
+			await call("PATCH", `/api/shared-browsers/${browser.data.id}`, { jar: member, body: { name: "x" } })
+		).status,
+		othersDelete: (await call("DELETE", `/api/shared-browsers/${browser.data.id}`, { jar: member })).status,
+		sharedBotInOwnersChats: await browserCount(boBot.id, ada),
+		sharedBotInItsOwnersChats: await browserCount(boBot.id, bo),
+		ownersBotForViewerOff: await browserCount(String(adminBot.id), bo),
+		events: {
+			owner: await eventVisibleTo({ type: "browsers.changed", userId: adminId }, [adminId], ada),
+			other: await eventVisibleTo({ type: "browsers.changed", userId: adminId }, "everyone", bo),
+		},
+	};
+	await call("PATCH", `/api/shared-browsers/${browser.data.id}`, { jar: admin, body: { shareWithViewers: true } });
+	Object.assign(browsers, {
+		ownersBotForViewerOn: await browserCount(String(adminBot.id), bo),
+		sharedBotForViewerOn: await browserCount(boBot.id, bo),
+	});
+	report.sharedBrowsers = browsers;
+
+	// A bot's saved logins are its owner's: not used (or saved) when it signs in for someone else.
+	await saveLogin(boBot.id, "example.com", "bo@example.com", "bo's site password");
+	const login = (who: typeof ada) =>
+		runAs(who, () =>
+			requestLogin({
+				agentId: boBot.id,
+				conversationId: null,
+				url: "https://example.com/login",
+				reason: "test",
+				fields: ["username", "password"],
+				timeoutMs: 200,
+				signal: AbortSignal.timeout(1000),
+			}),
+		);
+	report.savedLogins = {
+		itsOwner: (await login(bo))?.username ?? null,
+		someoneElse: (await login(ada))?.username ?? null,
 	};
 
 	// Role limits.

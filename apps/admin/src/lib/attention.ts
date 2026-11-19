@@ -131,7 +131,7 @@ export function useAttention(): {
 		items.push({
 			id: `channel-${c.id}`,
 			tone: "warning",
-			title: `${name(c.agentId)}'s ${c.type === "discord" ? "Discord bot" : "Discord account"} is offline`,
+			title: `${name(c.agentId)}'s ${c.type === "slack" ? "Slack bot" : c.type === "discord" ? "Discord bot" : "Discord account"} is offline`,
 			detail: c.status.error ?? "It can't send or receive messages",
 			href: "/",
 			action: "Open Sekai",

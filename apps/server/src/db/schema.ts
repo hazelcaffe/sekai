@@ -17,12 +17,14 @@ import type {
 	DmPolicy,
 	GroupPolicy,
 	Machine,
+	MachineBackend,
 	MachineKind,
 	MachineProvider,
 	MachineSpecs,
 	MachineStatus,
 	McpScope,
 	McpTransport,
+	MemberStatus,
 	MemoryKind,
 	MessageMeta,
 	MessagePart,
@@ -38,6 +40,7 @@ import type {
 	RunStatus,
 	RunTrigger,
 	Schedule,
+	SignInMode,
 	ToolRules,
 	Usage,
 } from "@sekai/shared";
@@ -528,7 +531,7 @@ export const agentKeys = pgTable("agent_keys", {
 	createdAt: ms().notNull(),
 });
 
-/** Bots' computers (Proxmox VMs with a desktop) and devboxes (temporary containers). */
+/** Bots' computers (with a desktop) and devboxes (temporary), as Proxmox VMs or containers, and lent devices. */
 export const machines = pgTable(
 	"machines",
 	{
@@ -538,6 +541,8 @@ export const machines = pgTable(
 			.references(() => agents.id, { onDelete: "cascade" }),
 		kind: text().$type<MachineKind>().notNull(),
 		provider: text().$type<MachineProvider>().notNull(),
+		/** Proxmox machines: "vm" or "lxc" (a container). */
+		backend: text().$type<MachineBackend>(),
 		name: text().notNull(),
 		status: text().$type<MachineStatus>().notNull(),
 		statusDetail: text(),
@@ -550,11 +555,76 @@ export const machines = pgTable(
 		/** Passwords (root, the bot's user, VNC), encrypted at rest. */
 		secrets: text().notNull(),
 		expiresAt: ms(),
+		/** Its bots may use it when people they're shared with chat with them (see mayUseShared). */
+		shareWithViewers: boolean().notNull().default(false),
 		createdBy: text().$type<"user" | "agent">().notNull(),
 		lastUsedAt: ms(),
 		...timestamps,
 	},
 	(t) => [index("machines_agent_idx").on(t.agentId)],
+);
+
+/**
+ * Other bots on a bot's machine: each its own account (and on a computer its own screen :display, VNC port and
+ * Chrome debugging port). The machine's owner is its own bot's owner.
+ */
+export const machineMembers = pgTable(
+	"machine_members",
+	{
+		id: text().primaryKey(),
+		machineId: text()
+			.notNull()
+			.references(() => machines.id, { onDelete: "cascade" }),
+		agentId: text()
+			.notNull()
+			.references(() => agents.id, { onDelete: "cascade" }),
+		username: text().notNull(),
+		display: integer(),
+		vncPort: integer(),
+		cdpPort: integer(),
+		status: text().$type<MemberStatus>().notNull(),
+		statusDetail: text(),
+		/** The account's password and VNC's, encrypted at rest. */
+		secrets: text().notNull(),
+		...timestamps,
+	},
+	(t) => [
+		uniqueIndex("machine_members_seat_idx").on(t.machineId, t.agentId),
+		index("machine_members_agent_idx").on(t.agentId),
+	],
+);
+
+/** Browsers several bots use, on the server (machineId null) or one of the owner's computers. */
+export const sharedBrowsers = pgTable(
+	"shared_browsers",
+	{
+		id: text().primaryKey(),
+		userId: owner(),
+		name: text().notNull(),
+		machineId: text().references(() => machines.id, { onDelete: "cascade" }),
+		signIns: text().$type<SignInMode>().notNull(),
+		shareWithViewers: boolean().notNull().default(false),
+		/** On a computer with shared sign-ins: its Chrome's debugging port there. */
+		port: integer(),
+		...timestamps,
+	},
+	(t) => [index("shared_browsers_user_idx").on(t.userId)],
+);
+
+export const sharedBrowserMembers = pgTable(
+	"shared_browser_members",
+	{
+		browserId: text()
+			.notNull()
+			.references(() => sharedBrowsers.id, { onDelete: "cascade" }),
+		agentId: text()
+			.notNull()
+			.references(() => agents.id, { onDelete: "cascade" }),
+		/** On a computer with separate sign-ins: this bot's Chrome's debugging port there. */
+		port: integer(),
+		createdAt: ms().notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.browserId, t.agentId] }), index("shared_browser_members_agent_idx").on(t.agentId)],
 );
 
 /** Logins you let a bot reuse. Passwords are encrypted at rest. */

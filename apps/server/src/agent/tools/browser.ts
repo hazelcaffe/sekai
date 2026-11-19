@@ -1,17 +1,21 @@
-import type { Machine } from "@sekai/shared";
+import type { Agent, Machine } from "@sekai/shared";
 import type { Page } from "playwright-core";
 import { z } from "zod";
+import { currentActor } from "../../auth/actor.ts";
 import { requestLogin } from "../../browser/credentials.ts";
 import {
 	type BrowserSession,
 	browserFor,
 	browserWhere,
-	closeBrowser,
+	closeCurrentBrowser,
 	describePage,
 	findInPage,
+	newTab,
 	serverBrowserPath,
 	settle,
+	tabsOf,
 } from "../../browser/engine.ts";
+import { browsersForBot } from "../../browser/shared.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { getMachine } from "../../machines/manager.ts";
 import { getSettings } from "../../services/settings.ts";
@@ -25,12 +29,15 @@ const on = z
 	.string()
 	.optional()
 	.describe(
-		'Where to browse: "computer" (Chrome on your computer), "device" (a browser on the user\'s computer, if they lent it to you) or "server". Default: where your browser already is.',
+		'Where to browse: "computer" (Chrome on your computer), "device" (a browser on the user\'s computer, if they lent it to you), "server", or a shared browser by its name. Default: your own browser. The other browser_ tools act on the browser you opened last.',
 	);
 
-async function available(agentId: string): Promise<boolean> {
-	if (serverBrowserPath()) return true;
-	return anyDesktop(agentId);
+/** A browser to use in this run: its own (not for people it's shared with), a screen, or a shared browser. */
+async function available(agent: Agent): Promise<boolean> {
+	const actor = currentActor();
+	if ((!actor || actor.userId === agent.userId) && serverBrowserPath()) return true;
+	if (await anyDesktop(agent.id)) return true;
+	return (await browsersForBot(agent.id)).length > 0;
 }
 
 /** The machine a browser call acts on (null: the server), so approvals can weigh it. */
@@ -40,9 +47,9 @@ async function browserMachine(ctx: ToolContext, where?: string): Promise<Machine
 	return id ? getMachine(id) : null;
 }
 
-async function session(ctx: ToolContext, where?: string): Promise<BrowserSession> {
+async function session(ctx: ToolContext, where?: string, open = false): Promise<BrowserSession> {
 	try {
-		return await browserFor(ctx.agent.id, where);
+		return await browserFor(ctx.agent.id, where, { open });
 	} catch (err) {
 		throw new ToolError(`The browser isn't available: ${errorMessage(err)}`);
 	}
@@ -53,8 +60,9 @@ async function act(
 	ctx: ToolContext,
 	fn: (page: Page, s: BrowserSession) => Promise<string | undefined>,
 	where?: string,
+	open = false,
 ): Promise<string> {
-	const s = await session(ctx, where);
+	const s = await session(ctx, where, open);
 	if (s.dialog)
 		throw new ToolError(
 			`A ${s.dialog.type()} dialog is open ("${s.dialog.message().slice(0, 200)}"). Answer it with browser_dialog first.`,
@@ -105,7 +113,7 @@ const browserTool = <S extends z.ZodType>(
 	defineTool<S>({
 		...def,
 		category: "browser",
-		available: (agent) => available(agent.id),
+		available: (agent) => available(agent),
 		riskFor: async (args, ctx) => riskOn(await browserMachine(ctx, (args as { on?: string }).on), def.risk),
 		askFirst: async (args, ctx) => askOn(await browserMachine(ctx, (args as { on?: string }).on), def.risk),
 	});
@@ -131,11 +139,12 @@ export const browserTools = [
 			return act(
 				ctx,
 				async (_page, s) => {
-					if (args.newTab) s.page = await s.context.newPage();
+					if (args.newTab) await newTab(s);
 					await s.page.goto(normalizeUrl(args.url), { waitUntil: "domcontentloaded", timeout: 45_000 });
 					return undefined;
 				},
 				args.on,
+				true,
 			);
 		},
 	}),
@@ -340,9 +349,9 @@ export const browserTools = [
 						: "Closed a tab",
 		async execute(args, ctx) {
 			const s = await session(ctx);
-			const tabs = s.context.pages();
+			const tabs = tabsOf(s);
 			if (args.action === "new") {
-				s.page = await s.context.newPage();
+				await newTab(s);
 				if (args.url)
 					await s.page.goto(normalizeUrl(args.url), { waitUntil: "domcontentloaded", timeout: 45_000 });
 			} else if (args.action === "select" || args.action === "close") {
@@ -353,7 +362,7 @@ export const browserTools = [
 					await tab.bringToFront();
 				} else {
 					await tab.close();
-					s.page = s.context.pages().at(-1) ?? (await s.context.newPage());
+					s.page = tabsOf(s).at(-1) ?? (await newTab(s));
 				}
 			} else {
 				const list = await Promise.all(
@@ -508,12 +517,12 @@ export const browserTools = [
 	}),
 	browserTool({
 		name: "browser_close",
-		description: "Close your browser (it reopens on the next browser_open). Sign-ins are kept.",
+		description: "Close the browser you're using (it reopens on the next browser_open). Sign-ins are kept.",
 		parameters: z.object({}),
 		risk: "read",
 		title: () => "Closed the browser",
 		async execute(_args, ctx) {
-			await closeBrowser(ctx.agent.id);
+			await closeCurrentBrowser(ctx.agent.id);
 			return "Closed.";
 		},
 	}),

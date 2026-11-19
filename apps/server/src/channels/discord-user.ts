@@ -1,7 +1,7 @@
 import type { Channel } from "@sekai/shared";
 import { errorMessage } from "../lib/errors.ts";
-import { unseal } from "../lib/secrets.ts";
 import { truncate } from "../lib/text.ts";
+import { channelSecret } from "./state.ts";
 import {
 	type ChannelAdapter,
 	type ChannelHandlers,
@@ -163,9 +163,7 @@ function groupName(ch: ApiChannel, selfId: string): string {
  * messages. Discord doesn't allow accounts to be used like this, so the account could get limited.
  */
 export function discordUserAdapter(channel: Channel): ChannelAdapter {
-	// Sealed at rest (manager seals on create/update); older rows may still be plain.
-	const raw = channel.secrets.userToken?.trim() ?? "";
-	const token = raw.startsWith("v1:") ? unseal(raw) : raw;
+	const token = channelSecret(channel, "userToken");
 	let self: ApiUser | null = null;
 	let ws: WebSocket | null = null;
 	let stopped = true;

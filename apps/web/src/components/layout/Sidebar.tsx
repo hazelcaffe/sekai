@@ -5,6 +5,7 @@ import {
 	cn,
 	GroupAvatar,
 	isMac,
+	sharedMachinesNote,
 	shortTime,
 	useAgents,
 	useApprovals,
@@ -12,6 +13,7 @@ import {
 	useChannels,
 	useConversations,
 	useCredentialRequests,
+	useMachineUsers,
 	usePairings,
 } from "@sekai/client";
 import { type Agent, CHANNEL_DEFINITIONS, type ChannelType, type Conversation } from "@sekai/shared";
@@ -822,6 +824,7 @@ export function Sidebar({ variant }: { variant: "full" | "rail" | "drawer" | "pa
 				: api.conversations.update(r.id, { title: r.name }),
 		onSuccess: () => setRenaming(null),
 	});
+	const machineUsers = useMachineUsers(deleting?.kind === "agent" ? deleting.id : null, deleting?.kind === "agent");
 	const remove = useMutation({
 		mutationFn: async (r: { kind: "agent" | "group"; id: string }) =>
 			r.kind === "agent" ? api.agents.delete(r.id) : api.conversations.delete(r.id),
@@ -878,7 +881,12 @@ export function Sidebar({ variant }: { variant: "full" | "rail" | "drawer" | "pa
 				title={deleting?.kind === "agent" ? `Delete ${deleting.name}?` : `Delete “${deleting?.name}”?`}
 				description={
 					deleting?.kind === "agent"
-						? "This erases its profile, chats, memory, notes and routines. It can't be undone. To keep its work, hide it instead."
+						? [
+								sharedMachinesNote(deleting.name, machineUsers),
+								"This erases its profile, chats, memory, notes and routines. It can't be undone. To keep its work, hide it instead.",
+							]
+								.filter(Boolean)
+								.join(" ")
 						: conversations.find((c) => c.id === deleting?.id)?.kind === "group"
 							? "The group and its messages will be deleted. The bots and their memory are kept."
 							: "This chat and its messages are deleted from Sekai (not from Discord). The bot and its memory are kept."

@@ -213,11 +213,64 @@ const CATEGORY_PERMISSION: Partial<Record<string, Permission>> = {
 const SHARED_CATEGORIES = new Set(["memory", "notes", "web", "media", "library", "routines", "skills", "system"]);
 const SHARED_TOOLS = new Set(["message_user"]);
 
-/** Whether the person Sekai acts for may have this tool: their role's features, and whose bot it is. */
-export function toolAllowed(def: { name: string; category: string }, agent: Pick<Agent, "userId">): boolean {
+/**
+ * What's shared with a bot that it may use in a run for someone other than its owner (see mayUseShared): a seat
+ * on a machine (commands and files there), a screen, a browser. Not its owner's own browser, accounts or devices.
+ */
+export interface SharedReach {
+	machines: boolean;
+	screens: boolean;
+	browsers: boolean;
+}
+const SEAT_TOOLS = new Set([
+	"computer_status",
+	"machine_credentials",
+	"run_command",
+	"read_file",
+	"write_file",
+	"edit_file",
+]);
+const SCREEN_TOOLS = new Set(computerTools.map((t) => t.name));
+const BROWSER_TOOLS = new Set(browserTools.map((t) => t.name));
+
+function reaches(name: string, reach: SharedReach | undefined): boolean {
+	if (!reach) return false;
+	if (SEAT_TOOLS.has(name)) return reach.machines;
+	if (SCREEN_TOOLS.has(name)) return reach.screens;
+	if (BROWSER_TOOLS.has(name)) return reach.browsers;
+	return false;
+}
+
+/** What's shared with the bot that it may use in this run. */
+export async function sharedReach(agentId: string): Promise<SharedReach> {
+	const { machinesForBot } = await import("../../machines/seats.ts");
+	const { browsersForBot } = await import("../../browser/shared.ts");
+	const machines = await machinesForBot(agentId);
+	const screens = machines.some((m) => m.kind === "computer");
+	return {
+		machines: machines.length > 0,
+		screens,
+		browsers: screens || (await browsersForBot(agentId)).length > 0,
+	};
+}
+
+/**
+ * Whether the person Sekai acts for may have this tool: their role's features, and whose bot it is. Someone else's
+ * bot (or your bot in a chat of someone it's shared with) keeps to what's shared (reach).
+ */
+export function toolAllowed(
+	def: { name: string; category: string },
+	agent: Pick<Agent, "userId">,
+	reach?: SharedReach,
+): boolean {
 	const actor = currentActor();
 	if (!actor) return true;
-	if (agent.userId !== actor.userId && !SHARED_CATEGORIES.has(def.category) && !SHARED_TOOLS.has(def.name)) {
+	if (
+		agent.userId !== actor.userId &&
+		!SHARED_CATEGORIES.has(def.category) &&
+		!SHARED_TOOLS.has(def.name) &&
+		!reaches(def.name, reach)
+	) {
 		return false;
 	}
 	const needs = TOOL_PERMISSION[def.name] ?? CATEGORY_PERMISSION[def.category];
@@ -233,10 +286,11 @@ export async function resolveToolset(agent: Agent, rules: RuleSets): Promise<Too
 	const isOff = (name: string, category: string) => matchRule(rules, name, category)?.permission === "off";
 	const actor = currentActor();
 	const shared = Boolean(actor && agent.userId !== actor.userId);
+	const reach = shared ? await sharedReach(agent.id) : undefined;
 
 	for (const def of BUILTIN_TOOLS) {
 		if (isOff(def.name, def.category)) continue;
-		if (!toolAllowed(def, agent)) continue;
+		if (!toolAllowed(def, agent, reach)) continue;
 		if (def.available && !(await Promise.resolve(def.available(agent)).catch(() => false))) continue;
 		tools.push(builtin(def));
 	}

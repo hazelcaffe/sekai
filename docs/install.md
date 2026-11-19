@@ -153,9 +153,9 @@ Then set `SEKAI_PUBLIC_URL`, and `SEKAI_TRUST_PROXY` to the proxy's address when
 ### Keeping it safe
 
 - **Require two-factor sign-in** in your roles (at least Admin), and give people only the features they need. Some
-  features reach far: **Computers** puts VMs on your Proxmox network, **Subscriptions** run agent programs on the
-  server that can run commands there, and admins' bots may reach your own network. Bots of people who aren't
-  admins can't open addresses on your network or the server itself.
+  features reach far: **Computers** puts VMs and containers on your Proxmox network, **Subscriptions** run agent
+  programs on the server that can run commands there, and admins' bots may reach your own network. Bots of people
+  who aren't admins can't open addresses on your network or the server itself.
 - **Set up email** (Admin → Sign-in options), so invites and "Forgot your password?" work.
 - **Back up** somewhere off the server (Admin → Backups can copy each backup to another machine).
 - **Keep Sekai up to date**, and see [SECURITY.md](../SECURITY.md) for reporting problems.

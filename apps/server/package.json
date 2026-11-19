@@ -11,6 +11,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",
 		"test:discord": "bun run scripts/discord-e2e.ts",
+		"test:slack": "bun run scripts/slack-e2e.ts",
 		"test:proxmox": "bun run scripts/proxmox-e2e.ts",
 		"reset-password": "bun run scripts/reset-password.ts"
 	},

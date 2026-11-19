@@ -49,16 +49,23 @@ src/agent/        the brain
   tools/            built-in tools (one defineTool each), index.ts lists BUILTIN_TOOLS and MCP tool wiring
 src/providers/    BYOS: ACP client (acp.ts), Claude Agent SDK (claude.ts), tools bridge over MCP for them
 src/llm/          gateway client (OpenAI-compatible), API providers (OpenAI/Anthropic/Gemini kinds), embeddings
-src/channels/     messaging platforms: types.ts (ChannelAdapter), discord.ts, discord-user.ts, manager.ts
+src/channels/     messaging platforms: types.ts (ChannelAdapter), discord.ts, discord-user.ts, slack.ts (Socket Mode
+                  and the Web API; each thread its own chat), slack-format.ts (mrkdwn), manager.ts
                   (access, routing, bindings, approvals), stream.ts (posts replies when finished), commands.ts,
                   voice.ts (Discord voice channels: join, hear allowed users, speak)
 src/voice/        voice-call.ts (calls: speech to text → the bot's own model → text to speech), tts.ts, listen.ts
                   (STT, live or clip by clip), ogg.ts, settings.ts (voiceFor(agent) resolves defaults), custom.ts
                   (made voices), providers/ (ElevenLabs, Fish Audio: API providers added in Admin → Voice)
-src/machines/     bots' computers: manager.ts (also checkpoints = Proxmox disk snapshots, auto before risky
-                  run_command), drivers.ts, proxmox.ts, ssh.ts, vnc.ts, keys.ts;
+src/machines/     bots' computers and devboxes, each a Proxmox VM or container (backend): manager.ts (also
+                  checkpoints = Proxmox snapshots or backups, auto before risky run_command), guest.ts (the calls
+                  that differ between a VM and a container), setup.ts (each machine's setup described once, rendered
+                  as cloud-init for VMs or a bash script Sekai runs over SSH in containers; their desktop is Xvfb
+                  under the sekai-desktop@ unit), seats.ts (other bots sharing a machine: each a seat with its own
+                  account, key, and on a computer its own screen :N, VNC and Chrome port; machinesForBot lists what a
+                  bot may use in a run), drivers.ts, proxmox.ts, ssh.ts, vnc.ts, keys.ts;
                   hosts.ts (your devices: master key, per-bot per-account grants), tailscale.ts (CLI + API)
-src/browser/      Playwright sessions on a bot's computer or headless on the server; sign-in requests
+src/browser/      Playwright sessions on a bot's computer (or its seat on a shared one) or on the server; shared.ts:
+                  browsers several bots use (server or a computer, shared or separate sign-ins); sign-in requests
                   extension.ts: short-lived browser-extension grants and commands (routes/extension.ts);
                   separate extension_ tools, bound to person, token, bot and chat, no persisted control
 src/mcp/          MCP client manager, OAuth for apps, app icons
@@ -138,10 +145,11 @@ stay valid. Postgres runs in Docker on port 5433 (`bun run db:up`).
 ## Testing
 
 - `bun test` runs `test/*.test.ts` (pure logic: parsing, permissions, rendering, schedules, adapters with fakes).
-  Keep new tests database-free (pass fakes, e.g. `PostedStore` in channels tests). `auth.test.ts` and
-  `access.test.ts` are the exceptions: they run sign-in and several people's isolation end to end against scratch
-  databases when Postgres is up, and skip themselves otherwise.
-- Live checks: `scripts/discord-e2e.ts`, `scripts/proxmox-e2e.ts`.
+  Keep new tests database-free (pass fakes, e.g. `PostedStore` in channels tests, the fake Slack in `slack.test.ts`).
+  `auth.test.ts`, `access.test.ts` and `slack-routing.test.ts` are the exceptions: they run sign-in, several people's
+  isolation and the channel manager end to end against scratch databases when Postgres is up, and skip themselves
+  otherwise.
+- Live checks: `scripts/discord-e2e.ts`, `scripts/slack-e2e.ts` (three Slack apps, existing server), `scripts/proxmox-e2e.ts`.
 - For a one-off check against real data, write `scripts/.<name>.tmp.ts` that calls `initDb()` and the service
   functions directly, run it with `bun`, then delete it.
 
@@ -162,7 +170,12 @@ stay valid. Postgres runs in Docker on port 5433 (`bun run db:up`).
   `process.env`.
 - **Shell:** `shq()` for sh, `powershell()` for Windows; SSH destinations go through `dest()` (no option-like names);
   SSH control sockets are per key so bots never ride the master key's connection.
-- **Machines:** VM ids come from `claimVmid()`; deletes pass the machine's hostname so another VM is never destroyed.
+- **Machines:** ids come from `claimVmid()` (VMs and containers alike); deletes pass the machine's hostname (`Guest.remove`)
+  so another guest is never destroyed. Anything done on a machine for a bot goes through its seat (`sshTarget(m, agentId)`,
+  `driverFor(m, agentId)`, `desktopOf(m, agentId)`), and what a bot may use in a run comes from `machinesForBot` /
+  `browsersForBot`, which apply `mayUseShared` (services/visibility.ts): never list machines for a bot another way.
+  Seeds and setup scripts hold passwords: they're deleted once setup is done, and
+  setup never prints a secret to its log.
 
 ## Gotchas
 

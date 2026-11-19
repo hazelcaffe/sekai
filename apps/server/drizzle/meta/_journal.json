@@ -113,6 +113,20 @@
       "when": 1794967027426,
       "tag": "0015_multi_user",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795055826078,
+      "tag": "0016_machine_backend",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795062887520,
+      "tag": "0017_shared_machines",
+      "breakpoints": true
     }
   ]
 }

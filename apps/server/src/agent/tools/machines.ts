@@ -4,6 +4,7 @@ import { errorMessage } from "../../lib/errors.ts";
 import { truncateMiddle } from "../../lib/text.ts";
 import { driverFor } from "../../machines/drivers.ts";
 import {
+	backendOf,
 	computerOf,
 	createMachine,
 	deleteMachine,
@@ -13,6 +14,7 @@ import {
 	machineAccess,
 	updateMachine,
 } from "../../machines/manager.ts";
+import { type BotMachine, machinesForBot } from "../../machines/seats.ts";
 import { getSettings } from "../../services/settings.ts";
 import { askOn, machineTarget, onMachine, peek, pick, riskOn } from "./targets.ts";
 import { defineTool, type ToolContext, ToolError } from "./types.ts";
@@ -25,10 +27,15 @@ async function proxmoxReady(): Promise<boolean> {
 }
 
 async function hasMachine(agent: Agent): Promise<boolean> {
-	return (await listMachines({ agentId: agent.id })).length > 0;
+	return (await machinesForBot(agent.id)).length > 0;
 }
 
-function describe(m: Machine): string {
+/** Its own machines (not ones shared with it), in this run. */
+async function hasOwnMachine(agent: Agent): Promise<boolean> {
+	return (await machinesForBot(agent.id)).some((m) => !m.seat);
+}
+
+function describe(m: Machine | BotMachine): string {
 	if (m.kind === "device") {
 		return [
 			`${m.name} (the user's own computer, lent to you through the Sekai desktop app): ${m.status === "running" ? "online" : "offline"}.`,
@@ -41,14 +48,23 @@ function describe(m: Machine): string {
 	]
 		.filter(Boolean)
 		.join(", ");
+	const backend = backendOf(m);
+	const runsAs = backend === "vm" ? ", a virtual machine" : backend === "lxc" ? ", a container" : "";
+	const seat = "seat" in m ? m.seat : null;
 	const lines = [
-		`${m.name} (${m.kind}): ${m.status}${m.statusDetail ? ` (${m.statusDetail})` : ""}`,
+		`${m.name} (${m.kind}${runsAs}${seat ? `, ${seat.ownerBot}'s, shared with you` : ""}): ${m.status}${m.statusDetail ? ` (${m.statusDetail})` : ""}`,
 		`Host ${m.hostname}${where ? `, ${where}` : ""}; your account: ${m.username} (sudo, no password needed); root also exists.`,
 		`Size: ${m.specs.cores} cores, ${Math.round(m.specs.memoryMb / 1024)} GB RAM${m.specs.minMemoryMb ? ` (ballooning from ${Math.round(m.specs.minMemoryMb / 1024)} GB)` : ""}, ${m.specs.diskGb} GB disk.`,
 	];
 	if (m.kind === "computer")
 		lines.push(
-			`Desktop: XFCE with Google Chrome. VNC on port ${m.ports.vnc ?? "-"}, RDP on ${m.ports.rdp ?? "-"}.`,
+			seat
+				? `Desktop: your own screen (display :${seat.display}) with XFCE and Google Chrome (its debugging port ${seat.cdpPort}); VNC on port ${m.ports.vnc ?? "-"}.`
+				: `Desktop: XFCE with Google Chrome. VNC on port ${m.ports.vnc ?? "-"}, RDP on ${m.ports.rdp ?? "-"}.`,
+		);
+	if (seat)
+		lines.push(
+			`Other bots work on it too, each in its own account. Powering it, resizing it, checkpoints and deleting it are for ${seat.ownerBot} and its owner.`,
 		);
 	if (m.expiresAt) lines.push(`Deleted automatically ${new Date(m.expiresAt).toISOString()} unless extended.`);
 	return lines.join("\n");
@@ -57,12 +73,21 @@ function describe(m: Machine): string {
 const machine = onMachine;
 
 /** The machine a call targets, by name, without requiring it to be running (status, resize, passwords). */
-async function target(ctx: ToolContext, ref?: string): Promise<Machine> {
-	const all = await listMachines({ agentId: ctx.agent.id });
+async function target(ctx: ToolContext, ref?: string): Promise<BotMachine> {
+	const all = await machinesForBot(ctx.agent.id);
 	const m = pick(all, ref) ?? (!ref && all.length === 1 ? all[0] : null);
 	if (m) return m;
 	if (!ref && all.length > 1) throw new ToolError(`Say which machine: ${all.map((x) => x.name).join(", ")}.`);
 	throw new ToolError(ref ? `You don't have a machine called "${ref}".` : "You don't have a computer or devbox.");
+}
+
+/** Power, size, checkpoints and deleting are the machine's own bot's: a shared machine says whose it is. */
+function ownOnly(m: BotMachine, what: string): void {
+	if (m.seat) {
+		throw new ToolError(
+			`${m.name} is ${m.seat.ownerBot}'s, shared with you: only ${m.seat.ownerBot} and its owner can ${what}. You can run commands and use files${m.kind === "computer" ? ", your own screen and browser" : ""} there.`,
+		);
+	}
 }
 
 /** Commands and files: weighed by where they run (the user's own computer counts as external). */
@@ -84,6 +109,13 @@ async function askUnlessAllowed(what: string): Promise<string | null> {
 	return (await getSettings()).machines.agentRequests === "allow" ? null : `Bots ask before ${what}.`;
 }
 
+const backend = z
+	.enum(["vm", "lxc"])
+	.optional()
+	.describe(
+		"lxc: a container, lighter and quicker to start. vm: a virtual machine, fully separate with its own kernel (for Docker-heavy work, kernel modules or other low-level work). Leave it out for the usual choice.",
+	);
+
 async function waitUntilReady(id: string, ms: number): Promise<Machine | null> {
 	const deadline = Date.now() + ms;
 	while (Date.now() < deadline) {
@@ -98,10 +130,11 @@ export const machineTools = [
 	defineTool({
 		name: "computer_request",
 		description:
-			"Ask the user for a computer of your own: a VM with a desktop (Debian, XFCE, Chrome) you control with the computer_ tools, use from the terminal with run_command, and browse with on screen. It takes about 10 minutes to set up. Explain why you need it.",
+			"Ask the user for a computer of your own: a Debian desktop (XFCE, Chrome) you control with the computer_ tools, use from the terminal with run_command, and browse with on screen. It runs as a virtual machine or a container on the user's Proxmox server. It takes about 10 minutes to set up. Explain why you need it.",
 		category: "machines",
 		parameters: z.object({
 			reason: z.string().min(1).max(500),
+			backend,
 			cores: z.number().int().min(1).max(32).optional(),
 			memoryGb: z.number().min(1).max(128).optional(),
 			diskGb: z.number().int().min(16).max(2048).optional(),
@@ -116,6 +149,7 @@ export const machineTools = [
 					{
 						agentId: ctx.agent.id,
 						kind: "computer",
+						backend: args.backend,
 						specs: {
 							...(args.cores ? { cores: args.cores } : {}),
 							...(args.memoryGb ? { memoryMb: Math.round(args.memoryGb * 1024) } : {}),
@@ -140,7 +174,7 @@ export const machineTools = [
 		title: () => "Checked my machines",
 		available: hasMachine,
 		async execute(_args, ctx) {
-			const all = await listMachines({ agentId: ctx.agent.id });
+			const all = await machinesForBot(ctx.agent.id);
 			return all.map(describe).join("\n\n");
 		},
 	}),
@@ -157,10 +191,11 @@ export const machineTools = [
 		}),
 		risk: "write",
 		title: () => "Asked to resize a machine",
-		available: hasMachine,
+		available: hasOwnMachine,
 		askFirst: () => askUnlessAllowed("resizing their machines"),
 		async execute(args, ctx) {
 			const m = await target(ctx, args.machine);
+			ownOnly(m, "resize it");
 			try {
 				const next = await updateMachine(m.id, {
 					specs: {
@@ -191,11 +226,11 @@ export const machineTools = [
 		available: hasMachine,
 		async execute(args, ctx) {
 			const m = await target(ctx, args.machine);
-			const a = await machineAccess(m.id);
+			const a = await machineAccess(m.id, ctx.agent.id);
 			if (!a.userPassword) return `${m.name} is the user's own machine; they didn't give Sekai its passwords.`;
 			return [
-				`${m.username}: ${a.userPassword}`,
-				`root: ${a.rootPassword}`,
+				`${a.username}: ${a.userPassword}`,
+				...(a.rootPassword ? [`root: ${a.rootPassword}`] : []),
 				...(a.vncPassword ? [`VNC: ${a.vncPassword}`] : []),
 			].join("\n");
 		},
@@ -222,8 +257,8 @@ export const machineTools = [
 			const m = await machineTarget(ctx, args.machine);
 			// Something that can break the machine (sudo, apt, rm -r…): a checkpoint first, to roll back to.
 			const { checkpointBefore } = await import("../../machines/manager.ts");
-			const saved = await checkpointBefore(m, args.command);
-			const driver = await driverFor(m);
+			const saved = await checkpointBefore(m, args.command, Boolean(m.seat));
+			const driver = await driverFor(m, ctx.agent.id);
 			const r = await driver
 				.exec(args.command, { cwd: args.cwd, timeoutMs: args.timeoutSeconds * 1000, signal: ctx.signal })
 				.catch((err: unknown) => {
@@ -261,12 +296,13 @@ export const machineTools = [
 					: a.action === "delete"
 						? "Deleted a checkpoint"
 						: "Listed checkpoints",
-		available: hasMachine,
+		available: hasOwnMachine,
 		async execute(args, ctx) {
 			const { deleteCheckpoint, listCheckpoints, makeCheckpoint, restoreCheckpoint } = await import(
 				"../../machines/manager.ts"
 			);
 			const m = await machineTarget(ctx, args.machine);
+			ownOnly(m, "save or restore its checkpoints");
 			try {
 				switch (args.action) {
 					case "list":
@@ -303,9 +339,11 @@ export const machineTools = [
 		...onTarget("read"),
 		async execute(args, ctx) {
 			const m = await machineTarget(ctx, args.machine);
-			const text = await (await driverFor(m)).readFile(args.path, args.maxBytes).catch((err: unknown) => {
-				throw new ToolError(errorMessage(err));
-			});
+			const text = await (await driverFor(m, ctx.agent.id))
+				.readFile(args.path, args.maxBytes)
+				.catch((err: unknown) => {
+					throw new ToolError(errorMessage(err));
+				});
 			if (!text) return "(empty file)";
 			const more = new TextEncoder().encode(text).length >= args.maxBytes;
 			return more
@@ -330,9 +368,11 @@ export const machineTools = [
 		...onTarget("write"),
 		async execute(args, ctx) {
 			const m = await machineTarget(ctx, args.machine);
-			await (await driverFor(m)).writeFile(args.path, args.content, args.append).catch((err: unknown) => {
-				throw new ToolError(errorMessage(err));
-			});
+			await (await driverFor(m, ctx.agent.id))
+				.writeFile(args.path, args.content, args.append)
+				.catch((err: unknown) => {
+					throw new ToolError(errorMessage(err));
+				});
 			return `Wrote ${args.content.length} characters to ${args.path}${shellNote(m) || ` on ${m.name}`}.`;
 		},
 	}),
@@ -354,7 +394,7 @@ export const machineTools = [
 		...onTarget("write"),
 		async execute(args, ctx) {
 			const m = await machineTarget(ctx, args.machine);
-			const driver = await driverFor(m);
+			const driver = await driverFor(m, ctx.agent.id);
 			const fail = (err: unknown) => {
 				throw new ToolError(errorMessage(err));
 			};
@@ -371,11 +411,12 @@ export const machineTools = [
 	defineTool({
 		name: "devbox_create",
 		description:
-			"Spin up a devbox: a temporary Linux container (Debian, no desktop) for development, builds or experiments, with your SSH key, a sudo account and Tailscale. It's deleted automatically after ttlHours. Use run_command with machine: <name> to work in it.",
+			"Spin up a devbox: a temporary Linux machine (Debian, no desktop; a container or a virtual machine) for development, builds or experiments, with your SSH key, a sudo account and Tailscale. It's deleted automatically after ttlHours. Use run_command with machine: <name> to work in it.",
 		category: "machines",
 		parameters: z.object({
 			name: z.string().min(1).max(40).optional().describe("Short name, e.g. api-test"),
 			purpose: z.string().min(1).max(300),
+			backend,
 			ttlHours: z
 				.number()
 				.min(0.25)
@@ -395,6 +436,7 @@ export const machineTools = [
 					{
 						agentId: ctx.agent.id,
 						kind: "devbox",
+						backend: args.backend,
 						name: args.name,
 						ttlHours: args.ttlHours,
 						specs: {

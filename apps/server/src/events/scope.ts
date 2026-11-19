@@ -47,7 +47,7 @@ export async function agentOwner(agentId: string): Promise<string | null> {
 	return row?.userId ?? null;
 }
 
-async function machineOwner(machineId: string): Promise<string | null> {
+export async function machineOwner(machineId: string): Promise<string | null> {
 	const hit = machines.get(machineId);
 	if (hit) return hit;
 	const [row] = await db
@@ -103,6 +103,10 @@ export async function eventVisibleTo(ev: ServerEvent, audience: Audience, who: A
 		return owner ? owner === who.userId : inAudience(audience, who);
 	}
 	switch (ev.type) {
+		case "channel.changed": {
+			const row = await db.query.channels.findFirst({ where: eq(schema.channels.id, ev.channelId) });
+			return row ? (await agentOwner(row.agentId)) === who.userId : inAudience(audience, who);
+		}
 		case "agent.created":
 		case "agent.updated":
 			// The owner gets their bot as it is; others only the shared view (without its private setup).
@@ -118,7 +122,10 @@ export async function eventVisibleTo(ev: ServerEvent, audience: Audience, who: A
 		case "machine.deleted":
 			return (await agentOwner(ev.agentId)) === who.userId || inAudience(audience, who);
 		case "machine.checkpoints":
+		case "machine.members":
 			return (await machineOwner(ev.machineId)) === who.userId;
+		case "browsers.changed":
+			return ev.userId === who.userId;
 		case "notification":
 			return inAudience(audience, who) && (!ev.agentId || (await seesAgent(ev.agentId, who)));
 		default:

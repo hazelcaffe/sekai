@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { patchOf } from "./patch.ts";
 
 /**
- * Machines: a bot's own computer (a Proxmox VM with a desktop), devboxes (temporary Proxmox containers
- * without one), and devices: your own computer, lent to bots through the desktop app. Bots reach VMs and
- * devboxes over SSH with their own key; devices through the desktop app's connection to Sekai.
+ * Machines: a bot's own computer (with a desktop), devboxes (temporary, without one), and devices: your own
+ * computer, lent to bots through the desktop app. Computers and devboxes on Proxmox run as a VM or a container.
+ * Bots reach them over SSH with their own key; devices through the desktop app's connection to Sekai.
  */
 export const MACHINE_KINDS = ["computer", "devbox", "device"] as const;
 export const MachineKind = z.enum(MACHINE_KINDS);
@@ -17,13 +18,21 @@ export type MachineKind = z.infer<typeof MachineKind>;
 export const MachineProvider = z.enum(["proxmox", "ssh", "local"]);
 export type MachineProvider = z.infer<typeof MachineProvider>;
 
+/**
+ * What a Proxmox machine runs as. vm: a virtual machine, fully separate with its own kernel (Docker-heavy or
+ * kernel work). lxc: a container, much lighter and quicker to start, sharing the host's kernel.
+ */
+export const MACHINE_BACKENDS = ["vm", "lxc"] as const;
+export const MachineBackend = z.enum(MACHINE_BACKENDS);
+export type MachineBackend = z.infer<typeof MachineBackend>;
+
 export const MachineStatus = z.enum(["creating", "provisioning", "running", "stopped", "error", "deleting"]);
 export type MachineStatus = z.infer<typeof MachineStatus>;
 
 export const MachineSpecs = z.object({
 	cores: z.number().int().min(1).max(64),
 	memoryMb: z.number().int().min(512).max(262_144),
-	/** Ballooning floor: the VM gets between this and memoryMb. 0 turns ballooning off. */
+	/** Ballooning floor: the VM gets between this and memoryMb. 0 turns ballooning off (always, for containers). */
 	minMemoryMb: z.number().int().min(0).max(262_144),
 	diskGb: z.number().int().min(4).max(4096),
 });
@@ -37,6 +46,8 @@ export const Machine = z.object({
 	agentId: z.string(),
 	kind: MachineKind,
 	provider: MachineProvider,
+	/** Proxmox machines: a VM or a container. null for the others. */
+	backend: MachineBackend.nullable(),
 	name: z.string(),
 	status: MachineStatus,
 	/** What's happening now ("Installing the desktop…") or what went wrong. */
@@ -52,6 +63,11 @@ export const Machine = z.object({
 	remoteId: z.string().nullable(),
 	/** Devboxes are temporary: they're deleted after this. */
 	expiresAt: z.number().nullable(),
+	/**
+	 * Its bots (its own and the ones sharing it) may use it when people they're shared with chat with them, not
+	 * only in your chats. Off unless you turn it on.
+	 */
+	shareWithViewers: z.boolean(),
 	createdBy: z.enum(["user", "agent"]),
 	createdAt: z.number(),
 	updatedAt: z.number(),
@@ -71,6 +87,8 @@ export const MachineCreate = z.object({
 		.max(24 * 30)
 		.optional(),
 	provider: MachineProvider.default("proxmox"),
+	/** provider "proxmox": a VM or a container (without it, the settings' default for the kind). */
+	backend: MachineBackend.optional(),
 	/** provider "ssh": where it is. */
 	ssh: z
 		.object({
@@ -93,9 +111,95 @@ export const MachineUpdate = z
 			.number()
 			.min(0.25)
 			.max(24 * 30),
+		shareWithViewers: z.boolean(),
 	})
 	.partial();
 export type MachineUpdate = z.input<typeof MachineUpdate>;
+
+// ---------------------------------------------------------------- sharing a machine with other bots
+
+/**
+ * Other bots can share a bot's computer or devbox. Each gets a seat there: its own account, home folder and SSH
+ * key, and on a computer its own screen (a virtual display with its own VNC port and password) and Chrome.
+ */
+export const MemberStatus = z.enum(["adding", "ready", "error", "removing"]);
+export type MemberStatus = z.infer<typeof MemberStatus>;
+
+export interface MachineMember {
+	id: string;
+	machineId: string;
+	agentId: string;
+	agentName: string;
+	/** Who shared this bot with you (null: it's your own bot). */
+	sharedBy: string | null;
+	/** False once its owner stops sharing it with you: it can't use the machine until they share it again. */
+	available: boolean;
+	username: string;
+	/** Computers: its screen (display :N), VNC port and Chrome's debugging port. */
+	display: number | null;
+	vncPort: number | null;
+	cdpPort: number | null;
+	status: MemberStatus;
+	statusDetail: string | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export const MemberAdd = z.object({ agentId: z.string().min(1) });
+export type MemberAdd = z.input<typeof MemberAdd>;
+
+/** A shared machine as one of its member bots has it: the machine, and the bot's seat there. */
+export interface MachineSeat {
+	machine: Machine;
+	member: MachineMember;
+	/** The name of the bot whose machine it is. */
+	ownerBot: string;
+}
+
+// ---------------------------------------------------------------- shared browsers
+
+/**
+ * A browser several bots use. shared: one profile for all (a site one bot signed in to is signed in for the
+ * others; each works in its own tab). separate: each bot gets its own profile in it.
+ */
+export const SIGN_IN_MODES = ["shared", "separate"] as const;
+export const SignInMode = z.enum(SIGN_IN_MODES);
+export type SignInMode = z.infer<typeof SignInMode>;
+
+export const SharedBrowserInput = z.object({
+	name: z.string().trim().min(1).max(60),
+	/** One of your computers it runs on (Chrome on that computer's screen); null: on the Sekai server. */
+	machineId: z.string().nullable().default(null),
+	signIns: SignInMode.default("shared"),
+	/** Its bots you own may use it when people they're shared with chat with them. */
+	shareWithViewers: z.boolean().default(false),
+	agentIds: z.array(z.string().min(1)).max(50).default([]),
+});
+export type SharedBrowserInput = z.input<typeof SharedBrowserInput>;
+export const SharedBrowserUpdate = patchOf(SharedBrowserInput);
+export type SharedBrowserUpdate = z.input<typeof SharedBrowserUpdate>;
+
+export interface SharedBrowserMember {
+	agentId: string;
+	agentName: string;
+	/** Who shared this bot with you (null: it's your own bot). */
+	sharedBy: string | null;
+	/** False once its owner stops sharing it with you. */
+	available: boolean;
+}
+
+export interface SharedBrowser {
+	id: string;
+	name: string;
+	machineId: string | null;
+	/** The computer's name, when it runs on one. */
+	machineName: string | null;
+	signIns: SignInMode;
+	shareWithViewers: boolean;
+	members: SharedBrowserMember[];
+	createdAt: number;
+	updatedAt: number;
+}
 
 /** How to get in: shown to you in the Computer tab and given to the bot. */
 export interface MachineAccess {
@@ -126,6 +230,11 @@ export interface CredentialRequest {
 	fields: ("username" | "password" | "otp")[];
 	/** A saved login exists for this site but you asked to be asked. */
 	hasSaved: boolean;
+	/**
+	 * It may be remembered for the bot. Not for someone else's bot (or yours in a chat of someone it's shared
+	 * with): a bot's saved logins are its owner's.
+	 */
+	canRemember: boolean;
 	createdAt: number;
 	expiresAt: number;
 }

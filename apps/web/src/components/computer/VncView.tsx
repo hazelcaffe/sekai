@@ -119,20 +119,22 @@ function Notice({ children }: { children: ReactNode }) {
 
 /**
  * Takeover: the bot's desktop in the app, full screen and under your control (VNC through Sekai). The bot
- * keeps its hands off until you hand it back.
+ * keeps its hands off until you hand it back. agentId: a bot with a seat on the computer (its own screen there).
  */
 export function VncView({
 	machine,
+	agentId,
 	open,
 	onOpenChange,
 }: {
 	machine: Machine;
+	agentId?: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
 	const { phone } = useLayout();
 	const { data: agents = [] } = useAgents();
-	const agent = agents.find((a) => a.id === machine.agentId);
+	const agent = agents.find((a) => a.id === (agentId ?? machine.agentId));
 	const botName = agent?.name ?? "The bot";
 	const root = useRef<HTMLDivElement>(null);
 	const screen = useRef<HTMLDivElement>(null);
@@ -157,15 +159,15 @@ export function VncView({
 		let cancelled = false;
 		setState("connecting");
 		setError(null);
-		void api.machines.takeover(machine.id, true);
+		void api.machines.takeover(machine.id, true, agentId);
 		(async () => {
 			try {
 				const [{ default: RFB }, access] = await Promise.all([
 					import("@novnc/novnc"),
-					api.machines.access(machine.id).catch(() => null),
+					api.machines.access(machine.id, agentId).catch(() => null),
 				]);
 				if (cancelled || !screen.current) return;
-				const client = new RFB(screen.current, api.machines.vncUrl(machine.id), {
+				const client = new RFB(screen.current, api.machines.vncUrl(machine.id, agentId), {
 					credentials: access?.vncPassword ? { password: access.vncPassword } : undefined,
 					shared: true,
 				});
@@ -206,9 +208,9 @@ export function VncView({
 			cancelled = true;
 			rfb.current?.disconnect();
 			rfb.current = null;
-			void api.machines.takeover(machine.id, false);
+			void api.machines.takeover(machine.id, false, agentId);
 		};
-	}, [open, machine.id, attempt]);
+	}, [open, machine.id, agentId, attempt]);
 
 	useEffect(() => {
 		if (!open) setSince(null);
@@ -349,7 +351,7 @@ export function VncView({
 				>
 					<DialogPrimitive.Title className="sr-only">{machine.name}</DialogPrimitive.Title>
 					<DialogPrimitive.Description className="sr-only">
-						You're using {botName}'s computer. It waits until you hand it back.
+						You're using {botName}'s {agentId ? "screen" : "computer"}. It waits until you hand it back.
 					</DialogPrimitive.Description>
 
 					<header className="flex shrink-0 items-center gap-3 px-3 pt-[max(env(safe-area-inset-top),0.625rem)] pb-2.5 md:px-4">

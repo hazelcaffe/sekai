@@ -32,6 +32,7 @@ export * from "./routine.ts";
 export * from "./run.ts";
 export * from "./settings.ts";
 export * from "./skill.ts";
+export * from "./slack.ts";
 export * from "./tiktok.ts";
 export * from "./upload.ts";
 export * from "./voice.ts";

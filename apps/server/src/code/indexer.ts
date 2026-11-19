@@ -182,7 +182,7 @@ async function run(id: string, signal: AbortSignal): Promise<void> {
 		changed(row.agentId);
 	};
 	await progress({ phase: "scanning", done: 0, total: 0 });
-	const driver = await driverFor(machine);
+	const driver = await driverFor(machine, row.agentId);
 	const scan = await driver.codeScan(row.root, signal);
 	if (scan.root && scan.root !== row.root) await patch(id, { root: scan.root });
 

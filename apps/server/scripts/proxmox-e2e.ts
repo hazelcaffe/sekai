@@ -4,6 +4,7 @@
  * Set up Proxmox in Settings → Computers first.
  *
  *   SEKAI_URL (default http://127.0.0.1:7420), SEKAI_AUTH_TOKEN if your server needs one
+ *   SEKAI_E2E_BACKEND=vm or lxc makes both machines VMs or containers (default: the settings' defaults)
  *   SEKAI_E2E_KEEP=1 keeps the bot and its machines afterwards
  *
  *   bun run test:proxmox
@@ -15,6 +16,10 @@ const api = createApiClient({
 	getToken: () => process.env.SEKAI_AUTH_TOKEN || null,
 });
 const KEEP = process.env.SEKAI_E2E_KEEP === "1";
+const BACKEND =
+	process.env.SEKAI_E2E_BACKEND === "vm" || process.env.SEKAI_E2E_BACKEND === "lxc"
+		? process.env.SEKAI_E2E_BACKEND
+		: undefined;
 
 let passed = 0;
 const failed: string[] = [];
@@ -56,10 +61,11 @@ async function main() {
 	const made: Machine[] = [];
 	try {
 		console.log("Computer");
-		const computer = await api.machines.create({ agentId: agent.id, kind: "computer" });
+		const computer = await api.machines.create({ agentId: agent.id, kind: "computer", backend: BACKEND });
 		made.push(computer);
 		const c = await follow(computer.id, 30);
 		check("set up and running", c.status === "running", c.statusDetail ?? "");
+		check(`runs as ${BACKEND ?? "the default"}`, c.backend && (!BACKEND || c.backend === BACKEND), c.backend ?? "");
 		if (c.status === "running") {
 			check("has an address", c.addresses.lan || c.addresses.tailscale, JSON.stringify(c.addresses));
 			const screen = await fetch(api.machines.screenUrl(c.id));
@@ -82,10 +88,17 @@ async function main() {
 		}
 
 		console.log("Devbox");
-		const devbox = await api.machines.create({ agentId: agent.id, kind: "devbox", name: "probe", ttlHours: 1 });
+		const devbox = await api.machines.create({
+			agentId: agent.id,
+			kind: "devbox",
+			backend: BACKEND,
+			name: "probe",
+			ttlHours: 1,
+		});
 		made.push(devbox);
 		const d = await follow(devbox.id, 15);
 		check("set up and running", d.status === "running", d.statusDetail ?? "");
+		check(`runs as ${BACKEND ?? "the default"}`, d.backend && (!BACKEND || d.backend === BACKEND), d.backend ?? "");
 		check("deleted on its own later", d.expiresAt && d.expiresAt > Date.now());
 
 		if (c.status === "running" || d.status === "running") {

@@ -1,8 +1,10 @@
 import type { Channel, ChannelBinding, ChannelStatus, ChannelWithStatus } from "@sekai/shared";
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
+import { currentActor } from "../auth/actor.ts";
 import { db, schema } from "../db/index.ts";
 import { bus } from "../events/bus.ts";
 import { newId } from "../lib/ids.ts";
+import { seal, unseal } from "../lib/secrets.ts";
 import { maskSecret } from "../services/settings.ts";
 import type { ChannelAdapter } from "./types.ts";
 
@@ -42,9 +44,31 @@ export function clearStatus(channelId: string): void {
 	statuses.delete(channelId);
 }
 
+/** A channel's credential in plain text (tokens are sealed when saved; ones saved before that stay as they were). */
+export function channelSecret(channel: Pick<Channel, "secrets">, key: string): string {
+	const value = channel.secrets[key]?.trim() ?? "";
+	return value.startsWith("v1:") ? unseal(value) : value;
+}
+
+/** Credentials as they're saved: sealed. */
+export function sealSecrets(secrets: Record<string, string>): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(secrets).map(([k, v]) => [k, v && !v.startsWith("v1:") ? seal(v.trim()) : v]),
+	);
+}
+
+/** A channel as the app sees it: its credentials masked (the first and last few characters, to tell them apart). */
 export function publicChannel(c: Channel): ChannelWithStatus {
-	const secrets = Object.fromEntries(Object.entries(c.secrets).map(([k, v]) => [k, maskSecret(v)]));
+	const secrets = Object.fromEntries(Object.keys(c.secrets).map((k) => [k, maskSecret(channelSecretOrEmpty(c, k))]));
 	return { ...c, secrets, status: status(c.id) };
+}
+
+function channelSecretOrEmpty(c: Channel, key: string): string {
+	try {
+		return channelSecret(c, key);
+	} catch {
+		return "";
+	}
 }
 
 export async function getChannel(id: string): Promise<Channel | null> {
@@ -87,11 +111,15 @@ export async function findBinding(channelId: string, chatId: string): Promise<Ch
 
 /** Every bot's binding for one platform chat (several when agents share a linked group chat). */
 export async function bindingsForChat(chatId: string): Promise<ChannelBinding[]> {
-	return db
-		.select()
+	const me = currentActor()?.userId;
+	const rows = await db
+		.select({ binding: schema.channelBindings })
 		.from(schema.channelBindings)
-		.where(eq(schema.channelBindings.externalChatId, chatId))
+		.innerJoin(schema.channels, eq(schema.channels.id, schema.channelBindings.channelId))
+		.innerJoin(schema.agents, eq(schema.agents.id, schema.channels.agentId))
+		.where(and(eq(schema.channelBindings.externalChatId, chatId), me ? eq(schema.agents.userId, me) : undefined))
 		.orderBy(asc(schema.channelBindings.createdAt));
+	return rows.map((r) => r.binding);
 }
 
 export async function bindingsForConversation(conversationId: string): Promise<ChannelBinding[]> {
@@ -202,11 +230,19 @@ export async function forgetPosted(messageId: string, channelId: string, chatId:
 
 /** The Sekai message a platform message shows (or came in as). */
 export async function sekaiMessageId(chatId: string, externalMessageId: string): Promise<string | null> {
-	const row = await db.query.channelMessages.findFirst({
-		where: and(
-			eq(schema.channelMessages.externalChatId, chatId),
-			eq(schema.channelMessages.externalMessageId, externalMessageId),
-		),
-	});
+	const me = currentActor()?.userId;
+	const [row] = await db
+		.select({ messageId: schema.channelMessages.messageId })
+		.from(schema.channelMessages)
+		.innerJoin(schema.messages, eq(schema.messages.id, schema.channelMessages.messageId))
+		.innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+		.where(
+			and(
+				eq(schema.channelMessages.externalChatId, chatId),
+				eq(schema.channelMessages.externalMessageId, externalMessageId),
+				me ? eq(schema.conversations.userId, me) : undefined,
+			),
+		)
+		.limit(1);
 	return row?.messageId ?? null;
 }

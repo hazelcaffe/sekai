@@ -1,5 +1,6 @@
 import { MOBILE_APP_ID, type MobileFcmConfig, MobilePushSettings, type MobilePushStatus } from "@sekai/shared";
 import { badRequest } from "../lib/errors.ts";
+import { log } from "../lib/log.ts";
 import { seal, unseal } from "../lib/secrets.ts";
 import { readKey, writeKey } from "../services/kv.ts";
 import { deviceCounts } from "./devices.ts";
@@ -16,10 +17,24 @@ export const MASKED = "••••••••";
 
 type Stored = Partial<MobilePushSettings> & { sealed?: Record<string, string> };
 
+/**
+ * A saved key in clear, or empty when it can't be opened (sealed under another secret key, after
+ * SEKAI_SECRET_KEY or data/secret.key changed): it reads as missing, so an admin can paste it again.
+ */
+function open(name: string, sealed: string | undefined): string {
+	if (!sealed) return "";
+	try {
+		return unseal(sealed);
+	} catch {
+		log.warn(`phone apps: the saved ${name} can't be read with this server's secret key; add it again`);
+		return "";
+	}
+}
+
 export async function mobileSettings(): Promise<MobilePushSettings> {
 	const raw = ((await readKey(KEY)) as Stored | undefined) ?? {};
 	const value = MobilePushSettings.parse(raw);
-	for (const k of SECRETS) value[k] = raw.sealed?.[k] ? unseal(raw.sealed[k]) : "";
+	for (const k of SECRETS) value[k] = open(k, raw.sealed?.[k]);
 	return value;
 }
 

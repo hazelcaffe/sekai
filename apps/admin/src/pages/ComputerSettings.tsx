@@ -7,6 +7,7 @@ import {
 	Field,
 	Input,
 	Section,
+	Segmented,
 	SettingsPanel,
 	Spinner,
 	ToggleRow,
@@ -115,6 +116,7 @@ function AllMachines() {
 							<div className="truncate text-sm font-medium">{m.name}</div>
 							<div className="truncate text-xs text-fg-subtle">
 								{m.kind === "device" ? "Lent device" : m.kind === "devbox" ? "Devbox" : "Computer"} ·{" "}
+								{m.backend ? `${m.backend === "lxc" ? "Container" : "Virtual machine"} · ` : ""}
 								{m.specs.cores} cores · {Math.round(m.specs.memoryMb / 1024)} GB
 							</div>
 						</div>
@@ -137,7 +139,7 @@ export function ComputersPanel() {
 		<SettingsPanel
 			value="computers"
 			title="Computers"
-			description="Bots' own computers (VMs with a desktop) and devboxes (temporary containers) on your Proxmox server."
+			description="Bots' own computers (with a desktop) and devboxes (temporary, for development) on your Proxmox server, as virtual machines or containers."
 			className="max-w-3xl"
 		>
 			<a
@@ -304,6 +306,37 @@ function ComputerSettings({ settings }: { settings: Settings }) {
 			</Section>
 
 			<Section title="New machines" icon={<Cpu />} description="What a bot gets unless it asks for more.">
+				<div className="flex flex-col gap-2">
+					<div className="grid gap-3 sm:grid-cols-2">
+						<Field label="New computers run as">
+							<Segmented
+								value={m.computerBackend}
+								onValueChange={(computerBackend) => setM({ ...m, computerBackend })}
+								options={[
+									{ value: "vm", label: "Virtual machine" },
+									{ value: "lxc", label: "Container" },
+								]}
+								className="self-start"
+							/>
+						</Field>
+						<Field label="New devboxes run as">
+							<Segmented
+								value={m.devboxBackend}
+								onValueChange={(devboxBackend) => setM({ ...m, devboxBackend })}
+								options={[
+									{ value: "lxc", label: "Container" },
+									{ value: "vm", label: "Virtual machine" },
+								]}
+								className="self-start"
+							/>
+						</Field>
+					</div>
+					<p className="text-xs leading-5 text-fg-subtle">
+						Containers are much lighter and start faster. Virtual machines are fully separate, with their
+						own kernel: better for Docker-heavy or kernel work. You and your bots can still pick either each
+						time.
+					</p>
+				</div>
 				<div className="flex flex-col gap-2">
 					<div className="text-[13px] font-medium">A new computer</div>
 					<SpecsFields

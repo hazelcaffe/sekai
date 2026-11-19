@@ -101,7 +101,7 @@ async function discordSession(
 ): Promise<{ s: BrowserSession; account: { channel: Channel; token: string } }> {
 	const account = await accountOf(ctx.agent.id);
 	if (!account) throw new ToolError("You don't have a Discord account; the user adds one under Accounts.");
-	const s = await browserFor(ctx.agent.id, on);
+	const s = await browserFor(ctx.agent.id, on, { own: true });
 	ensureHook(s, account.token);
 	return { s, account };
 }

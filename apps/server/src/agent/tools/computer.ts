@@ -14,8 +14,9 @@ import { defineTool, type ToolContext, ToolError, ToolOutput } from "./types.ts"
 
 async function desktop(ctx: ToolContext, on?: string): Promise<{ d: DesktopControl; key: string; where: string }> {
 	const m = await desktopTarget(ctx, on);
-	const where = m.kind === "device" ? `${m.name} (the user's computer)` : m.name;
-	return { d: await desktopOf(m), key: `${ctx.agent.id}:${m.id}`, where };
+	const where =
+		m.kind === "device" ? `${m.name} (the user's computer)` : m.seat ? `${m.name} (your own screen there)` : m.name;
+	return { d: await desktopOf(m, ctx.agent.id), key: `${ctx.agent.id}:${m.id}`, where };
 }
 
 /** The latest accessibility tree per bot and machine, so element ids can be clicked without fetching it again. */

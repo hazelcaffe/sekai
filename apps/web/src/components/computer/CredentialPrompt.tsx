@@ -77,7 +77,7 @@ function LoginForm({ request, onDone }: { request: CredentialRequest; onDone: ()
 					/>
 				</Field>
 			)}
-			{wants("password") && (
+			{wants("password") && request.canRemember && (
 				<label htmlFor={rememberId} className="flex cursor-pointer items-center gap-3 text-[13px]">
 					<span className="flex-1">
 						<span className="block font-medium">Remember for {agent?.name ?? "this bot"}</span>

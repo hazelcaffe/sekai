@@ -111,7 +111,10 @@ has their own workspace. The rules every change must keep:
   digests, check-ups, WebSockets. Someone else's row is "not found", never "forbidden".
 - **Sharing**: a bot can be shared (`agent_shares`) with a person, a role or everyone. Others chat with it in their own
   chats, with their own memory of it; they never get its owner's computer, browser sign-ins, accounts, apps or private
-  setup (`forViewer`, `toolAllowed` in `agent/tools/index.ts`).
+  setup (`forViewer`, `toolAllowed` in `agent/tools/index.ts`). Machines and browsers shared between bots
+  (`machine_members`, `shared_browsers`) follow one rule, `mayUseShared` in `services/visibility.ts`: in the owner's
+  runs their bots and bots shared with them; for others only the owner's own bots, and only with the resource's
+  "also for people these bots are shared with" switch on.
 - **Permissions and limits**: check features with `requirePermission()` / `can()` (`PERMISSIONS` in
   `packages/shared/src/access.ts`), server setup with `adminOnly`. Token, cost and model limits are enforced in
   `services/limits.ts` (at every model call) and storage on upload.
@@ -129,7 +132,7 @@ has their own workspace. The rules every change must keep:
 - Colorful Stage art (the character icons, and the logo: the Virtual Singer Miku icon) ships with Sekai and is shown
   unmodified: resize it, never crop, recolor, redraw or overlay it. Keep its © line, and the credit in Admin → About.
 - Brand logos (subscriptions, providers, sign-in providers) come from LobeHub Icons (MIT) in
-  `packages/client/src/components/logos.ts` (Discord's, which LobeHub lacks, from Simple Icons, CC0).
+  `packages/client/src/components/logos.ts` (Discord's and Slack's, which LobeHub lacks, from Simple Icons, CC0).
 - Root on a user's device always asks the user, whatever the approval mode (`askFirst` in `agent/tools/hosts.ts`).
 
 ## Working in this repo

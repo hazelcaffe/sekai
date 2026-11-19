@@ -26,18 +26,32 @@ import {
 	testProxmox,
 	updateMachine,
 } from "../machines/manager.ts";
+import { addMember, listMembers, listSeats, removeMember, requireSeat, retryMember } from "../machines/seats.ts";
 import { body, ok, readJson } from "./util.ts";
 
 /** Every route about one machine checks it's one of your bots' first (anyone else's is "not found"). */
 const ownMachine: MiddlewareHandler = async (c, next) => {
 	const id = c.req.param("id") ?? "";
-	if (id !== "proxmox") await requireMachine(id);
+	if (id !== "proxmox" && id !== "seats") await requireMachine(id);
 	return next();
 };
+
+/**
+ * Whose screen or account a request is about: the machine's own bot (none given), or a bot with a seat on it.
+ * Returns that bot's id once the seat is checked.
+ */
+async function seatBot(machineId: string, agentId: string | undefined | null): Promise<string> {
+	const m = await requireMachine(machineId);
+	if (!agentId || agentId === m.agentId) return m.agentId;
+	await requireSeat(m.id, agentId);
+	return agentId;
+}
 
 export const machineRoutes = new Hono()
 	.use("/:id/*", ownMachine)
 	.get("/", async (c) => c.json(await listMachines({ agentId: c.req.query("agentId") || undefined })))
+	// Your machines this bot has a seat on (another bot's computer or devbox shared with it).
+	.get("/seats", async (c) => c.json(await listSeats(c.req.query("agentId") ?? "")))
 	.post("/", async (c) => c.json(await createMachine((await readJson(c)) as never, "user"), 201))
 	.post("/proxmox/test", async (c) => {
 		requirePermission("admin");
@@ -53,17 +67,31 @@ export const machineRoutes = new Hono()
 	.post("/:id/stop", async (c) => c.json(await powerMachine(c.req.param("id"), "stop")))
 	.post("/:id/restart", async (c) => c.json(await powerMachine(c.req.param("id"), "restart")))
 	.post("/:id/retry", async (c) => c.json(await retryMachine(c.req.param("id"))))
-	// You're using the computer: the bot waits until you hand it back.
+	// You're using the computer (or a member bot's own screen on it): that bot waits until you hand it back.
 	.post("/:id/takeover", async (c) => {
-		const { active } = (await readJson(c)) as { active?: boolean };
-		await requireMachine(c.req.param("id"));
-		setTakeover(c.req.param("id"), Boolean(active));
+		const { active, agentId } = await body(
+			c,
+			z.object({ active: z.boolean().default(false), agentId: z.string().optional() }),
+		);
+		const who = await seatBot(c.req.param("id"), agentId);
+		setTakeover(c.req.param("id"), who, active);
 		return c.json(ok);
 	})
 	// Passwords: confirm it's you first (when you last did so a while ago).
 	.get("/:id/access", async (c) => {
 		requireRecentAuth(c);
-		return c.json(await machineAccess(c.req.param("id")));
+		const who = await seatBot(c.req.param("id"), c.req.query("agent"));
+		return c.json(await machineAccess(c.req.param("id"), who));
+	})
+	// Other bots sharing it, each in its own account (and screen, on a computer).
+	.get("/:id/members", async (c) => c.json(await listMembers(c.req.param("id"))))
+	.post("/:id/members", async (c) => c.json(await addMember(c.req.param("id"), await readJson(c)), 201))
+	.post("/:id/members/:memberId/retry", async (c) =>
+		c.json(await retryMember(c.req.param("id"), c.req.param("memberId"))),
+	)
+	.delete("/:id/members/:memberId", async (c) => {
+		await removeMember(c.req.param("id"), c.req.param("memberId"));
+		return c.json(ok);
 	})
 	// Checkpoints: snapshots of a bot's computer or devbox to roll back to.
 	.get("/:id/checkpoints", async (c) => c.json(await listCheckpoints(c.req.param("id"))))
@@ -79,13 +107,14 @@ export const machineRoutes = new Hono()
 		await deleteCheckpoint(c.req.param("id"), c.req.param("name"));
 		return c.json(ok);
 	})
-	// A live look at the computer's screen, for the preview in the app.
+	// A live look at the computer's screen (or a member bot's own screen on it), for the preview in the app.
 	.get("/:id/screen", async (c) => {
 		const m = await requireMachine(c.req.param("id"));
+		const who = await seatBot(m.id, c.req.query("agent"));
 		if ((m.kind !== "computer" && m.kind !== "device") || m.status !== "running")
 			return c.json({ error: "The computer isn't running" }, 409);
 		try {
-			const shot = await (await desktopOf(m)).screenshot();
+			const shot = await (await desktopOf(m, who)).screenshot();
 			return new Response(shot.png, { headers: { "content-type": "image/png", "cache-control": "no-store" } });
 		} catch (err) {
 			return c.json({ error: errorMessage(err) }, 502);

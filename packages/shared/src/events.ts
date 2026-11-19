@@ -45,6 +45,10 @@ export type ServerEvent =
 	| { type: "approvals.changed"; pending: number }
 	| { type: "machine.changed"; machine: Machine }
 	| { type: "machine.deleted"; machineId: string; agentId: string }
+	/** A bot was added to or removed from this machine, or its seat there changed (setting up, ready, a problem). */
+	| { type: "machine.members"; machineId: string }
+	/** One of this person's shared browsers was made, changed or deleted. */
+	| { type: "browsers.changed"; userId: string }
 	/** A document was added to the library, finished indexing, or was renamed or deleted. */
 	| { type: "library.changed" }
 	/** A backup was made, deleted or uploaded, or the backup settings changed. */

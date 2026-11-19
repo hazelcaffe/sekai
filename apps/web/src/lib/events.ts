@@ -202,6 +202,9 @@ export function connectEvents(qc: QueryClient): () => void {
 			case "agent.deleted":
 				qc.setQueryData<Agent[]>(qk.agents, (list) => list?.filter((a) => a.id !== ev.agentId));
 				void qc.invalidateQueries({ queryKey: qk.conversations });
+				// It may have been on your machines or shared browsers (or stopped being shared with you).
+				void qc.invalidateQueries({ queryKey: ["machineMembers"] });
+				void qc.invalidateQueries({ queryKey: ["sharedBrowsers"] });
 				break;
 			case "run.updated":
 				useUi.getState().trackRun(ev.run);
@@ -255,11 +258,22 @@ export function connectEvents(qc: QueryClient): () => void {
 				for (const key of [qk.machines(ev.machine.agentId), qk.machines()]) {
 					qc.setQueryData<Machine[]>(key, (list) => (list ? upsert(list, ev.machine) : list));
 				}
+				// Bots with a seat on it see the machine's state in their Computer tab.
+				void qc.invalidateQueries({ queryKey: ["seats"] });
 				break;
 			case "machine.deleted":
 				for (const key of [qk.machines(ev.agentId), qk.machines()]) {
 					qc.setQueryData<Machine[]>(key, (list) => list?.filter((m) => m.id !== ev.machineId));
 				}
+				void qc.invalidateQueries({ queryKey: ["seats"] });
+				void qc.invalidateQueries({ queryKey: ["sharedBrowsers"] });
+				break;
+			case "machine.members":
+				void qc.invalidateQueries({ queryKey: qk.machineMembers(ev.machineId) });
+				void qc.invalidateQueries({ queryKey: ["seats"] });
+				break;
+			case "browsers.changed":
+				void qc.invalidateQueries({ queryKey: ["sharedBrowsers"] });
 				break;
 			case "library.changed":
 				void qc.invalidateQueries({ queryKey: qk.documents });

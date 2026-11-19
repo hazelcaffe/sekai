@@ -242,14 +242,23 @@ export interface CommandEnv {
 	};
 }
 
-const HELP = `**Talk to me** by DM, or mention me in a server. Reply to one of my messages to continue that thread.
-**Chat:** /new · /stop · /retry · /compact · /context
-**Voice:** /join (or just say "join vc") · /leave
-**Me:** /status · /model · /mode · /profile
-**Memory:** /memory list · /memory add · /memory forget · /notes
-**Plans:** /remind · /routines · /approvals
-**Together:** /team · /group link · /group unlink · /listen · /trust
-Right-click one of my messages → Apps → **Retry**, **Retry with another model** or **Erase and retry**.`;
+/** /help: the commands, plus what this platform does differently (voice only where there is any). */
+function helpText(adapter: CommandEnv["adapter"]): string {
+	return [
+		adapter.help?.intro ??
+			"**Talk to me** by DM, or mention me in a server. Reply to one of my messages to continue that thread.",
+		"**Chat:** /new · /stop · /retry · /compact · /context",
+		...(adapter.voice ? ['**Voice:** /join (or just say "join vc") · /leave'] : []),
+		"**Me:** /status · /model · /mode · /profile",
+		"**Memory:** /memory list · /memory add · /memory forget · /notes",
+		"**Plans:** /remind · /routines · /approvals",
+		"**Together:** /team · /group link · /group unlink · /listen · /trust",
+		...(adapter.help?.tips ? [adapter.help.tips] : []),
+	].join("\n");
+}
+
+/** People in a /trust: Discord's numeric ids or Slack's member ids, as typed or from mentions. */
+const PERSON_ID = /\b(?:\d{15,25}|[UW][A-Z0-9]{6,})\b/g;
 
 // ---------------------------------------------------------------- helpers
 
@@ -351,7 +360,7 @@ export async function runCommand(env: CommandEnv, name: string, sub: string | nu
 		switch (name) {
 			case "help":
 			case "start":
-				return { text: `${name === "start" ? `Hi, I'm ${agent.name}.\n` : ""}${HELP}` };
+				return { text: `${name === "start" ? `Hi, I'm ${agent.name}.\n` : ""}${helpText(env.adapter)}` };
 
 			case "new": {
 				await env.hooks.newChat(await env.binding());
@@ -453,7 +462,7 @@ export async function runCommand(env: CommandEnv, name: string, sub: string | nu
 				const remove = opt(o, "remove") === "on";
 				const everyone = opt(o, "everyone") === "on";
 				const who = opt(o, "who");
-				const ids = new Set(who.match(/\d{15,25}/g) ?? []);
+				const ids = new Set(who.match(PERSON_ID) ?? []);
 				if (everyone) {
 					if (!env.chat.isGroup)
 						return { text: "Trust everyone works in a group chat. Elsewhere, /trust @someone." };

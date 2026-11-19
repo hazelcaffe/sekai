@@ -1,13 +1,18 @@
 // The phone apps against a scratch database: signing in through the browser (start → finish → exchange), and
 // push setup (Admin → Phone apps, a phone's token). mobile.test.ts runs this as its own process, like auth-check.
 import { createHash, randomBytes } from "node:crypto";
+import { rmSync } from "node:fs";
 import { createApp } from "../../src/app.ts";
 import { resetRateLimits } from "../../src/auth/routes.ts";
 import { ensureSetupCode, resetAuthCaches, setupCodeForTests } from "../../src/auth/service.ts";
+import { config } from "../../src/config.ts";
 import { closeDb, db, initDb, schema } from "../../src/db/index.ts";
+import { deleteKey } from "../../src/services/kv.ts";
 
 await initDb();
 await db.delete(schema.users);
+// Push setup from an earlier run (sealed with that run's secret key, which is gone).
+await deleteKey("push.mobile");
 resetAuthCaches();
 resetRateLimits();
 
@@ -170,6 +175,8 @@ try {
 } finally {
 	console.info(`REPORT ${JSON.stringify(report)}`);
 	await db.delete(schema.users);
+	await deleteKey("push.mobile");
 	server.stop(true);
 	await closeDb();
+	rmSync(config.dataDir, { recursive: true, force: true });
 }

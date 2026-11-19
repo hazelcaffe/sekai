@@ -1,4 +1,4 @@
-import { api, pluralize, useMemories, useNotes } from "@sekai/client";
+import { api, pluralize, sharedMachinesNote, useMachineUsers, useMemories, useNotes } from "@sekai/client";
 import type { Agent } from "@sekai/shared";
 import { Button, Checkbox, Confirm, Dialog, Field, Input, Section, Textarea, ToggleRow } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
@@ -48,6 +48,7 @@ export function ProfileTab({ agent }: { agent: Agent }) {
 			{ onSuccess: () => toast.success("Profile saved", { duration: 1500 }) },
 		);
 	const remove = useMutation({ mutationFn: () => api.agents.delete(agent.id), onSuccess: () => navigate("/") });
+	const machineUsers = useMachineUsers(agent.sharedBy ? null : agent.id, confirmDelete);
 	const duplicate = useMutation({
 		mutationFn: () => api.agents.duplicate(agent.id),
 		onSuccess: (a) => void openAgent(a.id),
@@ -178,7 +179,12 @@ export function ProfileTab({ agent }: { agent: Agent }) {
 				open={confirmDelete}
 				onOpenChange={setConfirmDelete}
 				title={`Delete ${agent.name}?`}
-				description="This erases its profile, chats, memory, notes and routines. It can't be undone."
+				description={[
+					sharedMachinesNote(agent.name, machineUsers),
+					"This erases its profile, chats, memory, notes and routines. It can't be undone.",
+				]
+					.filter(Boolean)
+					.join(" ")}
 				confirmLabel="Delete"
 				danger
 				onConfirm={() => remove.mutate()}

@@ -19,7 +19,9 @@ Runs on the bot's computer as the bot's user (Sekai calls it over SSH). Output i
   activate WINDOW_ID          raise and focus a window
   open COMMAND...             start an app in the background
   clipboard get | set         (set reads stdin)
-  browser [PORT]              makes sure Chrome is running with remote debugging on PORT (9222)
+  browser [PORT] [PROFILE]    makes sure Chrome is running with remote debugging on PORT (9222), with its
+                              profile in PROFILE (a folder in your home; default ~/.config/sekai-chrome)
+  version                     this helper's version
   wait-idle [SECONDS]         waits until the screen stops changing (max SECONDS)
 """
 
@@ -33,7 +35,21 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-os.environ.setdefault("DISPLAY", ":0")
+def session_display():
+    """This account's display, as Sekai's setup wrote it (/etc/sekai/desktop/USER.env); :0 otherwise."""
+    try:
+        import pwd
+        with open("/etc/sekai/desktop/%s.env" % pwd.getpwuid(os.getuid()).pw_name) as f:
+            for line in f:
+                key, _, value = line.strip().partition("=")
+                if key == "DISPLAY" and value:
+                    return value
+    except Exception:  # noqa: BLE001
+        pass
+    return ":0"
+
+
+os.environ.setdefault("DISPLAY", session_display())
 os.environ.setdefault("XAUTHORITY", os.path.expanduser("~/.Xauthority"))
 os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/%d/bus" % os.getuid())
 
@@ -344,9 +360,51 @@ def chrome_binary():
     return None
 
 
-def cmd_browser(port="9222"):
+def chromes_on(port):
+    """Chrome processes started with this debugging port: (pid, uid, profile folder)."""
+    found = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/cmdline" % pid, "rb") as f:
+                args = f.read().decode(errors="replace").split("\0")
+            uid = os.stat("/proc/%s" % pid).st_uid
+        except Exception:  # noqa: BLE001
+            continue
+        if "--remote-debugging-port=%s" % port not in args or any(a.startswith("--type=") for a in args):
+            continue
+        folder = next((a.split("=", 1)[1] for a in args if a.startswith("--user-data-dir=")), "")
+        found.append((int(pid), uid, os.path.realpath(folder) if folder else ""))
+    return found
+
+
+def cmd_browser(port="9222", profile=None):
     import urllib.request
+    if not str(port).isdigit():
+        fail("the port must be a number")
+    home = os.path.realpath(os.path.expanduser("~"))
+    folder = os.path.realpath(os.path.expanduser(profile or "~/.config/sekai-chrome"))
+    if not folder.startswith(home + os.sep):
+        fail("the profile must be a folder in your home")
     url = "http://127.0.0.1:%s/json/version" % port
+    # Another profile's Chrome on this port (a shared browser that moved, say): never hand that one out. A leftover
+    # of a shared browser of this account's is stopped; anything else is an error.
+    shared = os.path.join(home, ".config", "sekai-shared") + os.sep
+    for pid, uid, other in chromes_on(port):
+        if other == folder:
+            continue
+        if uid == os.getuid() and other.startswith(shared):
+            try:
+                os.kill(pid, 15)
+            except Exception:  # noqa: BLE001
+                pass
+            for _ in range(40):
+                if not os.path.exists("/proc/%d" % pid):
+                    break
+                time.sleep(0.1)
+        else:
+            fail("port %s is taken by another Chrome" % port)
     try:
         urllib.request.urlopen(url, timeout=1).read()
         out({"ok": True, "port": int(port), "started": False})
@@ -356,9 +414,9 @@ def cmd_browser(port="9222"):
     binary = chrome_binary()
     if not binary:
         fail("Chrome isn't installed")
-    profile = os.path.expanduser("~/.config/sekai-chrome")
+    os.makedirs(folder, exist_ok=True)
     subprocess.Popen([binary, "--remote-debugging-port=%s" % port, "--remote-debugging-address=127.0.0.1",
-                      "--user-data-dir=%s" % profile, "--no-first-run", "--no-default-browser-check",
+                      "--user-data-dir=%s" % folder, "--no-first-run", "--no-default-browser-check",
                       "--password-store=basic",
                       "--disable-features=Translate,PrivacySandboxSettings4,PasswordLeakDetection,AutofillServerCommunication",
                       "--force-renderer-accessibility",
@@ -390,8 +448,15 @@ def cmd_wait_idle(seconds="3"):
     out({"idle": False})
 
 
+VERSION = 2
+
+
+def cmd_version():
+    out({"version": VERSION})
+
+
 COMMANDS = {
-    "info": cmd_info, "screenshot": cmd_screenshot, "tree": cmd_tree, "act": cmd_act,
+    "version": cmd_version, "info": cmd_info, "screenshot": cmd_screenshot, "tree": cmd_tree, "act": cmd_act,
     "focus-element": cmd_focus_element, "click": cmd_click, "move": cmd_move, "drag": cmd_drag,
     "scroll": cmd_scroll, "type": cmd_type, "key": cmd_key, "windows": cmd_windows,
     "activate": cmd_activate, "open": cmd_open, "clipboard": cmd_clipboard, "browser": cmd_browser,
@@ -402,7 +467,7 @@ if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
         sys.stderr.write(__doc__)
         sys.exit(2)
-    if sys.argv[1] not in ("clipboard", "windows"):
+    if sys.argv[1] not in ("clipboard", "windows", "version"):
         wake()
     try:
         COMMANDS[sys.argv[1]](*sys.argv[2:])

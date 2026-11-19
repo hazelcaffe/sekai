@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ApprovalMode, ToolRules } from "./agent.ts";
-import { MachineSpecs } from "./machine.ts";
+import { MachineBackend, MachineSpecs } from "./machine.ts";
 import { ModelRef } from "./models.ts";
 
 /** Where bots' computers and devboxes are created. Secrets are masked when read back. */
@@ -26,6 +26,9 @@ export const MachineSettings = z.object({
 	tailscaleAuthKey: z.string(),
 	computerSpecs: MachineSpecs,
 	devboxSpecs: MachineSpecs,
+	/** What new computers and devboxes run as, unless asked otherwise (settings saved before these get the defaults). */
+	computerBackend: MachineBackend.default("vm"),
+	devboxBackend: MachineBackend.default("lxc"),
 	devboxTtlHours: z
 		.number()
 		.min(0.25)
