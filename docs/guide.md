@@ -166,9 +166,38 @@ Admin.
 
 ## Bots reach you
 
-- **`message_user`** sends you a message on the bot's own initiative: a Discord DM from its bot when it has one, otherwise in its chat in the app, optionally as a voice message. Reminders and routines use it when you asked to be told.
+- **`message_user`** sends you a message on the bot's own initiative: a Slack or Discord DM from its bot when it has one, otherwise in its chat in the app, optionally as audio. Choose `via: "slack"`, `"discord"`, `"app"` or `"auto"`. Reminders and routines use it when you asked to be told.
 - **`call_user`** rings the app (a full-screen ring on phones). If you're in a Discord voice channel its bot can see, it joins you there. No answer in 40 seconds (or Decline) sends its message as a voice message instead.
 - **Notifications** for approvals, calls, outreach and finished routines show in the browser and the desktop app, and as [push notifications](install.md#on-your-devices) on devices that turned them on. Approval requests can be answered right from the notification.
+
+## Bots on Slack
+
+Each Sekai bot gets its **own Slack app and real bot user**: its own name, avatar, mentions, DMs and Messages tab. Nothing impersonates another bot through a shared webhook. Sekai connects out using **Socket Mode**, so a server behind a home router or on a tailnet needs no public URL or signing endpoint.
+
+### Set up a bot
+
+1. Open the bot's **Tools → Accounts → Slack**, choose **Add → Slack**, and click **Create the app in Slack**. Pick your workspace and review the generated manifest. If the link doesn't prefill it, use **Copy manifest** and Slack's **From a manifest** flow instead. The manifest enables messages, mentions, files, interactivity, Socket Mode and Slack's agent messaging view.
+2. In the new app's **OAuth & permissions**, choose **Install to workspace**. Some workspaces require an admin's approval. Copy the **Bot user OAuth token** (`xoxb-…`).
+3. In **Basic information → App-level tokens**, generate a token with **connections:write**. Copy this **app-level token** (`xapp-…`). Both tokens must come from the same app.
+4. Paste both tokens into Sekai and connect. Sekai checks the bot identity and opens its socket, then shows the workspace and bot user. Tokens are encrypted at rest and masked when read back. Keep Socket Mode on and token rotation off; replace revoked tokens here and reconnect.
+5. Download **Avatar PNG** and set it under **Basic information → Display information → App icon**. Slack has no API for app icons, and your Sekai picture need not be public. Colorful Stage pictures are exported whole, with their credit shown in Sekai.
+6. Open the app's **Messages** tab in Slack and say hi. Approve the pairing code in Sekai, or enter your Slack member ID when connecting (profile → More → Copy member ID). Invite the app into each channel where you want to talk to it.
+
+Repeat for each bot. Only one running Sekai should connect to an app: Slack distributes events between concurrent Socket Mode connections rather than broadcasting to them. Sekai warns when Slack reports another connection.
+
+### Chat, controls and groups
+
+- **Access:** unknown DM senders get pairing codes, not access to your tools or memory. In channels, only allowlisted people are answered. The first allowlisted person is the owner; model, memory, routines, group links, trust and approval controls are theirs alone. Trusting someone lets them chat, not change the bot or decide its approvals. Attachments are downloaded only after access checks.
+- **Threads:** each top-level message starts its own threaded conversation, including in DMs. Replies stay under that root, and each thread has its own Sekai history, isolated from other threads. Once the bot has a binding there, allowed people can continue without mentioning it again. A channel-wide `listen on` also applies to new threads. Proactive DMs reuse your most recent DM thread; if none exists, the bot opens a DM and its first threaded reply continues that conversation.
+- **Replies:** Sekai posts answers once finished, rather than repeatedly editing a partial answer. This keeps notifications quiet and stays within Slack's posting limits. Long replies split at sensible boundaries; Markdown becomes Slack mrkdwn, including links, emphasis, code, lists and quoted text. Tables use code blocks. In DM threads, a native “is thinking…” status is used when Slack permits it; otherwise a temporary thinking reaction is used. Internal memory/model notices stay in Sekai.
+- **Commands:** the setup screen shows this app's unique command, such as `/sekai-miku-abc1234`. Follow it with `help`, `status`, `new` (or `reset`), `stop`, `retry`, `model`, `mode`, `memory`, `notes`, `routines`, `remind`, `approvals`, `approve`, `deny`, `team`, `group`, `listen`, `trust`, `profile`, `context` or `compact`, with the same arguments as Discord. Commands reply privately. Slack's slash commands share a workspace-wide namespace and cannot be invoked in threads: inside a thread, send `@Miku /status` or `@Miku /model model-name` as ordinary text. Thread commands reply there, not privately. Menus work; slash-command autocomplete and Discord's right-click retry menu are not available.
+- **Approvals:** requests have **Approve once / Allow in this chat / Deny** buttons. Only the owner may decide; the message records their name and removes the buttons. You can also answer in Sekai or type `@Miku /approve CODE`. Always-ask actions, including root on your device, still need individual approval, regardless of the button chosen.
+- **Groups:** invite every bot's app to the channel. Inside a thread, `@Miku /group link Miku Kanade` makes one Sekai group conversation: Miku and Kanade each post through their own bot user. Mention either or both to choose responders, or ask for a discussion and let Sekai's group routing run it. A shared inbound message is taken once, not once per socket. Bots without an app in that channel are named in messages posted by the first bot. A group linked at channel level (the app's slash command followed by `group link Miku Kanade`) carries its membership into new threads, each with fresh history. `group unlink` restores separate chats without deleting history.
+- **Files and outreach:** incoming files up to 20 MiB become Sekai attachments. Outgoing images and files use Slack's external upload flow in the same thread. `message_user` with `via: "slack"` opens a DM with the owner; `auto` chooses an available messaging account before falling back to Sekai. Audio is uploaded as a file, not a Slack huddle.
+
+**Limits.** Slack huddles and voice calls are not supported. The app must be invited to private and public channels before it can read or post there. Workspace policies, retention and Slack's rate limits still apply. Apps using Socket Mode cannot be published in the Slack Marketplace; these are private apps you install yourself. Rename the app/update its icon in Slack manually when changing the Sekai bot, and reinstall after changing manifest scopes. This integration doesn't automatically import old Slack history.
+
+**Testing.** `bun test apps/server/test/slack.test.ts` uses a local fake Web API and Socket Mode gateway. `bun run test:slack` is the optional live check: two agent apps and a third tester app in one test channel, against an already running Sekai. See `apps/server/scripts/slack-e2e.ts` for its environment variables and the human-only DM, slash-command and approval checklist. No real Slack workspace is needed for unit tests.
 
 ## Bots on Discord
 

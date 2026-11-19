@@ -11,7 +11,7 @@ For the rules every change must keep (who owns what, how requests become a perso
 apps/server      Bun + Hono API, Postgres (Drizzle), SSE event bus
   src/agent        runtime (per-chat run queue), tool loop, strategies, approvals, context, prompt
   src/agent/tools  built-in tools; one defineTool() each
-  src/channels     platform adapters (Discord), manager (access, routing, group links, approvals),
+  src/channels     platform adapters (Discord, Slack Socket Mode), manager (access, routing, group links, approvals),
                    commands, streaming delivery
   src/providers    BYOS: ACP client, Claude Agent SDK runner, Sekai tools bridge (MCP), turn composer
   src/machines     computers and devboxes: Proxmox client, cloud-init seed (ISO writer), SSH, desktop helper, VNC bridge;

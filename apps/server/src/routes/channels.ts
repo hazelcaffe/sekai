@@ -1,6 +1,8 @@
+import { ChannelCreate, ChannelUpdate } from "@sekai/shared";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requirePermission } from "../auth/actor.ts";
+import { requireRecentAuth } from "../auth/routes.ts";
 import {
 	createChannel,
 	decidePairing,
@@ -26,7 +28,11 @@ export const channelRoutes = new Hono()
 	})
 	.get("/", async (c) => c.json(await listChannels({ agentId: c.req.query("agentId") || undefined })))
 	.get("/links", async (c) => c.json(await listAllBindings()))
-	.post("/", async (c) => c.json(await createChannel((await readJson(c)) as never), 201))
+	.post("/", async (c) => {
+		const input = await body(c, ChannelCreate);
+		if (input.type === "slack") requireRecentAuth(c);
+		return c.json(await createChannel(input), 201);
+	})
 	.get("/pairings", async (c) => c.json(await listPairings()))
 	.post("/pairings/:code", async (c) => {
 		const { approve } = await body(c, z.object({ approve: z.boolean() }));
@@ -38,8 +44,14 @@ export const channelRoutes = new Hono()
 		return c.json(ok);
 	})
 	.patch("/bindings/:id", async (c) => c.json(await updateBinding(c.req.param("id"), (await readJson(c)) as never)))
-	.patch("/:id", async (c) => c.json(await updateChannel(c.req.param("id"), (await readJson(c)) as never)))
+	.patch("/:id", async (c) => {
+		const channel = await requireOwnChannel(c.req.param("id"));
+		if (channel.type === "slack") requireRecentAuth(c);
+		return c.json(await updateChannel(channel.id, await body(c, ChannelUpdate)));
+	})
 	.delete("/:id", async (c) => {
+		const channel = await requireOwnChannel(c.req.param("id"));
+		if (channel.type === "slack") requireRecentAuth(c);
 		await deleteChannel(c.req.param("id"));
 		return c.json(ok);
 	})

@@ -4,8 +4,8 @@ import { z } from "zod";
  * Messaging channels: give an agent its own bot on a chat platform so you can talk to it from there.
  * Every channel uses the platform's official bot API with credentials you create yourself.
  */
-/** Discord is the supported platform (bot account, or a personal user account); the adapter stays open for others. */
-export const CHANNEL_TYPES = ["discord", "discord-user"] as const;
+/** Bot accounts on Slack and Discord, plus Discord personal accounts. */
+export const CHANNEL_TYPES = ["discord", "slack", "discord-user"] as const;
 export const ChannelType = z.enum(CHANNEL_TYPES);
 export type ChannelType = z.infer<typeof ChannelType>;
 
@@ -46,7 +46,7 @@ export const Channel = z.object({
 	/** Tokens. Masked when read back; send "" or the masked value to keep the stored one. */
 	secrets: z.record(z.string(), z.string()),
 	dmPolicy: DmPolicy,
-	/** Discord user IDs allowed to talk to the bot (yours, plus any test bots you allow). */
+	/** Platform user IDs allowed to talk to the bot (yours, plus any test bots you allow). */
 	allowFrom: z.array(z.string()),
 	groupPolicy: GroupPolicy,
 	delivery: ChannelDelivery,
@@ -99,6 +99,10 @@ export interface ChannelStatus {
 	inviteUrl: string | null;
 	/** The bot can read messages that don't mention it (Discord: the Message Content intent is on). */
 	readsAll: boolean;
+	/** Slack's connected workspace and app, when available. */
+	workspaceId?: string;
+	workspaceName?: string;
+	appId?: string;
 }
 
 export type ChannelWithStatus = Channel & { status: ChannelStatus };
@@ -152,6 +156,37 @@ export interface ChannelDefinition {
 }
 
 export const CHANNEL_DEFINITIONS: Record<ChannelType, ChannelDefinition> = {
+	slack: {
+		type: "slack",
+		title: "Slack",
+		idHint: "Your Slack member ID (your profile → More → Copy member ID)",
+		fields: [
+			{
+				key: "botToken",
+				label: "Bot token",
+				secret: true,
+				required: true,
+				placeholder: "xoxb-…",
+				hint: "OAuth & permissions → Bot user OAuth token, after installing the app.",
+			},
+			{
+				key: "appToken",
+				label: "App-level token",
+				secret: true,
+				required: true,
+				placeholder: "xapp-…",
+				hint: "Basic information → App-level tokens. Generate one with connections:write.",
+			},
+		],
+		setup: [
+			"Create a separate Slack app for this bot using this manifest. No public server address is needed.",
+			"In OAuth & permissions, install it to your workspace and copy the bot token (xoxb-…). Your workspace may need an admin to approve the install.",
+			"In Basic information → App-level tokens, generate a token with connections:write (xapp-…). Paste both tokens here.",
+			"Open the app's Messages tab in Slack and say hi, then approve its pairing code in Sekai. Invite the app to channels where you want to mention it.",
+		],
+		docsUrl: "https://docs.slack.dev/apis/events-api/using-socket-mode/",
+		approvals: "buttons",
+	},
 	discord: {
 		type: "discord",
 		title: "Discord",

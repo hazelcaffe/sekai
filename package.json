@@ -42,6 +42,7 @@
 		"format": "biome check --write .",
 		"test": "bun test",
 		"test:discord": "bun run --cwd apps/server test:discord",
+		"test:slack": "bun run --cwd apps/server test:slack",
 		"test:proxmox": "bun run --cwd apps/server test:proxmox",
 		"check": "bun run lint && bun run typecheck && bun run test",
 		"db:generate": "bun run --cwd apps/server db:generate",

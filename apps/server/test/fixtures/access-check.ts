@@ -4,10 +4,11 @@ import { rmSync } from "node:fs";
 import { RoleLimits } from "@sekai/shared";
 import { eq } from "drizzle-orm";
 import { createApp } from "../../src/app.ts";
-import { actorFor } from "../../src/auth/actor.ts";
+import { actorFor, runAs } from "../../src/auth/actor.ts";
 import { resetRateLimits } from "../../src/auth/routes.ts";
 import { ensureSetupCode, resetAuthCaches, setupCodeForTests } from "../../src/auth/service.ts";
 import { base32Decode, base32Encode, currentStep, totpAt } from "../../src/auth/totp.ts";
+import { bindingsForChat, recordPlatformMessage, sekaiMessageId } from "../../src/channels/state.ts";
 import { config } from "../../src/config.ts";
 import { closeDb, db, initDb, schema } from "../../src/db/index.ts";
 import { eventVisibleTo } from "../../src/events/scope.ts";
@@ -138,6 +139,59 @@ try {
 		jar: admin,
 		body: { kind: "direct", agentId: adminBot.id },
 	});
+	const memberRole = (await call("GET", "/api/admin/roles", { jar: admin })).data.find(
+		(r: { id: string }) => r.id === "role_member",
+	);
+	await call("PATCH", "/api/admin/roles/role_member", {
+		jar: admin,
+		body: { permissions: [...memberRole.permissions, "channels"] },
+	});
+	const slack = await call("POST", "/api/channels", {
+		jar: admin,
+		body: {
+			agentId: adminBot.id,
+			type: "slack",
+			enabled: false,
+			secrets: { botToken: "xoxb-test-only", appToken: "xapp-test-only" },
+		},
+	});
+	const storedSlack = await db.query.channels.findFirst({ where: eq(schema.channels.id, String(slack.data.id)) });
+	await db.insert(schema.channelBindings).values({
+		id: "cb_slack_access",
+		channelId: String(slack.data.id),
+		externalChatId: "slack:T1:C1:100.000001",
+		conversationId: String(adminChat.data.id),
+		chatName: "Slack thread",
+		isGroup: true,
+		listen: true,
+		createdAt: Date.now(),
+	});
+	report.slack = {
+		created: slack.status,
+		sealed: Boolean(
+			storedSlack?.secrets.botToken?.startsWith("v1:") && storedSlack.secrets.appToken?.startsWith("v1:"),
+		),
+		masked: !JSON.stringify(slack.data.secrets).includes("test-only"),
+		otherList: (await call("GET", `/api/channels?agentId=${adminBot.id}`, { jar: member })).data.length,
+		otherPatch: (
+			await call("PATCH", `/api/channels/${slack.data.id}`, { jar: member, body: { allowFrom: ["UINTRUDER"] } })
+		).status,
+		otherBindings: (await call("GET", `/api/channels/${slack.data.id}/bindings`, { jar: member })).status,
+		otherBindingPatch: (
+			await call("PATCH", "/api/channels/bindings/cb_slack_access", { jar: member, body: { listen: false } })
+		).status,
+		otherChannelCreate: (
+			await call("POST", "/api/channels", {
+				jar: member,
+				body: { agentId: adminBot.id, type: "slack", enabled: false },
+			})
+		).status,
+		otherThreadLinks: await runAs(
+			await actorFor(memberId),
+			async () => (await bindingsForChat("slack:T1:C1:100.000001")).length,
+		),
+	};
+	await call("PATCH", "/api/admin/roles/role_member", { jar: admin, body: { permissions: memberRole.permissions } });
 	await db.insert(schema.messages).values({
 		id: "msg_admin_secret",
 		conversationId: String(adminChat.data.id),
@@ -156,6 +210,29 @@ try {
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
 	});
+	await recordPlatformMessage({
+		channelId: String(slack.data.id),
+		chatId: "slack:T1:C1:100.000001",
+		externalMessageId: "100.000002",
+		messageId: "msg_admin_secret",
+		direction: "in",
+	});
+	report.slack = {
+		...(report.slack as Record<string, unknown>),
+		otherMessageLookup: await runAs(await actorFor(memberId), () =>
+			sekaiMessageId("slack:T1:C1:100.000001", "100.000002"),
+		),
+		ownerSeesStatus: await eventVisibleTo(
+			{ type: "channel.changed", channelId: String(slack.data.id) },
+			"admins",
+			await actorFor(String(setup.data.user.id)),
+		),
+		otherSeesStatus: await eventVisibleTo(
+			{ type: "channel.changed", channelId: String(slack.data.id) },
+			"everyone",
+			await actorFor(memberId),
+		),
+	};
 	report.memberSearch = (await call("GET", "/api/search/messages?q=platypus", { jar: member })).data.length;
 
 	// Browser tokens see only their owner's bots/chats and cannot reach setup or other people's grants.

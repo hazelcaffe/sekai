@@ -351,7 +351,9 @@ export async function runCommand(env: CommandEnv, name: string, sub: string | nu
 		switch (name) {
 			case "help":
 			case "start":
-				return { text: `${name === "start" ? `Hi, I'm ${agent.name}.\n` : ""}${HELP}` };
+				return {
+					text: `${name === "start" ? `Hi, I'm ${agent.name}.\n` : ""}${env.channel.type === "slack" ? HELP.replace(/\*\*Voice:\*\*[^\n]*\n/, "").replace(/Right-click[^\n]*/, "Use this app's unique /sekai-… command followed by status, new, stop, model or help. In threads, type @bot /command. Voice calls and Slack huddles aren't supported.") : HELP}`,
+				};
 
 			case "new": {
 				await env.hooks.newChat(await env.binding());
@@ -453,7 +455,9 @@ export async function runCommand(env: CommandEnv, name: string, sub: string | nu
 				const remove = opt(o, "remove") === "on";
 				const everyone = opt(o, "everyone") === "on";
 				const who = opt(o, "who");
-				const ids = new Set(who.match(/\d{15,25}/g) ?? []);
+				const ids = new Set(
+					who.match(env.channel.type === "slack" ? /\b[UW][A-Z0-9]+\b/g : /\d{15,25}/g) ?? [],
+				);
 				if (everyone) {
 					if (!env.chat.isGroup)
 						return { text: "Trust everyone works in a group chat. Elsewhere, /trust @someone." };

@@ -103,6 +103,10 @@ export async function eventVisibleTo(ev: ServerEvent, audience: Audience, who: A
 		return owner ? owner === who.userId : inAudience(audience, who);
 	}
 	switch (ev.type) {
+		case "channel.changed": {
+			const row = await db.query.channels.findFirst({ where: eq(schema.channels.id, ev.channelId) });
+			return row ? (await agentOwner(row.agentId)) === who.userId : inAudience(audience, who);
+		}
 		case "agent.created":
 		case "agent.updated":
 			// The owner gets their bot as it is; others only the shared view (without its private setup).

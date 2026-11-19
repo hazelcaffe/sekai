@@ -49,7 +49,7 @@ src/agent/        the brain
   tools/            built-in tools (one defineTool each), index.ts lists BUILTIN_TOOLS and MCP tool wiring
 src/providers/    BYOS: ACP client (acp.ts), Claude Agent SDK (claude.ts), tools bridge over MCP for them
 src/llm/          gateway client (OpenAI-compatible), API providers (OpenAI/Anthropic/Gemini kinds), embeddings
-src/channels/     messaging platforms: types.ts (ChannelAdapter), discord.ts, discord-user.ts, manager.ts
+src/channels/     messaging platforms: types.ts (ChannelAdapter), discord.ts, discord-user.ts, slack.ts (Socket Mode + Web API), slack-format.ts (mrkdwn), manager.ts
                   (access, routing, bindings, approvals), stream.ts (posts replies when finished), commands.ts,
                   voice.ts (Discord voice channels: join, hear allowed users, speak)
 src/voice/        voice-call.ts (calls: speech to text → the bot's own model → text to speech), tts.ts, listen.ts
@@ -141,7 +141,7 @@ stay valid. Postgres runs in Docker on port 5433 (`bun run db:up`).
   Keep new tests database-free (pass fakes, e.g. `PostedStore` in channels tests). `auth.test.ts` and
   `access.test.ts` are the exceptions: they run sign-in and several people's isolation end to end against scratch
   databases when Postgres is up, and skip themselves otherwise.
-- Live checks: `scripts/discord-e2e.ts`, `scripts/proxmox-e2e.ts`.
+- Live checks: `scripts/discord-e2e.ts`, `scripts/slack-e2e.ts` (three Slack apps, existing server), `scripts/proxmox-e2e.ts`.
 - For a one-off check against real data, write `scripts/.<name>.tmp.ts` that calls `initDb()` and the service
   functions directly, run it with `bun`, then delete it.
 

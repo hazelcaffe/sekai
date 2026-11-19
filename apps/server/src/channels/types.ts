@@ -19,6 +19,10 @@ export interface InboundMention {
 export interface InboundMessage {
 	/** Where to reply: a DM, channel, thread or group id on the platform. */
 	chatId: string;
+	/** Parent channel for thread-level bindings and inherited /listen or group settings. */
+	parentChatId?: string;
+	/** A reply inside a thread: once bound, allowed people can continue without mentioning the bot again. */
+	threadReply?: boolean;
 	chatName: string;
 	isGroup: boolean;
 	/** The server the chat belongs to, if any. */
@@ -152,6 +156,9 @@ export interface BotIdentity {
 	botName: string;
 	inviteUrl: string | null;
 	readsAll: boolean;
+	workspaceId?: string;
+	workspaceName?: string;
+	appId?: string;
 }
 
 /**
@@ -173,6 +180,8 @@ export interface ChannelAdapter {
 	remove(chatId: string, messageId: string): Promise<void>;
 	react(chatId: string, messageId: string, emoji: string): Promise<void>;
 	typing(chatId: string): Promise<void>;
+	/** Clears a progress indicator, including replies that finished without text. */
+	idle?(chatId: string): Promise<void>;
 	/** Whether the bot can see and post in this chat (it's in that server and has access). */
 	canPost(chatId: string): Promise<boolean>;
 	/** Publishes the bot's commands so the platform can offer them (Discord: slash commands). */

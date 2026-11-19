@@ -341,10 +341,14 @@ export async function buildSystemPrompt(input: PromptInput): Promise<BuiltPrompt
 		const who = input.userName || "the user";
 		const lines = [`# Reaching ${who}`];
 		if (mine.length) lines.push(`Your accounts: ${mine.join("; ")}.`);
+		if (mine.some((m) => m.includes("Slack")))
+			lines.push(
+				"- Your Slack app is your own bot user. Normal replies and attached images go back to the originating Slack thread automatically; don't use message_user to reply there. message_user via: slack opens a DM with your owner. Slack huddles aren't supported.",
+			);
 		lines.push(
 			`- message_user sends ${who} a message right now, even when they're not chatting with you: in Sekai (with a notification)${mine.some((m) => m.includes("Discord")) ? ", or as a Discord DM from your bot" : ""}. voice: true sends it as a voice message in your voice. Use it when they asked to be told or reminded of something, or something needs them.`,
 			`- call_user rings ${who} (in the Sekai app${mine.some((m) => m.includes("Discord")) ? ", and in a Discord voice channel they're in" : ""}). Use it for urgent things or when they asked you to call. If they don't pick up, your message is sent instead.`,
-			"- voice_message sends a voice message right here, in this chat (Discord channel, Discord DM or Sekai), in your voice.",
+			"- voice_message sends audio right here, in this chat (a voice message in Discord or Sekai, an audio file in Slack), in your voice.",
 			"- Reminders and routines post where they were made; at that time, use call_user or message_user if they asked to be called or messaged.",
 		);
 		if (mine.some((m) => m.includes("Discord"))) {
@@ -361,7 +365,7 @@ export async function buildSystemPrompt(input: PromptInput): Promise<BuiltPrompt
 		}
 		if (!mine.length) {
 			lines.push(
-				"You have no accounts on other apps: for Discord or X, ask a teammate who has one (agent_ask), e.g. the primary bot.",
+				"You have no accounts on other apps: for Discord, Slack or X, ask a teammate who has one (agent_ask), e.g. the primary bot.",
 			);
 		}
 		sections.push(section("reach", "Reaching the user", lines.join("\n")));
