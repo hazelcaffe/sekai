@@ -31,6 +31,7 @@ import { Guest } from "./guest.ts";
 import { seedIso } from "./iso.ts";
 import { agentKeyFile, agentKeypair, hostnameFor, linuxUsername } from "./keys.ts";
 import { DEBIAN_IMAGE, ForeignVmError, ProxmoxClient, ProxmoxError, permissionHelp, pickAddresses } from "./proxmox.ts";
+import { closeRelays } from "./relay.ts";
 import {
 	computerSetupScript,
 	computerUserData,
@@ -324,7 +325,11 @@ const desktops = new Map<string, { desktop: Desktop; host: string; user: string 
 const seatKey = (machineId: string, agentId: string) => `${machineId}:${agentId}`;
 
 function forgetDesktops(machineId: string): void {
-	for (const key of desktops.keys()) if (key.startsWith(`${machineId}:`)) desktops.delete(key);
+	for (const [key, d] of desktops) {
+		if (!key.startsWith(`${machineId}:`)) continue;
+		d.desktop.dispose();
+		desktops.delete(key);
+	}
 }
 
 /**
@@ -340,9 +345,15 @@ export async function desktopOf(m: Machine, agentId = m.agentId): Promise<Deskto
 	const target = await sshTarget(m, agentId);
 	const key = seatKey(m.id, agentId);
 	const cached = desktops.get(key);
-	if (cached && cached.host === target.host && cached.user === target.user) return cached.desktop;
-	const desktop = new Desktop(target);
-	desktops.set(key, { desktop, host: target.host, user: target.user });
+	let desktop: Desktop;
+	if (cached && cached.host === target.host && cached.user === target.user) desktop = cached.desktop;
+	else {
+		cached?.desktop.dispose();
+		desktop = new Desktop(target);
+		desktops.set(key, { desktop, host: target.host, user: target.user });
+	}
+	// Faster screen control (experimental): screen-relay on bots' Linux computers.
+	desktop.useRelay(m.kind === "computer" && (await getSettings()).machines.screenRelay, `${m.name} (${target.user})`);
 	return desktop;
 }
 
@@ -1077,6 +1088,7 @@ export async function initMachines(): Promise<void> {
 
 export function shutdownMachines(): void {
 	if (sweeper) clearInterval(sweeper);
+	closeRelays();
 }
 
 // ---------------------------------------------------------------- checkpoints (Proxmox snapshots or backups)

@@ -59,6 +59,7 @@ function defaultMachineSettings(): MachineSettings {
 		devboxTtlHours: 24,
 		maxDevboxesPerAgent: 3,
 		agentRequests: "ask",
+		screenRelay: false,
 	};
 }
 

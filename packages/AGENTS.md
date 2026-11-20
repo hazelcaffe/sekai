@@ -10,6 +10,8 @@ Types and validation shared by the server and every app, one file per area (`age
 - Input schemas are zod (`AgentCreate`, `HostCreate`…); PATCH bodies use `patchOf(schema)` from `patch.ts`
   (all keys optional, defaults not re-applied). Output shapes are TS interfaces (`Host`, `HostWithStatus`).
 - `events.ts`: the `ServerEvent` union streamed over `/api/events`.
+- `teach.ts`: teaching a bot by doing it once: the recorded steps' schema and `TeachRecorder`, which turns pointer,
+  wheel and key events into steps (pure, so the server's tests cover it).
 - `client.ts`: `createApiClient({ baseUrl, getToken })` → `api.<area>.<verb>()`; one method per server route.
   Keep paths, methods and body shapes identical to `apps/server/src/routes/*`.
 - Server-only code doesn't belong here (no node: imports, no DB).

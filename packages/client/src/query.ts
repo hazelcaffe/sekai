@@ -53,6 +53,7 @@ export const qk = {
 	pairings: ["pairings"] as const,
 	machines: (agentId?: string) => ["machines", agentId ?? "all"] as const,
 	checkpoints: (machineId: string) => ["checkpoints", machineId] as const,
+	machinePorts: (machineId: string) => ["machinePorts", machineId] as const,
 	machineMembers: (machineId: string) => ["machineMembers", machineId] as const,
 	seats: (agentId: string) => ["seats", agentId] as const,
 	sharedBrowsers: (agentId?: string) => ["sharedBrowsers", agentId ?? "all"] as const,

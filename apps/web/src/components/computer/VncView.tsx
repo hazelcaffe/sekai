@@ -13,9 +13,11 @@ import {
 	Tooltip,
 } from "@sekai/ui";
 import {
+	Check,
 	ClipboardPaste,
 	Command,
 	Expand,
+	GraduationCap,
 	Keyboard,
 	Maximize,
 	Minimize,
@@ -28,6 +30,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLayout } from "../../lib/hooks.ts";
+import { TeachDialogs, useTeach } from "./Teach.tsx";
 
 type RfbClient = InstanceType<typeof import("@novnc/novnc").default>;
 
@@ -149,6 +152,15 @@ export function VncView({
 	const [full, setFull] = useState(false);
 	const [pasting, setPasting] = useState(false);
 	const [pasteText, setPasteText] = useState("");
+	const { teaching, dialogs: teachDialogs } = useTeach({
+		machine,
+		agentId,
+		screen,
+		focusScreen: () => rfb.current?.focus(),
+	});
+	const recording = teaching.phase === "recording";
+	// Skills belong to your own bots (a bot someone shared with you keeps its owner's).
+	const canTeach = Boolean(agent && !agent.sharedBy);
 	const touch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 	const canFullscreen = typeof document !== "undefined" && document.fullscreenEnabled;
 	const connected = state === "connected";
@@ -212,8 +224,13 @@ export function VncView({
 		};
 	}, [open, machine.id, agentId, attempt]);
 
+	const resetTeaching = teachDialogs.reset;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only when the view closes (reset changes every render)
 	useEffect(() => {
-		if (!open) setSince(null);
+		if (!open) {
+			setSince(null);
+			resetTeaching();
+		}
 	}, [open]);
 
 	useEffect(() => {
@@ -227,6 +244,11 @@ export function VncView({
 	}, []);
 
 	const handBack = () => {
+		if (recording) {
+			// The recording would be lost: finish it first (check the steps, save or discard), then hand back.
+			teaching.stop();
+			return;
+		}
 		if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
 		onOpenChange(false);
 		toast(`Handed back to ${botName}`, { duration: 2000 });
@@ -243,6 +265,12 @@ export function VncView({
 		if (!client || !text) return;
 		client.clipboardPasteFrom(text);
 		setTimeout(() => chord(client, [KEY.ctrl, KEY.v]), 120);
+		teaching.text(text, true);
+	};
+	/** A shortcut from the Keys menu (recorded while teaching, under xdotool's name). */
+	const press = (keys: number[], combo: string) => {
+		chord(rfb.current, keys);
+		teaching.press(combo);
 	};
 	const startPaste = async () => {
 		const text = await navigator.clipboard?.readText?.().catch(() => "");
@@ -258,14 +286,34 @@ export function VncView({
 		const ev = e.nativeEvent as InputEvent;
 		const client = rfb.current;
 		if (client) {
-			if (ev.inputType === "deleteContentBackward") client.sendKey(KEY.backspace, null);
-			else if (ev.inputType === "insertLineBreak") client.sendKey(KEY.enter, null);
-			else if (ev.data) for (const ch of ev.data) client.sendKey(keysymOf(ch), null);
+			if (ev.inputType === "deleteContentBackward") {
+				client.sendKey(KEY.backspace, null);
+				teaching.key({ key: "Backspace" });
+			} else if (ev.inputType === "insertLineBreak") {
+				client.sendKey(KEY.enter, null);
+				teaching.key({ key: "Enter" });
+			} else if (ev.data) {
+				for (const ch of ev.data) client.sendKey(keysymOf(ch), null);
+				teaching.text(ev.data);
+			}
 		}
 		e.currentTarget.value = "";
 	};
 
-	const status = connected ? (
+	const status = recording ? (
+		<>
+			<span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-red-500" />
+			<span className="truncate">
+				Recording{phone ? "" : ` for ${botName}`} · {teaching.count} step{teaching.count === 1 ? "" : "s"}
+				{teaching.startedAt && (
+					<>
+						{" · "}
+						<Elapsed since={teaching.startedAt} />
+					</>
+				)}
+			</span>
+		</>
+	) : connected ? (
 		<>
 			<span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-violet-400" />
 			<span className="truncate">
@@ -292,6 +340,15 @@ export function VncView({
 
 	const tools = (
 		<div className="flex shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] p-1 ring-1 ring-white/10">
+			{canTeach && !recording && (
+				<Tool
+					label={`Teach ${botName} how to do something`}
+					onClick={teaching.begin}
+					disabled={!connected || teaching.phase !== "idle"}
+				>
+					<GraduationCap />
+				</Tool>
+			)}
 			{!phone && (
 				<Tool label="Paste text on the computer" onClick={() => void startPaste()} disabled={!connected}>
 					<ClipboardPaste />
@@ -316,14 +373,21 @@ export function VncView({
 					</DropdownTrigger>
 				</Tooltip>
 				<DropdownContent className="dark min-w-52 text-popover-foreground">
-					<DropdownItem onSelect={() => rfb.current?.sendCtrlAltDel()}>Ctrl + Alt + Del</DropdownItem>
-					<DropdownItem onSelect={() => chord(rfb.current, [KEY.super])}>Windows / Super key</DropdownItem>
-					<DropdownItem onSelect={() => chord(rfb.current, [KEY.alt, KEY.tab])}>Alt + Tab</DropdownItem>
-					<DropdownItem onSelect={() => chord(rfb.current, [KEY.escape])}>Escape</DropdownItem>
-					<DropdownItem onSelect={() => chord(rfb.current, [KEY.alt, KEY.f4])}>
+					<DropdownItem
+						onSelect={() => {
+							rfb.current?.sendCtrlAltDel();
+							teaching.press("ctrl+alt+Delete");
+						}}
+					>
+						Ctrl + Alt + Del
+					</DropdownItem>
+					<DropdownItem onSelect={() => press([KEY.super], "super")}>Windows / Super key</DropdownItem>
+					<DropdownItem onSelect={() => press([KEY.alt, KEY.tab], "alt+Tab")}>Alt + Tab</DropdownItem>
+					<DropdownItem onSelect={() => press([KEY.escape], "Escape")}>Escape</DropdownItem>
+					<DropdownItem onSelect={() => press([KEY.alt, KEY.f4], "alt+F4")}>
 						Alt + F4 (close window)
 					</DropdownItem>
-					<DropdownItem onSelect={() => chord(rfb.current, [KEY.ctrl, KEY.alt, KEY.t])}>
+					<DropdownItem onSelect={() => press([KEY.ctrl, KEY.alt, KEY.t], "ctrl+alt+t")}>
 						Ctrl + Alt + T (terminal)
 					</DropdownItem>
 					{phone && <DropdownItem onSelect={() => void startPaste()}>Paste text…</DropdownItem>}
@@ -363,6 +427,15 @@ export function VncView({
 
 						{!phone && tools}
 
+						{recording && (
+							<Button
+								onClick={teaching.stop}
+								size={phone ? "sm" : "md"}
+								className="shrink-0 rounded-full bg-red-500 px-4 text-white hover:bg-red-500/90"
+							>
+								<Check /> Done
+							</Button>
+						)}
 						<Button
 							onClick={handBack}
 							size={phone ? "sm" : "md"}
@@ -466,10 +539,13 @@ export function VncView({
 							if (e.key === "Enter") {
 								e.preventDefault();
 								rfb.current?.sendKey(KEY.enter, null);
+								teaching.key({ key: "Enter" });
 							}
 						}}
 						className="pointer-events-none fixed bottom-0 left-0 size-px opacity-0"
 					/>
+
+					<TeachDialogs state={teachDialogs} botName={botName} />
 
 					<Dialog
 						open={pasting}

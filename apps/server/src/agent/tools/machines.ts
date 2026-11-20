@@ -1,4 +1,4 @@
-import type { Agent, Machine } from "@sekai/shared";
+import type { Agent, Machine, MachinePorts } from "@sekai/shared";
 import { z } from "zod";
 import { errorMessage } from "../../lib/errors.ts";
 import { truncateMiddle } from "../../lib/text.ts";
@@ -56,6 +56,10 @@ function describe(m: Machine | BotMachine): string {
 		`Host ${m.hostname}${where ? `, ${where}` : ""}; your account: ${m.username} (sudo, no password needed); root also exists.`,
 		`Size: ${m.specs.cores} cores, ${Math.round(m.specs.memoryMb / 1024)} GB RAM${m.specs.minMemoryMb ? ` (ballooning from ${Math.round(m.specs.minMemoryMb / 1024)} GB)` : ""}, ${m.specs.diskGb} GB disk.`,
 	];
+	if (m.addresses.tailscale)
+		lines.push(
+			`Web apps you start there on 0.0.0.0 are reachable on the user's tailnet at http://${m.addresses.tailscale}:<port>; machine_ports lists them with their links and can add an HTTPS one.`,
+		);
 	if (m.kind === "computer")
 		lines.push(
 			seat
@@ -473,6 +477,41 @@ export const machineTools = [
 		},
 	}),
 	defineTool({
+		name: "machine_ports",
+		description:
+			"Web apps (dev servers, APIs…) listening on your computer, a devbox or a shared machine, and their links on the user's tailnet (never the internet). http://<Tailscale IP>:<port> works for programs that listen on 0.0.0.0 (start dev servers that way, e.g. `vite --host 0.0.0.0`); on a container also for ones on 127.0.0.1. share: <port> also gives it an HTTPS link at https://<machine>.<tailnet>.ts.net (tailscale serve), for apps that need HTTPS or only listen on 127.0.0.1; unshare: <port> stops that. After starting a server for the user, give them its link.",
+		category: "machines",
+		parameters: z.object({
+			machine,
+			share: z.number().int().min(1).max(65_535).optional().describe("A port to share over HTTPS"),
+			unshare: z.number().int().min(1).max(65_535).optional().describe("A port to stop sharing over HTTPS"),
+		}),
+		risk: "read",
+		riskFor: (args) => (args.share || args.unshare ? "write" : "read"),
+		title: (a) =>
+			a.share
+				? `Shared port ${a.share} over HTTPS`
+				: a.unshare
+					? `Stopped sharing port ${a.unshare}`
+					: "Looked up links to my web apps",
+		available: async (agent) => (await machinesForBot(agent.id)).some((m) => m.kind !== "device"),
+		async execute(args, ctx) {
+			const { machinePorts, shareMachinePort } = await import("../../machines/ports.ts");
+			const m = await machineTarget(ctx, args.machine);
+			if (m.kind === "device")
+				throw new ToolError("That's the user's own computer: they open its apps there themselves.");
+			try {
+				const port = args.share ?? args.unshare;
+				const view = port
+					? await shareMachinePort(m, port, Boolean(args.share), ctx.agent.id)
+					: await machinePorts(m, ctx.agent.id);
+				return describePorts(m.name, view);
+			} catch (err) {
+				throw new ToolError(errorMessage(err));
+			}
+		},
+	}),
+	defineTool({
 		name: "devbox_extend",
 		description: "Keep a devbox longer: it's deleted this many hours from now instead.",
 		category: "machines",
@@ -494,6 +533,28 @@ export const machineTools = [
 		},
 	}),
 ];
+
+/** A machine's web apps and their tailnet links, for the bot. */
+export function describePorts(name: string, view: MachinePorts): string {
+	const lines = [
+		view.tailscale?.ip
+			? `Web apps on ${name} (on the user's tailnet only, never the internet; Tailscale IP ${view.tailscale.ip}${view.tailscale.dnsName ? `, name ${view.tailscale.dnsName}` : ""}):`
+			: `${name} isn't on the user's tailnet, so it has no Tailscale links${view.ports.some((p) => p.ipUrl) ? " (the LAN links below only work at home)" : ""}:`,
+	];
+	for (const p of view.ports) {
+		const links = [p.ipUrl, p.httpsUrl && `HTTPS ${p.httpsUrl}`].filter(Boolean).join(" · ");
+		const what = `${p.port}${p.process ? ` (${p.process})` : ""}`;
+		if (!p.running) lines.push(`- ${what}: shared over HTTPS at ${p.httpsUrl}, but nothing listens on it now`);
+		else if (links) lines.push(`- ${what}: ${links}`);
+		else
+			lines.push(
+				`- ${what}: only on 127.0.0.1, so not reachable from the tailnet. Share it over HTTPS (share: ${p.port}), or start it on 0.0.0.0.`,
+			);
+	}
+	if (view.ports.length === 0)
+		lines.push("Nothing is listening yet. Start the server on 0.0.0.0 (e.g. `npm run dev -- --host 0.0.0.0`).");
+	return lines.join("\n");
+}
 
 /** An exact find-and-replace; an error message when oldText is missing or ambiguous. */
 export function applyEdit(

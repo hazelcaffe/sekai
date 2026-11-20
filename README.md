@@ -146,4 +146,6 @@ you offer a changed version to others over a network, you share your changes und
 The logo (the Virtual Singer Miku icon) and the character icons are from the HATSUNE MIKU: COLORFUL STAGE! media kit,
 © SEGA / © Colorful Palette / © Crypton Future Media, INC. All rights reserved. They are not covered by the AGPL and
 are shown unmodified. Brand marks are from [LobeHub Icons](https://github.com/lobehub/lobe-icons) (MIT) and
-[Simple Icons](https://simpleicons.org) (CC0).
+[Simple Icons](https://simpleicons.org) (CC0). Faster screen control uses
+[screen-relay](https://github.com/vercel-labs/screen-relay) (Apache-2.0); its engine links x264 (GPL-2.0-or-later), built
+on each computer that uses it.

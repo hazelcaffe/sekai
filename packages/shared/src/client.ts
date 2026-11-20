@@ -83,6 +83,8 @@ import type {
 	MachineAccess,
 	MachineCreate,
 	MachineMember,
+	MachinePortShare,
+	MachinePorts,
 	MachineSeat,
 	MachineUpdate,
 	MemberAdd,
@@ -123,6 +125,7 @@ import type {
 import type { ApprovalDecision, PendingApproval, Run } from "./run.ts";
 import type { ModelPrice, ServerInfo, Settings, SettingsUpdate, UsageReport, UsageScope } from "./settings.ts";
 import type { Skill, SkillCreate, SkillUpdate } from "./skill.ts";
+import type { SkillDraft, TeachContext, TeachDraftInput, TeachSave } from "./teach.ts";
 import type { TtAccount, TtConnect, TtUpdate } from "./tiktok.ts";
 import type { Upload } from "./upload.ts";
 import type {
@@ -134,7 +137,7 @@ import type {
 	VoiceSettings,
 	VoiceSettingsUpdate,
 } from "./voice.ts";
-import type { WebEngineCheck, WebEngineSettingsUpdate, WebEngineStatus } from "./web.ts";
+import type { WebEngineCheck, WebEngineSettingsUpdate, WebEngineStatus, WebSetup } from "./web.ts";
 import type { XAccount, XConnect, XUpdate } from "./x.ts";
 
 export class ApiError extends Error {
@@ -363,6 +366,12 @@ export function createApiClient(options: ApiClientOptions) {
 			restart: () => post<WebEngineStatus>("/web/restart"),
 			/** Reads one page through the engine, to see that it works. */
 			check: (url: string) => post<WebEngineCheck>("/web/check", { url }),
+			/** "Set it up for me": a model installs it on this server; follow its steps. */
+			setup: {
+				status: () => get<WebSetup>("/web/setup"),
+				start: () => post<WebSetup>("/web/setup"),
+				stop: () => post<WebSetup>("/web/setup/stop"),
+			},
 		},
 
 		push: {
@@ -537,6 +546,23 @@ export function createApiClient(options: ApiClientOptions) {
 				restore: (id: string, name: string) =>
 					post<{ ok: true }>(`/machines/${id}/checkpoints/${encodeURIComponent(name)}/restore`),
 				delete: (id: string, name: string) => del(`/machines/${id}/checkpoints/${encodeURIComponent(name)}`),
+			},
+			/** Web apps running there and their links on your tailnet. */
+			ports: (id: string) => get<MachinePorts>(`/machines/${id}/ports`),
+			/** Shares one over HTTPS at the machine's tailnet name (tailscale serve), or stops. */
+			sharePort: (id: string, body: MachinePortShare) => post<MachinePorts>(`/machines/${id}/ports`, body),
+			/** Teaching a bot by doing it once, from the takeover view. */
+			teach: {
+				/** The active window now (focus: also whether the focused field is a password field). */
+				context: (id: string, opts: { agentId?: string; focus?: boolean } = {}) =>
+					get<TeachContext>(`/machines/${id}/teach/context`, {
+						...(opts.agentId ? { agent: opts.agentId } : {}),
+						...(opts.focus ? { focus: "1" } : {}),
+					}),
+				/** A model writes the demonstration up as a skill draft (nothing is saved yet). */
+				draft: (id: string, body: TeachDraftInput) => post<SkillDraft>(`/machines/${id}/teach`, body),
+				/** Saves the reviewed draft as one of your skills, on for that bot. */
+				save: (id: string, body: TeachSave) => post<Skill>(`/machines/${id}/teach/save`, body),
 			},
 			/** Other bots sharing the machine, each with its own account (and screen, on a computer). */
 			members: {

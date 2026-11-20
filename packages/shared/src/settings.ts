@@ -36,6 +36,11 @@ export const MachineSettings = z.object({
 	maxDevboxesPerAgent: z.number().int().min(0).max(20),
 	/** ask: a bot asking for a computer (or a bigger one) waits for you. allow: it gets one right away. */
 	agentRequests: z.enum(["ask", "allow"]),
+	/**
+	 * Experimental: bots see and use their Linux computers' screens through screen-relay (installed on each
+	 * computer the first time) instead of a helper command over SSH each time.
+	 */
+	screenRelay: z.boolean().default(false),
 });
 export type MachineSettings = z.infer<typeof MachineSettings>;
 

@@ -20,16 +20,21 @@ async function desktop(ctx: ToolContext, on?: string): Promise<{ d: DesktopContr
 }
 
 /** The latest accessibility tree per bot and machine, so element ids can be clicked without fetching it again. */
-const trees = new Map<string, { elements: UiElement[]; scale: number; at: number }>();
+const trees = new Map<string, { elements: UiElement[]; at: number }>();
 
-async function elementBox(key: string, id: string): Promise<{ x: number; y: number }> {
+/**
+ * An element's centre in screenshot pixels. Boxes are in real pixels: they're converted with the screen's scale
+ * now, since it can change after the tree was read (faster screen control switches to full-size screenshots).
+ */
+async function elementBox(d: DesktopControl, key: string, id: string): Promise<{ x: number; y: number }> {
 	const t = trees.get(key);
 	const e = t?.elements.find((x) => x.id === id);
 	if (!t || !e)
 		throw new ToolError(`Element ${id} isn't in your latest computer_ui tree for this screen; look again.`);
 	if (!e.box) throw new ToolError(`Element ${id} has no position on screen.`);
 	const [x, y, w, h] = e.box;
-	return { x: (x + w / 2) / t.scale, y: (y + h / 2) / t.scale };
+	const scale = await d.scale();
+	return { x: (x + w / 2) / scale, y: (y + h / 2) / scale };
 }
 
 /** A screenshot after an action, plus where things stand. */
@@ -95,7 +100,7 @@ export const computerTools = [
 			const { d, key } = await desktop(ctx, args.on);
 			return attempt(async () => {
 				const [tree, scale] = await Promise.all([d.tree(args.app, args.all), d.scale()]);
-				trees.set(key, { elements: tree.elements, scale, at: Date.now() });
+				trees.set(key, { elements: tree.elements, at: Date.now() });
 				return formatTree(tree, scale);
 			});
 		},
@@ -122,7 +127,7 @@ export const computerTools = [
 					await d.act(args.element, args.action);
 					return look(d, `Did "${args.action}" on ${args.description}.`);
 				}
-				const at = args.element ? await elementBox(key, args.element) : { x: args.x, y: args.y };
+				const at = args.element ? await elementBox(d, key, args.element) : { x: args.x, y: args.y };
 				if (at.x === undefined || at.y === undefined) throw new ToolError("Give x and y, or an element id.");
 				await d.click(at.x, at.y, args.button ?? "left", args.double ? 2 : 1);
 				return look(d, `Clicked ${args.description} at (${Math.round(at.x)}, ${Math.round(at.y)}).`);
@@ -141,7 +146,7 @@ export const computerTools = [
 			return attempt(async () => {
 				if (args.element) {
 					await d.focusElement(args.element).catch(async () => {
-						const at = await elementBox(key, args.element ?? "");
+						const at = await elementBox(d, key, args.element ?? "");
 						await d.click(at.x, at.y);
 					});
 				}

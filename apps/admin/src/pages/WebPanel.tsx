@@ -1,9 +1,17 @@
 import { api, timeAgo, useWebEngine } from "@sekai/client";
-import type { WebCloudMode, WebEngineMode, WebEngineSettings, WebEngineStatus } from "@sekai/shared";
+import type {
+	WebCloudMode,
+	WebEngineMode,
+	WebEngineSettings,
+	WebEngineStatus,
+	WebSetup,
+	WebSetupStep,
+} from "@sekai/shared";
 import {
 	Badge,
 	Button,
 	Callout,
+	Confirm,
 	Field,
 	Input,
 	PasswordInput,
@@ -13,12 +21,26 @@ import {
 	Spinner,
 	ToggleRow,
 } from "@sekai/ui";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Cloud, Download, FileSearch, Globe, RotateCw, Signpost, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	Ban,
+	CircleCheck,
+	CircleX,
+	Cloud,
+	Download,
+	FileSearch,
+	Globe,
+	RotateCw,
+	Signpost,
+	Square,
+	TriangleAlert,
+	WandSparkles,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const KEY = ["web"] as const;
+const SETUP_KEY = ["web", "setup"] as const;
 
 const STATE_BADGE: Record<
 	WebEngineStatus["state"],
@@ -62,9 +84,13 @@ function Engine({ status }: { status: WebEngineStatus }) {
 		onSuccess: (next) => qc.setQueryData(KEY, next),
 		onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
 	});
+	const setup = useSetup();
 	// Installing carries on in the background: the state says so until it's done.
 	const installing = install.isPending || status.state === "installing";
-	const busy = installing || restart.isPending || save.isPending;
+	const settingUp = setup.data?.state === "running";
+	const busy = installing || settingUp || restart.isPending || save.isPending;
+	// Missing here (not installed, or installing it failed): the agent can do it.
+	const canSetUp = s.mode === "here" && !status.binary && !installing;
 	return (
 		<Section
 			title="Firecrawl Local"
@@ -97,7 +123,7 @@ function Engine({ status }: { status: WebEngineStatus }) {
 					icon={<TriangleAlert />}
 					title={status.state === "missing" ? "Firecrawl Local isn't installed yet" : "It isn't working"}
 					action={
-						status.state === "missing" && status.canInstall ? (
+						status.state === "missing" && status.canInstall && !settingUp ? (
 							<Button variant="primary" onClick={() => install.mutate()} disabled={busy}>
 								{installing ? <Spinner className="text-primary-foreground" /> : <Download />}
 								Install it
@@ -107,6 +133,9 @@ function Engine({ status }: { status: WebEngineStatus }) {
 				>
 					{status.error}
 				</Callout>
+			)}
+			{(canSetUp || (setup.data && setup.data.state !== "idle")) && (
+				<SetupAgent setup={setup.data} canStart={canSetUp && !busy} />
 			)}
 			{s.mode === "here" && (
 				<>
@@ -152,16 +181,17 @@ function Engine({ status }: { status: WebEngineStatus }) {
 						<Button variant="secondary" onClick={() => restart.mutate()} disabled={busy}>
 							{restart.isPending ? <Spinner /> : <RotateCw />} Restart
 						</Button>
-						{status.canInstall && (
+						{status.canInstall && !settingUp && (
 							<Button variant="ghost" onClick={() => install.mutate()} disabled={busy}>
 								{installing ? <Spinner /> : <Download />}
 								{status.binary ? "Update it" : "Install it"}
 							</Button>
 						)}
 					</div>
-					{!status.canInstall && !status.binary && (
+					{!status.canInstall && !status.binary && !settingUp && (
 						<p className="text-xs leading-5 text-fg-subtle">
-							Sekai installs it with Rust's cargo, which this server doesn't have. Install Rust from{" "}
+							Sekai installs it with Rust's cargo, which this server doesn't have. Let Sekai set it up for
+							you (above), install Rust from{" "}
 							<a
 								href="https://rustup.rs"
 								target="_blank"
@@ -170,8 +200,8 @@ function Engine({ status }: { status: WebEngineStatus }) {
 							>
 								rustup.rs
 							</a>{" "}
-							and run <code className="font-mono">cargo install firecrawl-local</code>, or run it on
-							another machine and give its address here.
+							and run <code className="font-mono">cargo install firecrawl-local</code> yourself, or run it
+							on another machine and give its address here.
 						</p>
 					)}
 				</>
@@ -197,6 +227,150 @@ function Engine({ status }: { status: WebEngineStatus }) {
 				</div>
 			)}
 		</Section>
+	);
+}
+
+/** The current or last "Set it up for me" run, checked every second or two while it's at work. */
+function useSetup() {
+	const qc = useQueryClient();
+	const query = useQuery({
+		queryKey: SETUP_KEY,
+		queryFn: api.web.setup.status,
+		refetchInterval: (q) => (q.state.data?.state === "running" ? 1500 : false),
+	});
+	// When it finishes, the engine's state changed too.
+	const state = query.data?.state;
+	const was = useRef(state);
+	useEffect(() => {
+		if (was.current === "running" && state !== "running") void qc.invalidateQueries({ queryKey: KEY });
+		was.current = state;
+	}, [state, qc]);
+	return query;
+}
+
+const SETUP_BADGE: Record<WebSetup["state"], { tone: "success" | "warning" | "danger" | "neutral"; label: string }> = {
+	idle: { tone: "neutral", label: "" },
+	running: { tone: "warning", label: "Setting it up…" },
+	done: { tone: "success", label: "Done" },
+	failed: { tone: "danger", label: "Couldn't finish" },
+	stopped: { tone: "neutral", label: "Stopped" },
+};
+
+function SetupStepRow({ step }: { step: WebSetupStep }) {
+	if (step.kind === "note") {
+		return <p className="whitespace-pre-wrap text-[13px] leading-5 text-fg-muted">{step.text}</p>;
+	}
+	const icon = step.running ? (
+		<Spinner className="size-3.5" />
+	) : step.refused ? (
+		<Ban className="size-3.5 text-warning" />
+	) : step.exitCode === 0 ? (
+		<CircleCheck className="size-3.5 text-success" />
+	) : (
+		<CircleX className="size-3.5 text-danger" />
+	);
+	return (
+		<details className="group rounded-xl border border-border bg-card" open={step.running || undefined}>
+			<summary className="flex cursor-pointer list-none items-start gap-2 px-3 py-2 coarse:py-3">
+				<span className="mt-0.5 shrink-0">{icon}</span>
+				<span className="min-w-0 flex-1">
+					<span className="block text-[13px] leading-5">{step.text}</span>
+					<code className="block truncate font-mono text-[11.5px] text-fg-subtle">{step.command}</code>
+				</span>
+				{step.finishedAt && !step.refused && (
+					<span className="shrink-0 text-[11px] tabular-nums text-fg-subtle">
+						{Math.max(1, Math.round((step.finishedAt - step.startedAt) / 1000))} s
+					</span>
+				)}
+			</summary>
+			<div className="border-t border-border px-3 py-2">
+				{step.refused ? (
+					<p className="text-xs leading-5 text-warning">Sekai didn't run it: {step.refused}</p>
+				) : (
+					<pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11.5px] leading-4 text-fg-muted">
+						{step.output.trim() || (step.running ? "Working…" : "(no output)")}
+					</pre>
+				)}
+			</div>
+		</details>
+	);
+}
+
+/**
+ * "Set it up for me": a model installs Firecrawl Local on this server, command by command, while you watch.
+ * Sekai checks every command before it runs (nothing outside the setup) and turns it on at the end.
+ */
+function SetupAgent({ setup, canStart }: { setup: WebSetup | undefined; canStart: boolean }) {
+	const qc = useQueryClient();
+	const [confirm, setConfirm] = useState(false);
+	const onDone = (next: WebSetup) => qc.setQueryData(SETUP_KEY, next);
+	const onError = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e));
+	const start = useMutation({ mutationFn: api.web.setup.start, onSuccess: onDone, onError });
+	const stop = useMutation({ mutationFn: api.web.setup.stop, onSuccess: onDone, onError });
+	const state = setup?.state ?? "idle";
+	const steps = setup?.steps ?? [];
+	const badge = SETUP_BADGE[state];
+	return (
+		<div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface-2/50 p-4">
+			<div className="flex flex-wrap items-start gap-3">
+				<span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand/12 text-brand-ink [&_svg]:size-[18px]">
+					<WandSparkles />
+				</span>
+				<span className="min-w-0 flex-1 basis-60">
+					<span className="flex flex-wrap items-center gap-2">
+						<span className="text-sm font-medium">Let Sekai set it up</span>
+						{state !== "idle" && <Badge tone={badge.tone}>{badge.label}</Badge>}
+					</span>
+					<span className="mt-0.5 block text-xs leading-5 text-fg-subtle">
+						Your default model installs Rust, the build tools and Firecrawl Local on this server, then turns
+						it on. You see every command. Sekai refuses anything else (its own files, services, other
+						machines), and building takes 10 to 20 minutes.
+					</span>
+				</span>
+				{state === "running" ? (
+					<Button variant="secondary" onClick={() => stop.mutate()} disabled={stop.isPending}>
+						<Square /> Stop
+					</Button>
+				) : (
+					canStart && (
+						<Button variant="primary" onClick={() => setConfirm(true)} disabled={start.isPending}>
+							{start.isPending ? <Spinner className="text-primary-foreground" /> : <WandSparkles />}
+							{state === "idle" ? "Set it up for me" : "Try again"}
+						</Button>
+					)
+				)}
+			</div>
+			{setup?.summary && state !== "running" && (
+				<Callout
+					tone={state === "done" ? "success" : state === "failed" ? "danger" : "info"}
+					title={state === "done" ? "Firecrawl Local is set up" : "It couldn't finish"}
+				>
+					{setup.summary}
+				</Callout>
+			)}
+			{steps.length > 0 && (
+				<div className="flex max-h-[28rem] flex-col gap-2 overflow-y-auto">
+					{steps.map((step) => (
+						<SetupStepRow key={step.id} step={step} />
+					))}
+				</div>
+			)}
+			{state === "running" && steps.length === 0 && (
+				<div className="flex items-center gap-2 text-xs text-fg-subtle">
+					<Spinner className="size-3.5" /> Looking at this server…
+				</div>
+			)}
+			{setup?.model && <p className="text-[11px] text-fg-subtle">With {setup.model}</p>}
+			<Confirm
+				open={confirm}
+				onOpenChange={setConfirm}
+				icon={<WandSparkles />}
+				title="Let Sekai set up Firecrawl Local?"
+				description="A model runs commands on this server as Sekai's own account (and sudo for the package manager), until Firecrawl Local is installed and running. It can't touch Sekai's files, stop services or reach other machines, and you can stop it any time."
+				confirmLabel="Set it up"
+				onConfirm={() => start.mutate()}
+			/>
+		</div>
 	);
 }
 

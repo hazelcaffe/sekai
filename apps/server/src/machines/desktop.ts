@@ -4,6 +4,7 @@ import { HELPER_PATH, installHelperScript } from "./setup.ts";
 /** The exit code COMMAND uses when the helper isn't installed. */
 const MISSING = 97;
 
+import { clickEvents, dragEvents, relayCombo, ScreenRelay } from "./relay.ts";
 import { type SshTarget, shq, sshExec, sshText } from "./ssh.ts";
 
 /**
@@ -93,13 +94,57 @@ const COMMAND = `PATH="$HOME/.local/bin:$PATH"; command -v ${HELPER_PATH.split("
 export class Desktop implements DesktopControl {
 	private screen: { width: number; height: number; at: number } | null = null;
 	private installed = false;
+	/** screen-relay on this screen, when "Faster screen control" is on (see relay.ts). */
+	private relay: ScreenRelay | null = null;
+	/**
+	 * The pixels the bot's coordinates are in: "shot" (screenshots scaled to SHOT_WIDTH), or "real" once
+	 * screen-relay served a screenshot (full size). It only changes when a screenshot is taken, so the
+	 * coordinates a bot sends always match the last screenshot it saw.
+	 */
+	private space: "shot" | "real" = "shot";
 
 	constructor(private readonly target: SshTarget) {}
 
-	/** Runs the helper, installing it first when the machine doesn't have it (once per connection). */
+	/** Turns faster screen control (screen-relay) on or off for this screen. */
+	useRelay(on: boolean, label: string): void {
+		if (on) this.relay ??= new ScreenRelay(this.target, label);
+		else if (this.relay) {
+			this.relay.close();
+			this.relay = null;
+		}
+	}
+
+	/** Stops using screen-relay here (the machine is going away). */
+	dispose(): void {
+		this.relay?.close();
+		this.relay = null;
+	}
+
+	/** screen-relay, when it's in use and working; null means the helper. */
+	private live(): ScreenRelay | null {
+		return this.space === "real" && this.relay?.ready() ? this.relay : null;
+	}
+
+	/** Runs `fn` through screen-relay; false when it can't (then the caller uses the helper). */
+	private async viaRelay(fn: (relay: ScreenRelay) => Promise<unknown>): Promise<boolean> {
+		const relay = this.live();
+		if (!relay) return false;
+		try {
+			await fn(relay);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Runs the helper, installing it first when the machine doesn't have it, or when it's an older one that doesn't
+	 * know the command yet (it prints its usage and exits 2); once per connection.
+	 */
 	private async exec(args: string, opts: { input?: string; timeoutMs: number }) {
 		let r = await sshExec(this.target, `${COMMAND} ${args}`, opts);
-		if (r.code === MISSING && !this.installed) {
+		const outdated = r.code === 2 && r.stderr.includes("lets a Sekai bot see and use its Linux desktop");
+		if ((r.code === MISSING || outdated) && !this.installed) {
 			this.installed = true;
 			await sshText(this.target, installHelperScript(), { input: helperSource, timeoutMs: 60_000 });
 			r = await sshExec(this.target, `${COMMAND} ${args}`, opts);
@@ -132,12 +177,31 @@ export class Desktop implements DesktopControl {
 	}
 
 	async scale(): Promise<number> {
+		if (this.space === "real") return 1;
 		const { width } = await this.size();
 		return width > SHOT_WIDTH ? width / SHOT_WIDTH : 1;
 	}
 
 	async screenshot(): Promise<Screenshot> {
-		const r = await this.exec(`screenshot ${SHOT_WIDTH}`, { timeoutMs: 30_000 });
+		// The one place the coordinate space changes: to full size once screen-relay is ready, back when it's off.
+		if (this.relay?.ready()) this.space = "real";
+		else if (!this.relay) this.space = "shot";
+		const relay = this.live();
+		if (relay) {
+			try {
+				const png = await relay.call((c) => c.screenshot());
+				const { width, height } = pngSize(png);
+				return { png, width, height, scale: 1 };
+			} catch {
+				// The helper takes this one, at full size like screen-relay's.
+			}
+		}
+		const width = this.space === "real" ? (await this.size()).width : SHOT_WIDTH;
+		return this.helperShot(width);
+	}
+
+	private async helperShot(maxWidth: number): Promise<Screenshot> {
+		const r = await this.exec(`screenshot ${maxWidth}`, { timeoutMs: 30_000 });
 		if (r.code !== 0 || r.stdout.length < 24) {
 			const text = new TextDecoder().decode(r.stdout).trim() || r.stderr.trim();
 			let message = text;
@@ -166,34 +230,72 @@ export class Desktop implements DesktopControl {
 		return this.run(`focus-element ${shq(id)}`);
 	}
 
+	/** The element with keyboard focus (and whether it's a password field). */
+	focused() {
+		return this.run<{ role: string | null; name: string | null; password: boolean; app: string | null }>("focused");
+	}
+
 	/** x, y in screenshot pixels. */
 	async click(x: number, y: number, button: "left" | "middle" | "right" = "left", count = 1) {
 		const s = await this.scale();
-		return this.run(`click ${Math.round(x * s)} ${Math.round(y * s)} ${button} ${count}`);
+		const [rx, ry] = [x * s, y * s];
+		const b = button === "right" ? 3 : button === "middle" ? 2 : 1;
+		if (
+			await this.viaRelay((r) =>
+				r.call((c) => c.input(clickEvents(r.fraction(rx, ry).x, r.fraction(rx, ry).y, b, count))),
+			)
+		)
+			return { ok: true };
+		return this.run(`click ${Math.round(rx)} ${Math.round(ry)} ${button} ${count}`);
 	}
 
 	async move(x: number, y: number) {
 		const s = await this.scale();
-		return this.run(`move ${Math.round(x * s)} ${Math.round(y * s)}`);
+		const [rx, ry] = [x * s, y * s];
+		if (await this.viaRelay((r) => r.call((c) => c.move(r.fraction(rx, ry).x, r.fraction(rx, ry).y))))
+			return { ok: true };
+		return this.run(`move ${Math.round(rx)} ${Math.round(ry)}`);
 	}
 
 	async drag(x1: number, y1: number, x2: number, y2: number) {
 		const s = await this.scale();
+		const viaRelay = await this.viaRelay((r) => {
+			const a = r.fraction(x1 * s, y1 * s);
+			const b = r.fraction(x2 * s, y2 * s);
+			return r.call((c) => c.input(dragEvents(a.x, a.y, b.x, b.y)));
+		});
+		if (viaRelay) return { ok: true };
 		return this.run(`drag ${Math.round(x1 * s)} ${Math.round(y1 * s)} ${Math.round(x2 * s)} ${Math.round(y2 * s)}`);
 	}
 
 	async scroll(x: number, y: number, direction: "up" | "down" | "left" | "right", amount: number) {
 		const s = await this.scale();
-		return this.run(
-			`scroll ${Math.round(x * s)} ${Math.round(y * s)} ${direction} ${Math.max(1, Math.round(amount))}`,
-		);
+		const notches = Math.max(1, Math.round(amount));
+		const delta = {
+			dx: direction === "left" ? -notches : direction === "right" ? notches : 0,
+			dy: direction === "up" ? -notches : direction === "down" ? notches : 0,
+		};
+		if (
+			await this.viaRelay((r) =>
+				r.call((c) => c.scroll(r.fraction(x * s, y * s).x, r.fraction(x * s, y * s).y, delta)),
+			)
+		)
+			return { ok: true };
+		return this.run(`scroll ${Math.round(x * s)} ${Math.round(y * s)} ${direction} ${notches}`);
 	}
 
-	type(text: string) {
+	async type(text: string) {
+		if (await this.viaRelay((r) => r.call((c) => c.type(text)))) return { ok: true };
 		return this.run("type", text);
 	}
 
-	key(...combos: string[]) {
+	async key(...combos: string[]) {
+		const mapped = combos.map(relayCombo);
+		if (
+			mapped.every((m): m is string => m !== null) &&
+			(await this.viaRelay((r) => r.call((c) => c.key(...mapped))))
+		)
+			return { ok: true };
 		return this.run(`key ${combos.map(shq).join(" ")}`);
 	}
 
@@ -232,7 +334,24 @@ export class Desktop implements DesktopControl {
 		}
 	}
 
-	waitIdle(seconds = 3) {
+	async waitIdle(seconds = 3) {
+		const relay = this.live();
+		if (relay) {
+			// Screenshots through screen-relay are quick: two the same in a row means the screen settled.
+			try {
+				const until = Date.now() + seconds * 1000;
+				let last = 0n;
+				while (Date.now() < until) {
+					const now = BigInt(Bun.hash(await relay.call((c) => c.screenshot())));
+					if (now === last) return { idle: true };
+					last = now;
+					await Bun.sleep(120);
+				}
+				return { idle: false };
+			} catch {
+				// The helper's way below.
+			}
+		}
 		return this.run<{ idle: boolean }>(`wait-idle ${seconds}`);
 	}
 }

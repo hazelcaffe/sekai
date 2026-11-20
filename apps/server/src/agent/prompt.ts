@@ -328,6 +328,11 @@ export async function buildSystemPrompt(input: PromptInput): Promise<BuiltPrompt
 				"How to use a computer well: for websites use the browser_ tools (snapshots are more reliable than pixels). For desktop apps read computer_ui and click elements by id; fall back to screenshot coordinates. Use run_command for anything a terminal can do faster. Check the result of each step before the next.",
 			);
 		}
+		if (machines.some((m) => m.kind !== "device" && m.addresses.tailscale)) {
+			lines.push(
+				"Web apps you run on these machines (a dev server, a preview) are reachable on the user's tailnet, not the internet: start them on 0.0.0.0, then give the user the link from machine_ports (it can add an HTTPS one too).",
+			);
+		}
 		sections.push(section("machines", "Machines", lines.join("\n")));
 	}
 

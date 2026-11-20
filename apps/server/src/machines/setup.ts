@@ -324,6 +324,11 @@ export function computerPlan(p: ProvisionInput, backend: MachineBackend): SetupP
 				run: "curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb && DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/chrome.deb && rm -f /tmp/chrome.deb",
 			},
 			{
+				// Chrome only shows its pages to the accessibility layer (computer_ui, the password check when you
+				// teach a bot) when it's told assistive technology is on; every session gets it from here.
+				run: "grep -q '^ACCESSIBILITY_ENABLED=' /etc/environment || echo 'ACCESSIBILITY_ENABLED=1' >> /etc/environment",
+			},
+			{
 				label: "Turning off the screen lock",
 				run: "DEBIAN_FRONTEND=noninteractive apt-get purge -y light-locker xfce4-screensaver || true",
 			},

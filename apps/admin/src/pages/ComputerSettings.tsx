@@ -14,7 +14,7 @@ import {
 	type Tone,
 } from "@sekai/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Box, Check, ChevronRight, CircleAlert, Cpu, Laptop, Monitor, Network, Server } from "lucide-react";
+import { Box, Check, ChevronRight, CircleAlert, Cpu, Gauge, Laptop, Monitor, Network, Server } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -377,6 +377,19 @@ function ComputerSettings({ settings }: { settings: Settings }) {
 					description="Off: a bot asking for a computer (or a bigger one) waits for your OK. Devboxes never need asking."
 					checked={m.agentRequests === "allow"}
 					onCheckedChange={(on) => setM({ ...m, agentRequests: on ? "allow" : "ask" })}
+				/>
+			</Section>
+			<Section
+				title="Faster screen control"
+				icon={<Gauge />}
+				action={<Badge tone="warning">Experimental</Badge>}
+				description="How bots see and use their computers' screens."
+			>
+				<ToggleRow
+					title="Use screen-relay on bots' computers"
+					description="Screenshots and clicks go through screen-relay (by Vercel Labs, still experimental) instead of a command over SSH each time: screenshots about 7 times faster, clicks and typing about 50 times. Sekai sets it up on each Linux computer the first time a bot uses its screen (Node 22 and a short build, a minute or two in the background) and keeps the usual way until it's ready, or whenever it fails. Screens wider than 1600 pixels keep the usual way."
+					checked={m.screenRelay}
+					onCheckedChange={(screenRelay) => setM({ ...m, screenRelay })}
 				/>
 			</Section>
 			{dirty && (

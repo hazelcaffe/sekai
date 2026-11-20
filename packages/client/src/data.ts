@@ -145,6 +145,15 @@ export const useSharedBrowsers = (agentId?: string) =>
 export const useDocuments = () => useQuery({ queryKey: qk.documents, queryFn: api.documents.list });
 export const useCheckpoints = (machineId: string, enabled = true) =>
 	useQuery({ queryKey: qk.checkpoints(machineId), queryFn: () => api.machines.checkpoints.list(machineId), enabled });
+/** What's listening on a machine, checked again every few seconds while it's shown (a dev server comes and goes). */
+export const useMachinePorts = (machineId: string, enabled = true) =>
+	useQuery({
+		queryKey: qk.machinePorts(machineId),
+		queryFn: () => api.machines.ports(machineId),
+		enabled,
+		refetchInterval: 8000,
+		retry: false,
+	});
 export const useCredentialRequests = () => useQuery({ queryKey: qk.credentials, queryFn: api.credentials.pending });
 export const useSavedLogins = (agentId?: string) =>
 	useQuery({

@@ -1,5 +1,7 @@
+import { MachinePortShare, type TeachContext, TeachDraftInput, TeachSave } from "@sekai/shared";
 import { Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod";
+import { draftSkill, saveTaughtSkill } from "../agent/teach.ts";
 import { requirePermission } from "../auth/actor.ts";
 import { requireRecentAuth } from "../auth/routes.ts";
 import {
@@ -9,6 +11,7 @@ import {
 	listSavedLogins,
 } from "../browser/credentials.ts";
 import { errorMessage } from "../lib/errors.ts";
+import { Desktop } from "../machines/desktop.ts";
 import {
 	createMachine,
 	deleteCheckpoint,
@@ -26,7 +29,9 @@ import {
 	testProxmox,
 	updateMachine,
 } from "../machines/manager.ts";
+import { machinePorts, shareMachinePort } from "../machines/ports.ts";
 import { addMember, listMembers, listSeats, removeMember, requireSeat, retryMember } from "../machines/seats.ts";
+import { requireOwnedAgent } from "../services/agents.ts";
 import { body, ok, readJson } from "./util.ts";
 
 /** Every route about one machine checks it's one of your bots' first (anyone else's is "not found"). */
@@ -106,6 +111,42 @@ export const machineRoutes = new Hono()
 	.delete("/:id/checkpoints/:name", async (c) => {
 		await deleteCheckpoint(c.req.param("id"), c.req.param("name"));
 		return c.json(ok);
+	})
+	// Web apps running there, with their links on your tailnet; sharing one over HTTPS (tailscale serve).
+	.get("/:id/ports", async (c) => c.json(await machinePorts(await requireMachine(c.req.param("id")))))
+	.post("/:id/ports", async (c) => {
+		const { port, https } = await body(c, MachinePortShare);
+		return c.json(await shareMachinePort(await requireMachine(c.req.param("id")), port, https));
+	})
+	// Teaching a bot by doing it once, from the takeover view: what's on screen at a step (the active window, and
+	// whether the focused field is a password, so its text is never kept), the skill a model writes, and saving it.
+	.get("/:id/teach/context", async (c) => {
+		const m = await requireMachine(c.req.param("id"));
+		const who = await seatBot(m.id, c.req.query("agent"));
+		if (m.kind !== "computer" || m.status !== "running")
+			return c.json({ error: "The computer isn't running" }, 409);
+		const desktop = await desktopOf(m, who);
+		const [win, focused] = await Promise.all([
+			desktop.windows().catch(() => null),
+			c.req.query("focus") === "1" && desktop instanceof Desktop ? desktop.focused().catch(() => null) : null,
+		]);
+		const active = win?.activeWindow ?? null;
+		const context: TeachContext = {
+			window: active,
+			app: win?.windows.find((w) => w.title === active)?.app ?? null,
+			focused: focused ? { role: focused.role, name: focused.name, password: focused.password } : null,
+		};
+		return c.json(context);
+	})
+	.post("/:id/teach", async (c) => {
+		const input = await body(c, TeachDraftInput);
+		const agent = await requireOwnedAgent(await seatBot(c.req.param("id"), input.agentId));
+		return c.json(await draftSkill(agent, input));
+	})
+	.post("/:id/teach/save", async (c) => {
+		const input = await body(c, TeachSave);
+		const agent = await requireOwnedAgent(await seatBot(c.req.param("id"), input.agentId));
+		return c.json(await saveTaughtSkill(agent, input), 201);
 	})
 	// A live look at the computer's screen (or a member bot's own screen on it), for the preview in the app.
 	.get("/:id/screen", async (c) => {
