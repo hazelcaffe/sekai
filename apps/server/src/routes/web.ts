@@ -1,15 +1,18 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { bus } from "../events/bus.ts";
+import { HttpError } from "../lib/errors.ts";
 import {
 	checkWebEngine,
 	installWebEngine,
 	restartWebEngine,
 	startWebEngine,
 	stopWebEngine,
+	webEngineInstalling,
 	webEngineStatus,
 } from "../web/engine.ts";
 import { publicWebSettings, saveWebSettings, webSettings } from "../web/settings.ts";
+import { startWebSetup, stopWebSetup, webSetupRunning, webSetupStatus } from "../web/setup.ts";
 import { body, readJson } from "./util.ts";
 
 const masked = async () => {
@@ -40,9 +43,14 @@ export const webRoutes = new Hono()
 		return c.json(await masked());
 	})
 	.post("/install", async (c) => {
+		if (webSetupRunning()) throw new HttpError(409, "It's being set up already.");
 		await installWebEngine();
 		return c.json(await masked());
 	})
+	// "Set it up for me": a model installs it here, command by command (the page polls the steps).
+	.get("/setup", (c) => c.json(webSetupStatus()))
+	.post("/setup", (c) => c.json(startWebSetup(webEngineInstalling)))
+	.post("/setup/stop", (c) => c.json(stopWebSetup()))
 	.post("/restart", async (c) => {
 		await restartWebEngine();
 		return c.json(await masked());

@@ -16,7 +16,9 @@ src/components/chat/      Composer, MessageItem, Parts (renders text/tool/reason
 src/components/agent/     the bot panel: AgentPanel (tabs) + ProfileTab, ModelTab, VoiceTab, ToolsTab
                           (Access / Apps & skills / Accounts → ChannelsTab, DiscordUserTab, XTab, SocialTab),
                           BrainTab, NotesTab, CodeTab, RoutinesTab, ActivityTab
-src/components/computer/  ComputerPanel, VncView (takeover), CredentialPrompt, ThisComputerSettings (desktop app)
+src/components/computer/  ComputerPanel, VncView (takeover), Teach (recording a demonstration in the takeover and
+                          its review dialogs), WebApps (a machine's tailnet links), CredentialPrompt,
+                          ThisComputerSettings (desktop app)
 src/components/voice/     CallProvider (calls in the app), LevelBars
 src/components/dialogs/   CommandPalette (Ctrl/⌘K), NewAgentDialog, NewGroupDialog…
 src/lib/events.ts         the live stream: EventSource on /api/events → patches the Query cache, notifications,

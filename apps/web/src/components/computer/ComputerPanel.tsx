@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import { Access, ScreenPreview, StatusBadge } from "./MachineParts.tsx";
 import { Seats, SharedBrowsers, ShareMachine } from "./Sharing.tsx";
 import { VncView } from "./VncView.tsx";
+import { WebApps } from "./WebApps.tsx";
 
 const gb = (mb: number) => `${Math.round((mb / 1024) * 10) / 10} GB`;
 
@@ -385,6 +386,7 @@ function MachineCard({ machine, agent }: { machine: Machine; agent: Agent }) {
 				/>
 			)}
 			{(machine.status === "running" || machine.status === "stopped") && <Access machine={machine} />}
+			{machine.provider !== "local" && machine.status === "running" && <WebApps machine={machine} />}
 			{machine.provider === "proxmox" && (machine.status === "running" || machine.status === "stopped") && (
 				<Checkpoints machine={machine} />
 			)}

@@ -213,6 +213,39 @@ export interface MachineAccess {
 	privateKey: string;
 }
 
+// ---------------------------------------------------------------- web apps on a machine
+
+/**
+ * A program listening on a computer or devbox (a dev server, an API…), with its links on your tailnet. Nothing
+ * here is on the internet: both links only work from devices on your tailnet.
+ */
+export interface MachinePort {
+	port: number;
+	/** The program, when Sekai can tell ("node", "python3"…). */
+	process: string | null;
+	/** Something listens on it now (false: still shared over HTTPS, but nothing answers). */
+	running: boolean;
+	/** It only takes connections from inside the machine (127.0.0.1). */
+	localOnly: boolean;
+	/** http://<Tailscale IP>:<port>, when connections from the tailnet reach it (else null). */
+	ipUrl: string | null;
+	/** https://<name>.<tailnet>.ts.net[:port], once it's shared over HTTPS (tailscale serve). */
+	httpsUrl: string | null;
+}
+
+export interface MachinePorts {
+	/** The machine on your tailnet (null: it isn't on it). */
+	tailscale: { ip: string | null; dnsName: string | null } | null;
+	ports: MachinePort[];
+}
+
+export const MachinePortShare = z.object({
+	port: z.number().int().min(1).max(65_535),
+	/** true: share it over HTTPS at its tailnet name; false: stop. */
+	https: z.boolean(),
+});
+export type MachinePortShare = z.input<typeof MachinePortShare>;
+
 // ---------------------------------------------------------------- browser logins
 
 /**

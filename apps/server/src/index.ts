@@ -29,6 +29,7 @@ import { failActiveRuns } from "./services/runs.ts";
 import { seedBuiltinSkills } from "./services/skills.ts";
 import { upgradeVoice, type VoiceSocket, voiceWebSocket } from "./voice/ws.ts";
 import { startWebEngine, stopWebEngine } from "./web/engine.ts";
+import { stopWebSetup } from "./web/setup.ts";
 import { startXMentions, stopXMentions } from "./x/mentions.ts";
 
 // A misbehaving library (or a dropped connection deep inside one) must never take the whole server down.
@@ -124,6 +125,7 @@ async function main(): Promise<void> {
 		stopHousekeeping();
 		stopXMentions();
 		stopCodeIndexes();
+		stopWebSetup();
 		await stopWebEngine();
 		cancelAllRuns();
 		leaveAllVoice();

@@ -66,6 +66,41 @@ export interface WebEngineStatus {
 	startedAt: number | null;
 }
 
+/**
+ * "Set it up for me": a model installs Firecrawl Local on this server by running commands here (Rust, the build
+ * tools it needs, then `cargo install firecrawl-local`), within limits Sekai checks itself, and turns it on.
+ * - running: at work; done: it's installed and answering; failed: it couldn't; stopped: you stopped it.
+ */
+export type WebSetupState = "idle" | "running" | "done" | "failed" | "stopped";
+
+export interface WebSetupStep {
+	id: number;
+	/** command: something it ran. note: what it said between commands. */
+	kind: "command" | "note";
+	/** Why it runs the command, or the note itself. */
+	text: string;
+	command: string | null;
+	/** The end of what the command printed. */
+	output: string;
+	exitCode: number | null;
+	running: boolean;
+	/** Sekai didn't run it, and why. */
+	refused: string | null;
+	startedAt: number;
+	finishedAt: number | null;
+}
+
+export interface WebSetup {
+	state: WebSetupState;
+	/** The model doing it. */
+	model: string | null;
+	startedAt: number | null;
+	finishedAt: number | null;
+	steps: WebSetupStep[];
+	/** Its last word: what it did, or why it couldn't. */
+	summary: string | null;
+}
+
 /** What Admin's "Try a page" gets back. */
 export interface WebEngineCheck {
 	url: string;

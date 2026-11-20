@@ -46,6 +46,8 @@ src/agent/        the brain
   writer.ts         MessageWriter: streams parts into a message and emits message.* events
   compaction.ts     summarizes old history; reflection.ts saves memories after a reply ("Saved to memory")
   refusal.ts        retries refused turns on another model; review.ts reviewer-model approvals
+  teach.ts          teaching a bot by doing it once: a recorded demonstration written up as a skill by a model
+                    that can see (draftSkill), then saved and turned on for the bot (saveTaughtSkill)
   tools/            built-in tools (one defineTool each), index.ts lists BUILTIN_TOOLS and MCP tool wiring
 src/providers/    BYOS: ACP client (acp.ts), Claude Agent SDK (claude.ts), tools bridge over MCP for them
 src/llm/          gateway client (OpenAI-compatible), API providers (OpenAI/Anthropic/Gemini kinds), embeddings
@@ -62,8 +64,11 @@ src/machines/     bots' computers and devboxes, each a Proxmox VM or container (
                   as cloud-init for VMs or a bash script Sekai runs over SSH in containers; their desktop is Xvfb
                   under the sekai-desktop@ unit), seats.ts (other bots sharing a machine: each a seat with its own
                   account, key, and on a computer its own screen :N, VNC and Chrome port; machinesForBot lists what a
-                  bot may use in a run), drivers.ts, proxmox.ts, ssh.ts, vnc.ts, keys.ts;
-                  hosts.ts (your devices: master key, per-bot per-account grants), tailscale.ts (CLI + API)
+                  bot may use in a run), ports.ts (web apps listening on a machine and their tailnet links: the
+                  Tailscale IP and port, or HTTPS through tailscale serve), drivers.ts, proxmox.ts, ssh.ts, vnc.ts, keys.ts;
+                  relay.ts (faster screen control, experimental: screen-relay on a seat's screen, set up there in
+                  the background, reached through an SSH tunnel; Desktop uses it for screenshots and input, else the
+                  helper), hosts.ts (your devices: master key, per-bot per-account grants), tailscale.ts (CLI + API)
 src/browser/      Playwright sessions on a bot's computer (or its seat on a shared one) or on the server; shared.ts:
                   browsers several bots use (server or a computer, shared or separate sign-ins); sign-in requests
                   extension.ts: short-lived browser-extension grants and commands (routes/extension.ts);
@@ -71,7 +76,9 @@ src/browser/      Playwright sessions on a bot's computer (or its seat on a shar
 src/mcp/          MCP client manager, OAuth for apps, app icons
 src/web/          the web engine: Firecrawl Local started and watched here (engine.ts: loopback, own token,
                   no --allow-private) or one elsewhere; settings.ts (kv "web", sealed key and token); the web tools
-                  (web_fetch, web_search, web_map, web_crawl) and routes/web.ts (Admin → Web reading) use it
+                  (web_fetch, web_search, web_map, web_crawl) and routes/web.ts (Admin → Web reading) use it;
+                  setup.ts ("Set it up for me": a model installs it here command by command, each checked by
+                  guardCommand first)
 src/code/         code index: chunking, incremental indexing, hybrid search (pgvector + tsvector, RRF)
 src/x/, src/social/  X (emusks), Instagram, TikTok accounts; x/mentions.ts polls and answers
 src/outreach/     message_user / call_user (bots reaching you), voice messages

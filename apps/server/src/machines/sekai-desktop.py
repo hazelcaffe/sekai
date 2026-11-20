@@ -9,6 +9,7 @@ Runs on the bot's computer as the bot's user (Sekai calls it over SSH). Output i
   tree [APP] [--all]          accessibility tree: interactive elements with ids and boxes
   act ID [ACTION]             do an element's action (click, press, toggle...) by its tree id
   focus-element ID            give an element keyboard focus
+  focused                     the element with keyboard focus (role, name, whether it's a password field)
   click X Y [BUTTON] [COUNT]  BUTTON: left, middle, right
   move X Y
   drag X1 Y1 X2 Y2
@@ -251,6 +252,54 @@ def cmd_tree(*args):
     out({"activeWindow": active, "apps": apps, "elements": items, "truncated": len(items) >= 600})
 
 
+def cmd_focused():
+    """The element with keyboard focus in the active window: its role and name (a password field's text is never
+    read). Searches only what's showing, with a time limit, since a web page's tree can be large."""
+    Atspi = atspi()
+    deadline = time.time() + 4
+    seen = [0]
+
+    def deepest(acc, depth):
+        if acc is None or depth > 60 or seen[0] > 5000 or time.time() > deadline:
+            return None
+        seen[0] += 1
+        try:
+            states = acc.get_state_set()
+            if depth > 0 and not states.contains(Atspi.StateType.SHOWING):
+                return None
+            n = acc.get_child_count()
+        except Exception:  # noqa: BLE001
+            return None
+        for i in range(min(n, 300)):
+            try:
+                found = deepest(acc.get_child_at_index(i), depth + 1)
+            except Exception:  # noqa: BLE001
+                continue
+            if found is not None:
+                return found
+        return acc if states.contains(Atspi.StateType.FOCUSED) else None
+
+    desktop = Atspi.get_desktop(0)
+    for i in range(desktop.get_child_count()):
+        app = desktop.get_child_at_index(i)
+        if app is None:
+            continue
+        for j in range(app.get_child_count()):
+            win = app.get_child_at_index(j)
+            try:
+                if win is None or not win.get_state_set().contains(Atspi.StateType.ACTIVE):
+                    continue
+            except Exception:  # noqa: BLE001
+                continue
+            found = deepest(win, 0)
+            if found is not None:
+                role = found.get_role_name()
+                out({"role": role, "name": (found.get_name() or "").strip()[:200], "password": role == "password text",
+                     "app": app.get_name() or None})
+                return
+    out({"role": None, "name": None, "password": False, "app": None})
+
+
 def cmd_act(path, action=None):
     Atspi = atspi()
     acc = find(Atspi, path)
@@ -422,7 +471,8 @@ def cmd_browser(port="9222", profile=None):
                       "--force-renderer-accessibility",
                       "--start-maximized", "about:blank"],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+                     # Chrome joins the accessibility layer (AT-SPI) only when told assistive technology is on.
+                     env=dict(os.environ, ACCESSIBILITY_ENABLED="1"), start_new_session=True)
     for _ in range(60):
         time.sleep(0.25)
         try:
@@ -448,7 +498,7 @@ def cmd_wait_idle(seconds="3"):
     out({"idle": False})
 
 
-VERSION = 2
+VERSION = 3
 
 
 def cmd_version():
@@ -457,7 +507,7 @@ def cmd_version():
 
 COMMANDS = {
     "version": cmd_version, "info": cmd_info, "screenshot": cmd_screenshot, "tree": cmd_tree, "act": cmd_act,
-    "focus-element": cmd_focus_element, "click": cmd_click, "move": cmd_move, "drag": cmd_drag,
+    "focus-element": cmd_focus_element, "focused": cmd_focused, "click": cmd_click, "move": cmd_move, "drag": cmd_drag,
     "scroll": cmd_scroll, "type": cmd_type, "key": cmd_key, "windows": cmd_windows,
     "activate": cmd_activate, "open": cmd_open, "clipboard": cmd_clipboard, "browser": cmd_browser,
     "wait-idle": cmd_wait_idle,

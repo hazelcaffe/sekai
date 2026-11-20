@@ -404,6 +404,11 @@ export async function installWebEngine(): Promise<void> {
 
 // ---------------------------------------------------------------- status
 
+/** Whether Sekai's own `cargo install` is running now. */
+export function webEngineInstalling(): boolean {
+	return engine.installer !== null || engine.state === "installing";
+}
+
 export async function webEngineStatus(): Promise<WebEngineStatus> {
 	const s = await webSettings();
 	const ready = engine.state === "ready";
