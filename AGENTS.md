@@ -2,16 +2,15 @@
 
 Sekai is a self-hosted team of personal AI agents ("bots"). One Bun server runs everything: chats, memory,
 routines, approvals, tools, bots' own computers (Proxmox), your devices over Tailscale, voice calls, Discord /
-X / Instagram / TikTok accounts, and subscription agents (Codex, Claude Code…) as brains. Users reach it from
-the web app (PWA), the admin app and an Electron desktop app.
+X / Instagram / TikTok accounts, and subscription agents (Codex, Claude Code…) as models. Users reach it from
+the web app (PWA; its Settings hold the server's setup for admins), the phone apps and an Electron desktop app.
 
 Read this file first, then the one next to the code you're changing:
 
 | Area                                                            | Doc                                                  |
 | --------------------------------------------------------------- | ---------------------------------------------------- |
 | API server (Bun, Hono, Postgres)                                | [apps/server/AGENTS.md](apps/server/AGENTS.md)       |
-| Web app (chats, bot panel)                                      | [apps/web/AGENTS.md](apps/web/AGENTS.md)             |
-| Admin app                                                       | [apps/admin/AGENTS.md](apps/admin/AGENTS.md)         |
+| Web app (chats, bots' pages, Settings)                          | [apps/web/AGENTS.md](apps/web/AGENTS.md)             |
 | Desktop app (Electron)                                          | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md)     |
 | Browser extension (Chromium, Firefox, Safari)                   | [apps/extension/AGENTS.md](apps/extension/AGENTS.md) |
 | Shared packages (`@sekai/shared`, `@sekai/client`, `@sekai/ui`) | [packages/AGENTS.md](packages/AGENTS.md)             |
@@ -25,13 +24,12 @@ change.
 ```sh
 bun install
 bun run db:up            # Postgres 17 + pgvector in Docker, on 127.0.0.1:5433
-bun run dev              # server (watch) + web + admin dev servers
+bun run dev              # server (watch) + the web app's dev server
 bun run check            # lint + typecheck + tests: run before you finish
 bun run lint             # Biome (bun run format fixes what it can)
 bun run typecheck        # every package, in dependency order
 bun test                 # unit tests (apps/server/test/*.test.ts); only auth.test.ts uses Postgres (skips without it)
-bun run build:web        # the server serves apps/web/dist at / …
-bun run build:admin      # … and apps/admin/dist at /admin
+bun run build:web        # the server serves apps/web/dist at /
 bun run db:generate      # after editing apps/server/src/db/schema.ts (writes apps/server/drizzle/*.sql)
 ```
 
@@ -47,14 +45,13 @@ Live end-to-end checks that need real accounts: `bun run test:discord`, `bun run
 ## Repository map
 
 ```
-apps/server     API + SSE event bus + WebSockets (VNC, voice, desktop bridge); serves the built web/admin apps
-apps/web        React 19 + Vite chat app (sidebar, chats, bot panel, settings, PWA service worker)
-apps/admin      React admin app at /admin (models, subscriptions, apps, voice, approvals, machines, Tailscale…)
+apps/server     API + SSE event bus + WebSockets (VNC, voice, desktop bridge); serves the built web app
+apps/web        React 19 + Vite app: chats, bots' pages, Settings (the server's setup too), PWA service worker
 apps/desktop    Electron shell; src/local lends the user's computer to bots
 apps/extension  WebExtension sidebar/popover, local per-tab sharing and a scoped server bridge
 packages/shared zod schemas, TypeScript types, ServerEvent union, and the typed API client (createApiClient)
-packages/client React hooks/components shared by web and admin (TanStack Query data hooks, ModelPicker, voice)
-packages/ui     design system (shadcn/ui restyled) + Sekai building blocks (Section, SettingsPanel, ContextMenu…)
+packages/client React hooks/components for the apps (TanStack Query data hooks, ModelPicker, voice, the bridges)
+packages/ui     design system (shadcn/ui restyled) + Sekai building blocks (Page, SectionLayout, List/Row, ContextMenu…)
 scripts/dev.ts  starts the dev servers
 ```
 
@@ -128,7 +125,7 @@ has their own workspace. The rules every change must keep:
 - X/Twitter goes through `emusks` (https://emusks.tiago.zip/). Mentions are answered only from the handles on the
   bot's X allowlist, checked in code by account id (`x/mentions.ts`), never by the model.
 - Colorful Stage art (the character icons, and the logo: the Virtual Singer Miku icon) ships with Sekai and is shown
-  unmodified: resize it, never crop, recolor, redraw or overlay it. Keep its © line, and the credit in Admin → About.
+  unmodified: resize it, never crop, recolor, redraw or overlay it. Keep its © line, and the credit in Settings → Server → About.
 - Brand logos (subscriptions, providers, sign-in providers) come from LobeHub Icons (MIT) in
   `packages/client/src/components/logos.ts` (Discord's and Slack's, which LobeHub lacks, from Simple Icons, CC0).
 - Root on a user's device always asks the user, whatever the approval mode (`askFirst` in `agent/tools/hosts.ts`).
@@ -141,4 +138,4 @@ has their own workspace. The rules every change must keep:
   `import { initDb } from "../src/db/index.ts"`); delete them when done and never commit them.
 - Never commit secrets, `.env`, the `data/` folder, or test tokens.
 - A running dev server doesn't pick up server changes unless started with `bun run dev` (watch mode); after
-  changing apps/web or apps/admin, rebuild them if the server is serving the built files.
+  changing apps/web, rebuild it if the server is serving the built files.

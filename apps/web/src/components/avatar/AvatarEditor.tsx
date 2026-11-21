@@ -15,7 +15,7 @@ import {
 	galleryShortName,
 	randomAvatar,
 } from "@sekai/shared";
-import { Button, Input, Spinner, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from "@sekai/ui";
+import { Button, Input, Spinner, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, Tooltip } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
 import { ImageUp, Shapes, Smile, Sparkles, Upload, Users, Wand2 } from "lucide-react";
 import { type CSSProperties, useRef, useState } from "react";
@@ -31,7 +31,7 @@ export function galleryAvatar(id: string): GalleryAvatar | null {
 /** Where the character icons come from (the media kit asks for them to be credited and left as they are). */
 export function GalleryCredit() {
 	return (
-		<p className="text-[11px] leading-4 text-fg-subtle">
+		<p className="text-caption text-fg-subtle">
 			Icons from the{" "}
 			<a
 				href={GALLERY_PAGE}
@@ -71,10 +71,10 @@ export function GalleryPicker({
 						aria-selected={u.id === unit}
 						onClick={() => setUnit(u.id)}
 						className={cn(
-							"shrink-0 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors coarse:py-2",
+							"shrink-0 rounded-full px-3 py-1.5 text-caption font-medium whitespace-nowrap transition-colors coarse:py-2",
 							u.id === unit
 								? "bg-primary text-primary-foreground"
-								: "bg-muted text-muted-foreground hover:text-fg",
+								: "bg-surface-2 text-fg-muted hover:text-fg",
 						)}
 					>
 						{u.name}
@@ -94,17 +94,20 @@ export function GalleryPicker({
 							}}
 							aria-label={g.name}
 							aria-pressed={on}
-							title={g.name}
 							className={cn(
-								"group flex flex-col items-center gap-1 rounded-2xl border p-1.5 pb-1 transition-[background-color,border-color,box-shadow] duration-150",
-								on ? "border-transparent bg-muted ring-2" : "border-transparent hover:bg-muted/70",
+								"group flex flex-col items-center gap-1 rounded-lg border p-1.5 pb-1 transition-[background-color,border-color,box-shadow] duration-150",
+								on
+									? "border-transparent bg-surface-2 ring-2"
+									: "border-transparent hover:bg-surface-2/70",
 							)}
 							style={on ? ({ "--tw-ring-color": g.color } as CSSProperties) : undefined}
 						>
 							<span className="transition-transform duration-200 ease-spring group-hover:-translate-y-0.5 group-active:scale-95">
 								<AgentAvatar avatar={{ kind: "gallery", id: g.id, color: g.color }} size={size} />
 							</span>
-							<span className="max-w-full truncate text-[11px] text-fg-muted">{galleryShortName(g)}</span>
+							<span className="max-w-full truncate text-caption text-fg-muted">
+								{galleryShortName(g)}
+							</span>
 						</button>
 					);
 				})}
@@ -151,28 +154,29 @@ export function CharacterPicker({
 	return (
 		<div className="flex flex-col gap-4">
 			<div>
-				<div className="mb-2 text-xs font-medium text-fg-subtle">Shape</div>
+				<div className="mb-2 text-caption font-medium text-fg-subtle">Shape</div>
 				<div className="grid grid-cols-5 gap-2">
 					{AVATAR_SHAPES.map((shape: AvatarShape) => (
-						<button
-							key={shape}
-							type="button"
-							onClick={() => onChange({ ...value, shape })}
-							aria-label={shape}
-							className={cn(
-								"flex aspect-square items-center justify-center rounded-2xl border transition-colors",
-								value.shape === shape
-									? "border-fg/40 bg-surface-2"
-									: "border-border hover:bg-surface-2",
-							)}
-						>
-							<AgentAvatar avatar={{ ...value, shape }} size={compact ? 30 : 36} />
-						</button>
+						<Tooltip key={shape} content={shape}>
+							<button
+								type="button"
+								onClick={() => onChange({ ...value, shape })}
+								aria-label={shape}
+								className={cn(
+									"flex aspect-square items-center justify-center rounded-lg border transition-colors",
+									value.shape === shape
+										? "border-fg/40 bg-surface-2"
+										: "border-border hover:bg-surface-2",
+								)}
+							>
+								<AgentAvatar avatar={{ ...value, shape }} size={compact ? 30 : 36} />
+							</button>
+						</Tooltip>
 					))}
 				</div>
 			</div>
 			<div>
-				<div className="mb-2 text-xs font-medium text-fg-subtle">Color</div>
+				<div className="mb-2 text-caption font-medium text-fg-subtle">Color</div>
 				<div className="flex flex-wrap gap-2">
 					{AVATAR_COLOR_NAMES.map((name) => {
 						const color = AVATAR_COLORS[name];
@@ -194,7 +198,7 @@ export function CharacterPicker({
 			</div>
 			{!compact && (
 				<div>
-					<div className="mb-2 text-xs font-medium text-fg-subtle">Face</div>
+					<div className="mb-2 text-caption font-medium text-fg-subtle">Face</div>
 					<div className="flex flex-wrap gap-2">
 						{AVATAR_FACES.map((face: AvatarFace) => (
 							<button
@@ -202,7 +206,7 @@ export function CharacterPicker({
 								type="button"
 								onClick={() => onChange({ ...value, face })}
 								className={cn(
-									"flex flex-col items-center gap-1 rounded-xl border px-2.5 py-2 text-[11px] capitalize transition-colors",
+									"flex flex-col items-center gap-1 rounded-lg border px-2.5 py-2 text-caption capitalize transition-colors",
 									value.face === face
 										? "border-fg/40 bg-surface-2"
 										: "border-border hover:bg-surface-2",
@@ -263,7 +267,7 @@ export function AvatarEditor({
 		<div className="flex flex-col gap-5">
 			<div className="flex flex-col items-center gap-2 pt-1">
 				<AgentAvatar avatar={preview} size={104} working={generate.isPending} />
-				{agentName && <div className="text-sm font-medium">{agentName}</div>}
+				{agentName && <div className="text-body font-medium">{agentName}</div>}
 			</div>
 			<Tabs value={tab} onValueChange={setTab}>
 				<TabsList variant="pill" className="mx-auto">
@@ -302,7 +306,7 @@ export function AvatarEditor({
 								type="button"
 								onClick={() => setEmoji(e)}
 								className={cn(
-									"flex size-10 items-center justify-center rounded-xl text-xl transition-colors",
+									"flex size-10 items-center justify-center rounded-md text-title transition-colors",
 									emoji === e ? "bg-surface-3" : "hover:bg-surface-2",
 								)}
 							>
@@ -346,8 +350,8 @@ export function AvatarEditor({
 						{generate.isPending ? <Spinner /> : <Wand2 />}
 						{generate.isPending ? "Drawing…" : "Generate"}
 					</Button>
-					<p className="text-xs text-fg-subtle">
-						<Sparkles className="mr-1 inline size-3" />
+					<p className="text-small text-fg-subtle">
+						<Sparkles className="mr-1 inline size-4" />
 						The bot's own model draws the picture as an SVG.
 					</p>
 				</TabsContent>
@@ -372,7 +376,7 @@ export function AvatarEditor({
 							const f = e.dataTransfer.files[0];
 							if (f?.type.startsWith("image/")) upload.mutate(f);
 						}}
-						className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border-strong px-4 py-8 text-sm text-fg-muted hover:bg-surface-2/60"
+						className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-strong px-4 py-8 text-body text-fg-muted hover:bg-surface-2/60"
 					>
 						{upload.isPending ? <Spinner /> : <ImageUp className="size-6" />}
 						Drop an image or browse (max 25 MB)
@@ -384,7 +388,7 @@ export function AvatarEditor({
 				onClick={() => onSave(preview)}
 				disabled={((tab === "generate" || tab === "upload") && !image) || (tab === "gallery" && !gallery)}
 			>
-				Set avatar
+				Use this picture
 			</Button>
 		</div>
 	);

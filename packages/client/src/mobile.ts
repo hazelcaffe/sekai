@@ -22,6 +22,16 @@ export interface SekaiMobile {
 	onNavigate(callback: (path: string) => void): () => void;
 	/** The app's own screen for switching servers. */
 	openSettings(): void;
+	/** The system's notification settings for the app (when notifications are turned off there). Newer apps. */
+	openNotificationSettings?(): void;
+	/** A small tick or buzz for a meaningful moment (send, approve, an error). Newer apps; use haptic(). */
+	haptic?(kind: HapticKind): void;
+	/**
+	 * What back would do in the page, whenever it changes: `overlay` while a sheet, dialog, menu or side panel is
+	 * open, `canGoBack` while there's a screen to go back to. The apps handle their back gestures only while either
+	 * is true, and then call window.__sekaiBack(). Newer apps.
+	 */
+	backState?(state: { overlay: boolean; canGoBack: boolean }): void;
 	/** Opens an http(s) address in the system browser. */
 	openExternal(url: string): void;
 	push: {
@@ -45,11 +55,29 @@ export interface SekaiMobile {
 	signInWithBrowser(options?: { provider?: string | null }): Promise<void>;
 }
 
+/** The kinds of haptic feedback the phone apps play. */
+export type HapticKind = "selection" | "light" | "medium" | "success" | "warning" | "error";
+
 declare global {
 	interface Window {
 		sekaiMobile?: SekaiMobile;
+		/**
+		 * Set by the web app for the phone apps' back gesture: closes the topmost overlay, or goes back one screen.
+		 * Returns whether it did (false: the app falls back to the web view's history).
+		 */
+		__sekaiBack?: () => boolean;
 	}
 }
 
 export const mobile: SekaiMobile | undefined = typeof window !== "undefined" ? window.sekaiMobile : undefined;
 export const isMobileApp = Boolean(mobile);
+
+/**
+ * Haptic feedback through the phone apps, for meaningful moments only (sending, approving or denying, an error),
+ * not every tap. Does nothing in a browser or an older app.
+ */
+export function haptic(kind: HapticKind): void {
+	try {
+		mobile?.haptic?.(kind);
+	} catch {}
+}

@@ -507,7 +507,7 @@ async function request(
 
 async function call(path: string, body: unknown, signal?: AbortSignal, timeoutMs?: number): Promise<unknown> {
 	const where = await endpoint();
-	if (!where) throw new Error("Web reading is off. Turn Firecrawl Local on in Admin → Web reading.");
+	if (!where) throw new Error("Web reading is off. Turn Firecrawl Local on in Settings → Web reading.");
 	if (engine.state !== "ready") {
 		throw new Error(engine.error ?? "Firecrawl Local isn't ready yet.");
 	}
@@ -687,7 +687,7 @@ export async function searchWeb(query: string, limit = 5, signal?: AbortSignal):
 		.map((r) => ({ url: r.url ?? "", title: (r.title ?? "").trim(), description: (r.description ?? "").trim() }));
 }
 
-/** Admin's "Try a page": reads one page and reports how it went. */
+/** Web reading's "Try a page": reads one page and reports how it went. */
 export async function checkWebEngine(url: string, signal?: AbortSignal): Promise<WebEngineCheck> {
 	const target = checkWebUrl(url);
 	const started = Date.now();

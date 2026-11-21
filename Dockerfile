@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# Firecrawl Local, the web engine (Admin → Web reading), is left out by default because building it needs Rust
+# Firecrawl Local, the web engine (Settings → Bots → Web reading), is left out by default because building it needs Rust
 # and a few minutes. Build it in with: docker compose build --build-arg WITH_WEB_ENGINE=1
 ARG WITH_WEB_ENGINE=0
 
@@ -16,13 +16,12 @@ COPY apps/extension/package.json apps/extension/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
 COPY packages/client/package.json packages/client/
-COPY apps/admin/package.json apps/admin/
 RUN bun install --frozen-lockfile --ignore-scripts
 
-# ---- build the web app and the admin app ----
+# ---- build the web app ----
 FROM deps AS web
 COPY . .
-RUN bun run build:web && bun run build:admin
+RUN bun run build:web
 
 # ---- the web engine, when it was asked for (WITH_WEB_ENGINE=1) ----
 FROM oven/bun:1.4.4-slim AS webengine-0
@@ -53,12 +52,10 @@ COPY apps/extension/package.json apps/extension/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
 COPY packages/client/package.json packages/client/
-COPY apps/admin/package.json apps/admin/
 RUN bun install --frozen-lockfile --production --ignore-scripts --filter @sekai/server
 COPY packages/shared packages/shared
 COPY apps/server apps/server
 COPY --from=web /app/apps/web/dist apps/web/dist
-COPY --from=web /app/apps/admin/dist apps/admin/dist
 
 ENV SEKAI_HOST=0.0.0.0 SEKAI_PORT=7420 SEKAI_DATA_DIR=/data
 EXPOSE 7420

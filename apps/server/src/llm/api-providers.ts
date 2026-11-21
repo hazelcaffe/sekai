@@ -406,7 +406,7 @@ export async function apiEmbeddingModels(): Promise<EmbeddingModelInfo[]> {
 async function provider(id: string): Promise<{ p: Loaded }> {
 	const p = (await load()).get(id);
 	if (!p) throw badRequest("That API provider was removed. Pick another model.");
-	if (!p.row.enabled) throw badRequest(`${p.row.name} is turned off in Admin → Models.`);
+	if (!p.row.enabled) throw badRequest(`${p.row.name} is turned off in Settings → Models.`);
 	return { p };
 }
 

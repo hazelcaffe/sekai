@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "require_passkey" boolean DEFAULT false NOT NULL;

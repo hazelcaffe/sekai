@@ -40,7 +40,7 @@ export { TOOL_CATEGORIES, type ToolAttachment, type ToolContext, type ToolImage,
 
 /**
  * Every built-in tool. To add one, define it with defineTool() in a module here and add it to this list;
- * approvals, the Brain view and the model's tool list pick it up automatically.
+ * approvals, the chat details and the model's tool list pick it up automatically.
  */
 export const BUILTIN_TOOLS: ToolDefinition[] = [
 	...memoryTools,
@@ -364,6 +364,11 @@ export function describeTool(
 /** Every built-in tool with the rule that applies to it, for the permissions UI (includes tools turned off). */
 export function builtinCatalog(rules: RuleSets): AgentContextTool[] {
 	return BUILTIN_TOOLS.map((def) => describeTool({ ...def, source: "builtin" }, rules));
+}
+
+/** The tools whose rules a person can set for their bot: the ones their role leaves them (no code search without it). */
+export function ruleCatalog(agent: Pick<Agent, "userId">, rules: RuleSets): AgentContextTool[] {
+	return builtinCatalog(rules).filter((t) => toolAllowed(t, agent));
 }
 
 export const CATEGORY_LABELS: Record<string, string> = TOOL_CATEGORIES;

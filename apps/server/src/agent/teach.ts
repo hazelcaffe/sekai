@@ -180,7 +180,7 @@ export async function draftSkill(agent: Agent, input: TeachDraftInput): Promise<
 	const model = await visionModel(agent);
 	if (!model) {
 		throw badRequest(
-			`None of ${agent.name}'s models can see images, so none can read the screen. Pick one that can in its Model tab (or set its vision model), then try again.`,
+			`None of ${agent.name}'s models can see images, so none can read the screen. Pick one that can in its Model & voice section (or set its vision model), then try again.`,
 		);
 	}
 	try {

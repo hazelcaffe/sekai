@@ -22,10 +22,11 @@
 Each bot has a name, a face, a job and a personality. It keeps its own memory and notes, runs routines on a schedule,
 works with other bots in group chats, and asks before doing anything you haven't allowed. Bring models from any
 OpenAI-compatible gateway or API provider (OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio…), or use agent
-subscriptions you already pay for (Codex, Claude Code, Gemini CLI, Grok…) as a bot's brain.
+subscriptions you already pay for (Codex, Claude Code, Grok, OpenCode, Pi…) as a bot's model.
 
-Sekai runs on [Bun](https://bun.sh) and Postgres, with a responsive web app you can install on your phone, an admin
-app, a browser extension, and an optional desktop app. It's free software under the [GNU AGPL v3](LICENSE).
+Sekai runs on [Bun](https://bun.sh) and Postgres, with a responsive web app you can install on your phone (its
+Settings hold the server's setup too), a browser extension, and an optional desktop app. It's free software under the
+[GNU AGPL v3](LICENSE).
 
 ## Highlights
 
@@ -33,7 +34,7 @@ app, a browser extension, and an optional desktop app. It's free software under 
   primary bot, which coordinates the others.
 - **Models you can swap and combine.** Any model and thinking level per bot, or a strategy: planner and executor, a
   council of advisors, or a fallback chain. Refusals are caught and another model answers.
-- **Memory you can see.** The bot panel shows exactly what a bot reads on its next turn: its instructions, memory,
+- **Memory you can see.** A chat's details show exactly what a bot reads on its next turn: its instructions, memory,
   notes, history and tools. Bots save what they learn, tidy it up now and then, and ask when facts may have changed.
 - **They get things done.** Routines on a schedule or when something happens (a webhook, a device going offline),
   reminders, a morning digest, a document library they search by meaning, code search, apps over MCP (50+ with
@@ -43,9 +44,9 @@ app, a browser extension, and an optional desktop app. It's free software under 
   server; only search leaves it, and you can turn that off.
 - **Teamwork.** Group chats where bots answer when @mentioned or picked, hand work to each other and ask each other
   questions.
-- **Approvals like a coding agent.** Read-only, ask every time, auto (a reviewer model checks risky actions), your
-  primary bot decides, or YOLO, per chat, per bot or for everything, with explicit rules per tool. Every action is in
-  the activity log.
+- **Approvals like a coding agent.** Read-only, ask every time, a reviewer model checks risky actions, your primary
+  bot decides, or don't ask, per chat, per bot or for everything, with explicit rules per tool. Every action is in the
+  activity log.
 - **For several people.** Admins add people (no public sign-up). Everyone gets their own bots, chats, memory and
   files; roles decide what they may use and how much (models, tokens and money per day or month, bots, storage). Share
   a bot with a person, a role or everyone.
@@ -65,7 +66,8 @@ app, a browser extension, and an optional desktop app. It's free software under 
   [browser extension guide](apps/extension/README.md) for installation, permissions and Safari signing.
 - **Usage at a glance.** Tokens and cost by hour or day, by model, bot and person, with the period before to
   compare, a heatmap of busy hours, and CSV export.
-- **Everywhere.** Phones, foldables, tablets and desktops, in six themes (light and dark), with live updates.
+- **Everywhere.** Phones (with a tab bar), foldables, tablets and desktops, in six themes (light and dark), with live
+  updates.
 
 ## Screenshots
 
@@ -99,7 +101,7 @@ docker compose logs app | grep "setup code"
 ```
 
 Open http://127.0.0.1:7420, enter the setup code from the log, and create the first account (an admin). Add your
-models in **Admin → Models** (a gateway, or API providers), then make your first bot.
+models in **Settings → Bots → Models** (a gateway, or API providers), then make your first bot.
 
 ### From source
 
@@ -128,7 +130,7 @@ updates.
 - [Installing and hosting](docs/install.md): Docker, from source, as a service, on the internet, configuration,
   backups, updating, troubleshooting.
 - [User guide](docs/guide.md): people and roles, approvals, routines, memory, the library, voice, Slack, Discord and X,
-  apps, computers, your own devices, subscriptions as brains.
+  apps, computers, your own devices, subscriptions as models, Settings.
 - [Architecture](docs/architecture.md): how the code fits together, and how to extend it.
 - [Browser extension](apps/extension/README.md): builds, connection, tools, privacy and GitHub Actions releases.
 - [AGENTS.md](AGENTS.md): the guide for contributors and coding agents.

@@ -175,7 +175,7 @@ async function run(id: string, signal: AbortSignal): Promise<void> {
 	const [row] = await db.select().from(schema.codeIndexes).where(eq(schema.codeIndexes.id, id));
 	if (!row) return;
 	const machine = await getMachine(row.machineId);
-	if (!machine) throw new Error("The machine is gone");
+	if (!machine) throw new Error("The computer is gone");
 	if (machine.status !== "running") throw new Error(`${machine.name} isn't running`);
 	const progress = async (p: CodeIndexProgress) => {
 		await patch(id, { status: "indexing", error: null, progress: p });

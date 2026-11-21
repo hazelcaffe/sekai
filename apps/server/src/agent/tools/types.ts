@@ -1,24 +1,7 @@
-import type { Agent, ApprovalMode, Conversation, RunTrigger, ToolRisk } from "@sekai/shared";
+import type { Agent, ApprovalMode, Conversation, RunTrigger, ToolCategory, ToolRisk } from "@sekai/shared";
 import type { z } from "zod";
 
-export const TOOL_CATEGORIES = {
-	memory: "Memory",
-	notes: "Notes",
-	routines: "Routines & reminders",
-	skills: "Skills",
-	agents: "Team",
-	web: "Web",
-	browser: "Browser",
-	computer: "Computer",
-	machines: "Machines & devboxes",
-	code: "Code search",
-	library: "Library",
-	media: "Images",
-	contact: "Messages & calls",
-	x: "X (Twitter)",
-	system: "System",
-} as const;
-export type ToolCategory = keyof typeof TOOL_CATEGORIES;
+export { TOOL_CATEGORIES, type ToolCategory } from "@sekai/shared";
 
 export interface ToolContext {
 	agent: Agent;

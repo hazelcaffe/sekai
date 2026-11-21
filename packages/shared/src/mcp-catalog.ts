@@ -987,7 +987,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
 	{
 		id: "filesystem",
 		name: "Filesystem",
-		publisher: "MCP",
+		publisher: "Open source",
 		description: "Read and write files in folders on the Sekai server.",
 		does: ["Read and write files", "Search folders"],
 		category: "other",
@@ -1005,7 +1005,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
 	{
 		id: "sequential-thinking",
 		name: "Sequential Thinking",
-		publisher: "MCP",
+		publisher: "Open source",
 		description: "A step-by-step thinking tool for hard problems.",
 		does: ["Break problems into steps", "Revise earlier steps"],
 		category: "other",

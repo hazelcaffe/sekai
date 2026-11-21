@@ -41,7 +41,7 @@ async function* once(b: VoiceBackend, o: SpeakOptions, text: string, previous: s
 export async function* speak(o: SpeakOptions): AsyncGenerator<Uint8Array> {
 	const text = o.text.trim();
 	if (!text) return;
-	if (!o.model) throw new Error("No speaking voice picked yet (Admin → Voice, or the bot's Voice tab)");
+	if (!o.model) throw new Error("No speaking voice picked yet (Settings → Voice, or the bot's Model & voice)");
 	const b = await backendOf(o.model);
 	let previous = "";
 	for (const piece of speechChunks(text, maxChars(b))) {

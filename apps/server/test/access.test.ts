@@ -92,6 +92,7 @@ describe("several people", () => {
 			if (!line) throw new Error(`no report: ${out}\n${await new Response(p.stderr).text()}`);
 			expect(JSON.parse(line.slice(7))).toEqual({
 				adminCreatesMember: { status: 201, temporary: true },
+				ssoOnly: { noProvider: 400, noEmailMatching: 400, noEmail: 400, works: 201 },
 				memberMustChange: { status: 200, restriction: "password" },
 				restrictedBlocked: 403,
 				passwordChanged: 200,
@@ -131,6 +132,7 @@ describe("several people", () => {
 				memberAdminUsers: 403,
 				memberServerSetting: 403,
 				memberTimezone: { status: 200, mine: "Asia/Tokyo", admins: "auto" },
+				memberMixedSetting: { status: 403, timezoneKept: true, nameKept: true, serverDefaultKept: true },
 				uploadOwner: 200,
 				uploadOthers: 404,
 				memoryKeptApart: { member: 1, admin: 0 },

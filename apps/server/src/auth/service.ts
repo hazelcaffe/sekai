@@ -140,6 +140,7 @@ export async function setup(input: SetupInput & { code?: string }): Promise<Auth
 		passwordHash: await hashPassword(input.password),
 		passwordChangedAt: now,
 		mustChangePassword: false,
+		requirePasskey: false,
 		disabledAt: null,
 		lastLoginAt: now,
 		createdAt: now,

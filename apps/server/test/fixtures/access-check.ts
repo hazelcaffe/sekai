@@ -100,6 +100,26 @@ try {
 	});
 	const temp = String(created.data.temporaryPassword ?? "");
 	report.adminCreatesMember = { status: created.status, temporary: temp.length > 10 };
+	// Single sign-on only works when their first sign-in can find the account: an email, and a provider that
+	// matches verified emails.
+	const ssoOnly = async (email: string | null) =>
+		(
+			await call("POST", "/api/admin/users", {
+				jar: admin,
+				body: { name: "Sso Person", username: "sso-person", roleId: "role_member", password: "none", email },
+			})
+		).status;
+	const ssoReport: Record<string, number> = { noProvider: await ssoOnly("sso@example.com") };
+	const provider = await call("POST", "/api/admin/sso", {
+		jar: admin,
+		body: { kind: "github", name: "GitHub", clientId: "id", clientSecret: "secret", linkByEmail: false },
+	});
+	ssoReport.noEmailMatching = await ssoOnly("sso@example.com");
+	await call("PATCH", `/api/admin/sso/${provider.data.id}`, { jar: admin, body: { linkByEmail: true } });
+	ssoReport.noEmail = await ssoOnly(null);
+	ssoReport.works = await ssoOnly("sso@example.com");
+	await call("DELETE", `/api/admin/sso/${provider.data.id}`, { jar: admin });
+	report.ssoOnly = ssoReport;
 	const memberId = String((created.data.user as { id: string }).id);
 	const signIn = await call("POST", "/api/auth/login", { jar: member, body: { username: "bo", password: temp } });
 	report.memberMustChange = { status: signIn.status, restriction: signIn.data.restriction };
@@ -281,6 +301,23 @@ try {
 		status: tz.status,
 		mine: (await call("GET", "/api/settings", { jar: member })).data.timezone,
 		admins: (await call("GET", "/api/settings", { jar: admin })).data.timezone,
+	};
+	// A change that includes a server setting is refused whole: none of your own part is saved either.
+	const before = (await call("GET", "/api/settings", { jar: member })).data;
+	const mixed = await call("PATCH", "/api/settings", {
+		jar: member,
+		body: {
+			userName: "Someone else",
+			timezone: "Europe/Paris",
+			defaultModel: { model: "claude-haiku-5-5", thinking: "default" },
+		},
+	});
+	const after = (await call("GET", "/api/settings", { jar: member })).data;
+	report.memberMixedSetting = {
+		status: mixed.status,
+		timezoneKept: after.timezone === before.timezone,
+		nameKept: after.userName === before.userName,
+		serverDefaultKept: after.defaultModel.model === before.defaultModel.model,
 	};
 
 	// Files: yours only.

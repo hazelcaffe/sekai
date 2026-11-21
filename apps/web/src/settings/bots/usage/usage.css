@@ -1,0 +1,6 @@
+/*
+ * Usage chart fallback series color for grouped "other" buckets; primary series use @sekai/ui's --series-1…8 tokens.
+ */
+:root {
+	--usage-other: color-mix(in oklab, var(--fg-subtle) 45%, transparent);
+}

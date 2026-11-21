@@ -8,7 +8,7 @@ import {
 	TeachRecorder,
 	type TeachStepInput,
 } from "@sekai/shared";
-import { Button, Dialog, Field, IconButton, Input, Spinner, Textarea } from "@sekai/ui";
+import { Button, Confirm, Dialog, Field, IconButton, Input, Spinner, Textarea } from "@sekai/ui";
 import {
 	ArrowDownUp,
 	EyeOff,
@@ -44,12 +44,14 @@ function frameOf(canvas: HTMLCanvasElement, mark?: { x: number; y: number }): Pr
 	// Copied now, before the click changes anything; encoding waits.
 	ctx.drawImage(canvas, 0, 0, snap.width, snap.height);
 	if (mark) {
+		// The danger colour, as the canvas needs a resolved value.
+		const danger = getComputedStyle(document.documentElement).getPropertyValue("--danger").trim() || "red";
 		ctx.lineWidth = 3;
-		ctx.strokeStyle = "#ef4444";
+		ctx.strokeStyle = danger;
 		ctx.beginPath();
 		ctx.arc(mark.x * s, mark.y * s, 16, 0, Math.PI * 2);
 		ctx.stroke();
-		ctx.fillStyle = "#ef4444";
+		ctx.fillStyle = danger;
 		ctx.beginPath();
 		ctx.arc(mark.x * s, mark.y * s, 3, 0, Math.PI * 2);
 		ctx.fill();
@@ -368,9 +370,13 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 	const [notes, setNotes] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
+	const [discard, setDiscard] = useState(false);
 
 	useEffect(() => {
-		if (phase === "setup") setGoalText("");
+		if (phase === "setup") {
+			setGoalText("");
+			setNotes("");
+		}
 		if (phase === "recording" || phase === "setup") setError(null);
 	}, [phase]);
 
@@ -391,8 +397,8 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 			});
 			setDraft(result);
 			setPhase("skill");
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e));
+		} catch {
+			setError("Couldn’t write the skill. Your steps are still here; try writing it again.");
 			setPhase("review");
 		}
 	};
@@ -413,8 +419,8 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 			});
 			state.reset();
 			setNotes("");
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e));
+		} catch {
+			setError("Couldn’t save the skill. Check the title and instructions, then try again.");
 		} finally {
 			setSaving(false);
 		}
@@ -435,7 +441,7 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 				onOpenChange={(o) => !o && state.reset()}
 				icon={<GraduationCap />}
 				title={`Show ${botName} how`}
-				description={`Do the task on the screen while Sekai watches. Afterwards you check what it saw, and ${botName} keeps it as a skill. Text you type into password fields isn't kept.`}
+				description={`Record the task once, then review what ${botName} will learn.`}
 				footer={
 					<>
 						<Button variant="ghost" onClick={state.reset}>
@@ -459,18 +465,21 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 						placeholder="e.g. Download this month's invoice from the billing site"
 					/>
 				</Field>
+				<p className="text-small text-fg-muted">
+					Check the recording for private details before sending it to the model.
+				</p>
 			</Dialog>
 
 			<Dialog
 				open={phase === "review" || phase === "drafting"}
-				onOpenChange={(o) => !o && phase !== "drafting" && state.reset()}
+				onOpenChange={(o) => !o && phase !== "drafting" && setDiscard(true)}
 				size="lg"
 				icon={<GraduationCap />}
-				title="Check what Sekai saw"
-				description={`${steps.length} step${steps.length === 1 ? "" : "s"} for “${goal}”. Hide anything private and drop mistakes; then ${botName}'s model writes them up as a skill for you to review.`}
+				title="Review recording"
+				description="Hide private text and drop unwanted steps before sending the recording to the model."
 				footer={
 					<>
-						<Button variant="ghost" onClick={state.reset} disabled={phase === "drafting"}>
+						<Button variant="ghost" onClick={() => setDiscard(true)} disabled={phase === "drafting"}>
 							Discard
 						</Button>
 						<Button variant="secondary" onClick={state.resume} disabled={phase === "drafting"}>
@@ -488,25 +497,28 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 				}
 			>
 				<div className="flex flex-col gap-3">
+					<p className="break-words text-small text-fg-muted">
+						{goal} · {steps.length} {steps.length === 1 ? "step" : "steps"}
+					</p>
 					{steps.length === 0 ? (
-						<p className="text-[13px] text-fg-subtle">
+						<p className="text-small text-fg-subtle">
 							Nothing was recorded. Keep recording and do the task.
 						</p>
 					) : (
-						<ol className="flex max-h-[45vh] flex-col divide-y divide-border overflow-y-auto rounded-2xl border border-border">
+						<ol className="flex max-h-[45vh] flex-col divide-y divide-border overflow-y-auto rounded-lg border border-border">
 							{steps.map((s, i) => {
 								const Icon = ICONS[s.kind];
 								const image = s.kind === "click" || s.kind === "drag" ? s.image : undefined;
 								return (
 									// biome-ignore lint/suspicious/noArrayIndexKey: steps have no ids and don't reorder
 									<li key={i} className="flex items-center gap-2.5 px-3 py-2">
-										<span className="w-5 shrink-0 text-right text-xs tabular-nums text-fg-subtle">
+										<span className="w-5 shrink-0 text-right text-caption tabular-nums text-fg-subtle">
 											{i + 1}
 										</span>
 										<Icon className="size-4 shrink-0 text-fg-muted" />
 										<span
 											className={cn(
-												"min-w-0 flex-1 truncate text-[13px]",
+												"min-w-0 flex-1 truncate text-body",
 												s.kind === "secret" && "text-fg-subtle",
 											)}
 										>
@@ -516,7 +528,7 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 											<img
 												src={image}
 												alt=""
-												className="h-9 w-14 shrink-0 rounded-md object-cover ring-1 ring-border"
+												className="h-9 w-14 shrink-0 rounded-sm object-cover ring-1 ring-border"
 											/>
 										)}
 										{s.kind === "type" && (
@@ -532,7 +544,7 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 							})}
 						</ol>
 					)}
-					<Field label="Anything else it should know? (optional)">
+					<Field label="Extra notes" optional>
 						<Textarea
 							value={notes}
 							onChange={(e) => setNotes(e.target.value)}
@@ -541,20 +553,20 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 							placeholder="e.g. Always pick last month. Ask me before paying anything."
 						/>
 					</Field>
-					{error && <p className="text-[13px] text-danger">{error}</p>}
+					{error && <p className="text-body text-danger-ink">{error}</p>}
 				</div>
 			</Dialog>
 
 			<Dialog
 				open={phase === "skill" && draft !== null}
-				onOpenChange={(o) => !o && !saving && state.reset()}
+				onOpenChange={(o) => !o && !saving && setDiscard(true)}
 				size="lg"
 				icon={<GraduationCap />}
 				title="Review the skill"
-				description={`${draft?.model ?? "The model"} wrote this from what you showed. Change anything, then save it: ${botName} reads it when you ask for this.`}
+				description={`Check the instructions from ${draft?.model ?? "the model"} before saving them for ${botName}.`}
 				footer={
 					<>
-						<Button variant="ghost" onClick={state.reset} disabled={saving}>
+						<Button variant="ghost" onClick={() => setDiscard(true)} disabled={saving}>
 							Discard
 						</Button>
 						<Button variant="secondary" onClick={() => setPhase("review")} disabled={saving}>
@@ -563,7 +575,12 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 						<Button
 							variant="primary"
 							onClick={() => void save()}
-							disabled={saving || !draft?.title.trim() || !draft?.description.trim()}
+							disabled={
+								saving ||
+								!draft?.title.trim() ||
+								!draft?.description.trim() ||
+								!draft.instructions.trim()
+							}
 						>
 							{saving ? <Spinner /> : null} Save for {botName}
 						</Button>
@@ -591,14 +608,23 @@ export function TeachDialogs({ state, botName }: { state: DialogsState; botName:
 							<Textarea
 								value={draft.instructions}
 								rows={14}
-								className="font-mono text-[12px] leading-5"
+								className="font-mono text-small"
 								onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
 							/>
 						</Field>
-						{error && <p className="text-[13px] text-danger">{error}</p>}
+						{error && <p className="text-body text-danger-ink">{error}</p>}
 					</div>
 				)}
 			</Dialog>
+			<Confirm
+				open={discard}
+				onOpenChange={setDiscard}
+				title="Discard this recording?"
+				description="The recorded steps and any skill draft will be lost."
+				confirmLabel="Discard"
+				danger
+				onConfirm={state.reset}
+			/>
 		</>
 	);
 }

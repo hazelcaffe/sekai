@@ -11,7 +11,7 @@ import {
 } from "../machines/tailscale.ts";
 import { body, ok, readJson } from "./util.ts";
 
-/** Admin → Tailscale: this server on the tailnet, its HTTPS address, the API key, the auth key for new machines. */
+/** Settings → Network & devices: this server on the tailnet, its HTTPS address, the API key, the auth key for new machines. */
 export const tailscaleRoutes = new Hono()
 	.get("/", async (c) => c.json(await tailscaleOverview()))
 	.put("/api", async (c) => c.json(await setTailscaleApi(await readJson(c))))

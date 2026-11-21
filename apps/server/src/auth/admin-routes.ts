@@ -23,6 +23,7 @@ import {
 	listUsers,
 	resetUserMfa,
 	resetUserPassword,
+	stopRequiringPasskey,
 	updateUser,
 } from "./users.ts";
 
@@ -49,6 +50,11 @@ export const adminRoutes = new Hono()
 		return c.json(await resetUserPassword(c.req.param("id"), how, publicUrl(c)));
 	})
 	.post("/users/:id/reset-mfa", async (c) => c.json(await resetUserMfa(c.req.param("id"))))
+	.post("/users/:id/passkey-requirement-off", async (c) => {
+		// Your own goes through Account, from a signed-in page (not an API token).
+		if (c.req.param("id") === me(c)) throw badRequest("Turn this off for yourself in Account.");
+		return c.json(await stopRequiringPasskey(c.req.param("id")));
+	})
 	.post("/users/:id/sign-out", async (c) => {
 		await revokeEverything(c.req.param("id"), { tokens: false });
 		return c.json(ok);

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * BYOS (bring your own subscription): run an agent CLI you've installed and signed in to yourself (Codex,
- * Claude Code, Grok Build, Gemini CLI, Devin, Antigravity, Muse Code, or any ACP agent) as a bot's brain.
+ * Claude Code, Grok Build, OpenCode, Pi, Devin, Antigravity, Muse Code, or any ACP agent) as a bot's model.
  * Sekai never handles your subscription credentials: the CLI keeps its own sign-in.
  */
 export const PROVIDER_KINDS = ["acp", "claude-sdk"] as const;
@@ -13,7 +13,8 @@ export const PROVIDER_PRESET_IDS = [
 	"codex",
 	"claude",
 	"grok",
-	"gemini",
+	"opencode",
+	"pi",
 	"devin",
 	"antigravity",
 	"muse",
@@ -83,17 +84,30 @@ export const PROVIDER_PRESETS: Record<ProviderPresetId, ProviderPreset> = {
 		docsUrl: "https://x.ai/cli",
 		models: [],
 	},
-	gemini: {
-		id: "gemini",
+	opencode: {
+		id: "opencode",
 		kind: "acp",
-		title: "Gemini CLI",
-		vendor: "Google",
-		description: "Your Google account or Gemini plan through the official Gemini CLI.",
-		command: "npx",
-		args: ["-y", "@google/gemini-cli@latest", "--acp"],
+		title: "OpenCode",
+		vendor: "Anomaly",
+		description: "Use models from the providers you connect to OpenCode.",
+		command: "opencode",
+		args: ["acp"],
 		env: {},
-		signIn: "Run `gemini` once and choose Sign in with Google, or set GEMINI_API_KEY below.",
-		docsUrl: "https://geminicli.com",
+		signIn: "Install OpenCode v2 and run `opencode auth login` to connect a provider, or use `/connect` inside OpenCode. Sekai lists the models OpenCode offers. To change its default, set `model` in `opencode.json`.",
+		docsUrl: "https://opencode.ai/v2/docs/",
+		models: [],
+	},
+	pi: {
+		id: "pi",
+		kind: "acp",
+		title: "Pi",
+		vendor: "Earendil Works",
+		description: "Use your Pi models for chat. Pi's tools and Sekai's tools aren't available through this preset.",
+		command: "pi-acp",
+		args: [],
+		env: {},
+		signIn: "With Node.js 22.19 or later, install `@earendil-works/pi-coding-agent` and `pi-acp` with npm. Run `pi`, then `/login` to connect a provider. For a compatible endpoint, add it to Pi's `models.json`.",
+		docsUrl: "https://docs.pi.dev/latest/models",
 		models: [],
 	},
 	devin: {

@@ -1,15 +1,12 @@
 import {
 	type Agent,
-	APPROVAL_MODE_INFO,
-	APPROVAL_MODES,
 	type ApprovalMode,
-	type ApprovalModeSetting,
 	type ModelInfo,
 	type ModelRef,
 	THINKING_LABELS,
 	type ThinkingSetting,
 } from "@sekai/shared";
-import { Popover, PopoverClose, Spinner } from "@sekai/ui";
+import { Link, Popover, PopoverClose, Spinner, Tooltip } from "@sekai/ui";
 import {
 	Check,
 	ChevronDown,
@@ -17,15 +14,14 @@ import {
 	Eye,
 	KeyRound,
 	Search,
-	Shield,
 	ShieldCheck,
 	ShieldOff,
 	ShieldQuestion,
 	Zap,
 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
-import { adminUrl } from "../api.ts";
-import { useModels } from "../data.ts";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { settingsUrl } from "../api.ts";
+import { useAccess, useModels } from "../data.ts";
 import { cn, formatTokens, providerLabel } from "../utils.ts";
 import { BrandGlyph, presetBrand, vendorBrand } from "./BrandLogo.tsx";
 import type { Brand } from "./logos.ts";
@@ -58,6 +54,8 @@ export function ModelList({
 	allowByos?: boolean;
 }) {
 	const { data: models, isLoading, error } = useModels();
+	// Settings → Subscriptions opens for admins and people whose role may use subscriptions.
+	const { can } = useAccess();
 	const [query, setQuery] = useState("");
 	const groups = useMemo(() => {
 		const q = query.trim().toLowerCase();
@@ -88,7 +86,7 @@ export function ModelList({
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 					placeholder="Search models"
-					className="h-8 flex-1 bg-transparent text-sm outline-none placeholder:text-fg-subtle"
+					className="h-8 flex-1 bg-transparent text-body outline-none placeholder:text-fg-subtle"
 				/>
 			</div>
 			{isLoading && (
@@ -96,15 +94,15 @@ export function ModelList({
 					<Spinner />
 				</div>
 			)}
-			{error && <div className="px-3 py-4 text-sm text-danger">{error.message}</div>}
+			{error && <div className="px-3 py-4 text-body text-danger-ink">{error.message}</div>}
 			<div className="max-h-[min(46dvh,380px)] overflow-y-auto py-1 scrollbar-thin">
 				{groups.map(([key, group]) => (
 					<div key={key} className="py-1">
-						<div className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-fg-subtle">
+						<div className="flex items-center gap-1.5 px-2.5 py-1 text-caption font-medium text-fg-subtle">
 							{group.brand ? (
 								<BrandGlyph brand={group.brand} size={13} />
 							) : (
-								group.byos && <KeyRound className="size-3" />
+								group.byos && <KeyRound className="size-4" />
 							)}
 							{group.label}
 							{group.byos && <span className="normal-case tracking-normal">· your subscription</span>}
@@ -115,7 +113,7 @@ export function ModelList({
 									type="button"
 									onClick={() => onSelect(m.id)}
 									className={cn(
-										"flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-surface-2 coarse:py-3",
+										"flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body hover:bg-surface-2 coarse:py-3",
 										m.id === value && "bg-surface-2",
 									)}
 								>
@@ -124,13 +122,11 @@ export function ModelList({
 											? shortModelName(m, m.id).replace(`${m.byos.providerTitle} · `, "")
 											: shortModelName(m, m.id)}
 									</span>
-									{m.vision && (
-										<Eye className="size-3.5 shrink-0 text-fg-subtle" aria-label="Vision" />
-									)}
+									{m.vision && <Eye className="size-4 shrink-0 text-fg-subtle" aria-label="Vision" />}
 									{m.thinkingLevels.length > 0 && (
-										<Zap className="size-3.5 shrink-0 text-fg-subtle" aria-label="Reasoning" />
+										<Zap className="size-4 shrink-0 text-fg-subtle" aria-label="Reasoning" />
 									)}
-									<span className="w-12 shrink-0 text-right text-[11px] text-fg-subtle">
+									<span className="w-12 shrink-0 text-right text-caption text-fg-subtle">
 										{m.byos ? "plan" : formatTokens(m.contextWindow)}
 									</span>
 									{m.id === value && <Check className="size-4 shrink-0" />}
@@ -139,15 +135,17 @@ export function ModelList({
 						))}
 					</div>
 				))}
-				{allowByos && !query && (
+				{allowByos && !query && can("subscriptions") && (
 					<PopoverClose asChild>
-						<a
-							href={adminUrl("subscriptions")}
-							className="mx-1.5 mt-1 flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-fg-muted hover:bg-surface-2 hover:text-fg"
+						<Link
+							href={settingsUrl("subscriptions")}
+							className="mx-1.5 mt-1 flex items-center gap-2 rounded-md px-2.5 py-2 text-small text-fg-muted hover:bg-surface-2 hover:text-fg"
 						>
-							<KeyRound className="size-3.5" />
-							{hasByos ? "Manage your subscriptions" : "Use your own subscription (Codex, Claude, Grok…)"}
-						</a>
+							<KeyRound className="size-4" />
+							{hasByos
+								? "Manage your subscriptions"
+								: "Use your own subscription (Codex, Claude, OpenCode, Pi…)"}
+						</Link>
 					</PopoverClose>
 				)}
 			</div>
@@ -183,7 +181,7 @@ export function ModelRefPicker({
 				trigger={
 					<button
 						type="button"
-						className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3.5 text-left text-sm hover:border-border-strong coarse:h-11"
+						className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3.5 text-left text-body hover:border-border-strong coarse:h-11"
 					>
 						<span className={cn("truncate", !value && "text-fg-subtle")}>
 							{value ? shortModelName(info, value.model) : (allowNone ?? placeholder)}
@@ -197,7 +195,7 @@ export function ModelRefPicker({
 						<button
 							type="button"
 							onClick={() => onChange(null)}
-							className="mx-1.5 mb-1 flex w-[calc(100%-12px)] items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm hover:bg-surface-2"
+							className="mx-1.5 mb-1 flex w-[calc(100%-12px)] items-center justify-between rounded-md px-2.5 py-2 text-left text-body hover:bg-surface-2"
 						>
 							{allowNone}
 							{!value && <Check className="size-4" />}
@@ -228,9 +226,27 @@ export function ModelRefPicker({
 	);
 }
 
-const SHORT_THINKING: Partial<Record<ThinkingSetting, string>> = { xhigh: "X-High", minimal: "Min" };
+/** The levels' short words, the same everywhere, for pickers too narrow for the full ones. */
+const SHORT_THINKING: Record<ThinkingSetting, string> = {
+	default: "Auto",
+	none: "Off",
+	minimal: "Min",
+	low: "Low",
+	medium: "Med",
+	high: "High",
+	xhigh: "X-High",
+	max: "Max",
+};
 
-/** Thinking levels in one row of equal buttons (never wraps). */
+/** How a thinking picker words its levels: full words, short words, or short words a size smaller still. */
+type ThinkingFit = "full" | "short" | "tiny";
+
+/**
+ * Thinking levels in one row of equal buttons, never wrapping. One rule wherever it's shown: every level says its
+ * full word when all of them fit (measured, so it follows the width, the platform and the text size); otherwise
+ * all use their short words (a size smaller, and smaller again if even those don't fit), with the full word as
+ * their name and tooltip.
+ */
 export function ThinkingPicker({
 	value,
 	options,
@@ -242,33 +258,73 @@ export function ThinkingPicker({
 	onChange: (v: ThinkingSetting) => void;
 	className?: string;
 }) {
-	const compact = options.length > 5;
+	const ref = useRef<HTMLDivElement>(null);
+	const [fit, setFit] = useState<ThinkingFit>("full");
+	// Each segment carries both words, hidden and at their own sizes, to measure against its room: what's shown
+	// never changes the answer.
+	const measure = useCallback(() => {
+		const segments = [...(ref.current?.querySelectorAll<HTMLElement>("[data-thinking]") ?? [])];
+		const fits = (word: "full" | "short") =>
+			segments.every((b) => {
+				const style = getComputedStyle(b);
+				const room =
+					b.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
+				return (b.querySelector<HTMLElement>(`[data-measure=${word}]`)?.offsetWidth ?? 0) <= room + 0.5;
+			});
+		setFit(fits("full") ? "full" : fits("short") ? "short" : "tiny");
+	}, []);
+	useLayoutEffect(measure);
+	useEffect(() => {
+		const el = ref.current;
+		if (!el) return;
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		void document.fonts?.ready.then(measure);
+		return () => observer.disconnect();
+	}, [measure]);
+	const full = fit === "full";
 	return (
 		<div
+			ref={ref}
 			role="radiogroup"
 			aria-label="Thinking"
-			className={cn("grid gap-0.5 rounded-xl bg-surface-2 p-0.5", className)}
+			className={cn("grid gap-0.5 rounded-lg bg-surface-2 p-0.5", className)}
 			style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
 		>
 			{options.map((o) => {
 				const on = o.value === value;
-				return (
+				const button = (
 					// biome-ignore lint/a11y/useSemanticElements: a segmented control
 					<button
 						key={o.value}
 						type="button"
 						role="radio"
 						aria-checked={on}
-						title={o.label}
+						aria-label={full ? undefined : o.label}
+						data-thinking
 						onClick={() => onChange(o.value)}
 						className={cn(
-							"h-8 min-w-0 truncate rounded-[10px] px-1 font-medium transition-[background-color,color,box-shadow] duration-150 coarse:h-10",
-							compact ? "text-[12px]" : "text-[13px]",
-							on ? "bg-card text-fg shadow-sm" : "text-fg-muted hover:text-fg",
+							"relative h-8 min-w-0 truncate rounded-md font-medium transition-[background-color,color,box-shadow] duration-150 coarse:h-10",
+							full ? "px-1 text-body" : fit === "short" ? "px-0.5 text-small" : "px-0 text-caption",
+							on ? "bg-surface text-fg shadow-soft" : "text-fg-muted hover:text-fg",
 						)}
 					>
-						{(compact && SHORT_THINKING[o.value]) || o.label}
+						<span aria-hidden={full ? undefined : true}>{full ? o.label : SHORT_THINKING[o.value]}</span>
+						<span data-measure="full" aria-hidden className="invisible absolute left-0 text-body">
+							{o.label}
+						</span>
+						<span data-measure="short" aria-hidden className="invisible absolute left-0 text-small">
+							{SHORT_THINKING[o.value]}
+						</span>
 					</button>
+				);
+				// Short words say the whole one on hover.
+				return full ? (
+					button
+				) : (
+					<Tooltip key={o.value} content={o.label}>
+						{button}
+					</Tooltip>
 				);
 			})}
 		</div>
@@ -289,7 +345,8 @@ export function ComposerModelPill({ agent, onChange }: { agent: Agent; onChange:
 			trigger={
 				<button
 					type="button"
-					className="flex h-8 min-w-0 shrink items-center gap-1 rounded-full px-2.5 text-[13px] font-medium text-fg-muted hover:bg-surface-2 hover:text-fg coarse:h-10"
+					aria-label={`${agent.name}'s model: ${shortModelName(info, ref.model)}`}
+					className="flex h-8 min-w-0 shrink items-center gap-1 rounded-full px-2.5 text-small font-medium text-fg-muted hover:bg-surface-2 hover:text-fg coarse:h-11"
 				>
 					<span className="truncate">{shortModelName(info, ref.model)}</span>
 					{ref.thinking !== "default" && (
@@ -298,17 +355,21 @@ export function ComposerModelPill({ agent, onChange }: { agent: Agent; onChange:
 						</span>
 					)}
 					{agent.models.strategy.type !== "single" && (
-						<span className="shrink-0 rounded bg-surface-3 px-1 text-[10px] text-fg-muted">
+						<span className="shrink-0 rounded-sm bg-surface-3 px-1 text-caption text-fg-muted">
 							{agent.models.strategy.type}
 						</span>
 					)}
-					<ChevronDown className="size-3.5 shrink-0" />
+					<ChevronDown className="size-4 shrink-0" />
 				</button>
 			}
 		>
+			<div className="px-3 pb-2.5">
+				<div className="text-body font-semibold">{agent.name}'s model</div>
+				<p className="text-small text-fg-subtle">Changes apply to all chats with this bot.</p>
+			</div>
 			{options.length > 1 && (
 				<div className="border-b border-border px-2.5 pb-2.5">
-					<div className="mb-1.5 px-0.5 text-xs font-medium text-fg-subtle">Thinking</div>
+					<div className="mb-1.5 px-0.5 text-caption font-medium text-fg-subtle">Thinking</div>
 					<ThinkingPicker
 						value={ref.thinking}
 						options={options}
@@ -338,89 +399,3 @@ export const MODE_ICONS: Record<ApprovalMode, ReactNode> = {
 	primary: <Crown />,
 	yolo: <ShieldOff />,
 };
-
-/** Composer pill for this chat's approval mode (Shift+Tab cycles it from the composer). */
-export function ApprovalModePill({
-	value,
-	effective,
-	inherited,
-	onChange,
-}: {
-	value: ApprovalModeSetting;
-	effective: ApprovalMode;
-	inherited: ApprovalMode;
-	onChange: (v: ApprovalModeSetting) => void;
-}) {
-	const info = APPROVAL_MODE_INFO[effective];
-	return (
-		<Popover
-			side="top"
-			align="start"
-			className="w-[min(340px,calc(100vw-24px))]"
-			trigger={
-				<button
-					type="button"
-					title="Approval mode (Shift+Tab to cycle)"
-					className={cn(
-						"flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium hover:bg-surface-2 coarse:h-10 [&_svg]:size-3.5",
-						effective === "yolo"
-							? "text-danger"
-							: effective === "readonly"
-								? "text-info"
-								: "text-fg-muted hover:text-fg",
-					)}
-				>
-					{MODE_ICONS[effective]}
-					{/* The everyday default stays a quiet icon; anything else says what it is. */}
-					{(value !== "inherit" || effective !== "auto") && (
-						<span className="hidden xs:inline">{info.short}</span>
-					)}
-				</button>
-			}
-		>
-			<div className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-fg-subtle">Approvals in this chat</div>
-			<PopoverClose asChild>
-				<button
-					type="button"
-					onClick={() => onChange("inherit")}
-					className={cn(
-						"flex w-full items-start gap-3 rounded-xl px-2.5 py-2.5 text-left hover:bg-surface-2",
-						value === "inherit" && "bg-surface-2",
-					)}
-				>
-					<Shield className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
-					<span className="min-w-0 flex-1">
-						<span className="block text-sm font-medium">
-							Default ({APPROVAL_MODE_INFO[inherited].short})
-						</span>
-						<span className="block text-xs leading-5 text-fg-subtle">Use the bot's or app's setting.</span>
-					</span>
-					{value === "inherit" && <Check className="size-4" />}
-				</button>
-			</PopoverClose>
-			{APPROVAL_MODES.map((m) => (
-				<PopoverClose asChild key={m}>
-					<button
-						type="button"
-						onClick={() => onChange(m)}
-						className={cn(
-							"flex w-full items-start gap-3 rounded-xl px-2.5 py-2.5 text-left hover:bg-surface-2 [&_svg]:size-4",
-							value === m && "bg-surface-2",
-						)}
-					>
-						<span className={cn("mt-0.5 shrink-0", m === "yolo" ? "text-danger" : "text-fg-subtle")}>
-							{MODE_ICONS[m]}
-						</span>
-						<span className="min-w-0 flex-1">
-							<span className="block text-sm font-medium">{APPROVAL_MODE_INFO[m].title}</span>
-							<span className="block text-xs leading-5 text-fg-subtle">
-								{APPROVAL_MODE_INFO[m].description}
-							</span>
-						</span>
-						{value === m && <Check className="size-4" />}
-					</button>
-				</PopoverClose>
-			))}
-		</Popover>
-	);
-}

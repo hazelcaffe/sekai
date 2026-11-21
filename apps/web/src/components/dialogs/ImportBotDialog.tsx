@@ -1,12 +1,13 @@
-import { AgentAvatar, api, pluralize } from "@sekai/client";
+import { AgentAvatar, api, pluralize, useAccess } from "@sekai/client";
 import { type BotFile, randomAvatar } from "@sekai/shared";
-import { Button, Callout, Dialog } from "@sekai/ui";
+import { Button, Callout, Dialog, errorMessage, List, Row } from "@sekai/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileUp, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useOpenAgent } from "../../lib/navigation.ts";
 import { useUi } from "../../stores/ui.ts";
+import { readBotFile } from "./read-bot-file.ts";
 
 /** A new bot from an exported .sekai-bot.json: pick the file, see what's in it, import. */
 export function ImportBotDialog() {
@@ -15,31 +16,29 @@ export function ImportBotDialog() {
 	const openAgent = useOpenAgent();
 	const qc = useQueryClient();
 	const input = useRef<HTMLInputElement>(null);
-	const [file, setFile] = useState<BotFile | null>(null);
+	const { access, can } = useAccess();
+	const [picked, setPicked] = useState<{ file: BotFile; raw: unknown } | null>(null);
+	const file = picked?.file ?? null;
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (open) {
-			setFile(null);
+			setPicked(null);
 			setError(null);
 		}
 	}, [open]);
 
 	const pick = async (f: File) => {
 		setError(null);
-		try {
-			const data = JSON.parse(await f.text()) as BotFile;
-			if ((data?.format !== "sekai-bot" && data?.format !== "feesh-bot") || !data.bot?.name)
-				throw new Error("not a bot");
-			setFile(data);
-		} catch {
-			setFile(null);
-			setError("That isn't a Sekai bot file (a .sekai-bot.json exported from a bot's profile).");
-		}
+		const read = readBotFile(await f.text().catch(() => ""));
+		if ("error" in read) {
+			setPicked(null);
+			setError(read.error);
+		} else setPicked(read);
 	};
 
 	const run = useMutation({
-		mutationFn: () => api.agents.import(file),
+		mutationFn: () => api.agents.import(picked?.raw),
 		onSuccess: (r) => {
 			setOpen(false);
 			void qc.invalidateQueries({ queryKey: ["agents"] });
@@ -52,7 +51,7 @@ export function ImportBotDialog() {
 			}
 			void openAgent(r.agentId);
 		},
-		onError: (e) => setError(e instanceof Error ? e.message : String(e)),
+		onError: (e) => setError(errorMessage(e)),
 	});
 
 	const avatar = file
@@ -73,6 +72,8 @@ export function ImportBotDialog() {
 			].filter(Boolean)
 		: [];
 
+	// Importing makes a bot: only offered to people whose role lets them make bots.
+	if (access && !can("bots")) return null;
 	return (
 		<Dialog
 			open={open}
@@ -84,7 +85,7 @@ export function ImportBotDialog() {
 					<Button variant="secondary" onClick={() => setOpen(false)}>
 						Cancel
 					</Button>
-					<Button variant="primary" disabled={!file || run.isPending} onClick={() => run.mutate()}>
+					<Button variant="primary" disabled={!file} loading={run.isPending} onClick={() => run.mutate()}>
 						Import
 					</Button>
 				</>
@@ -101,42 +102,47 @@ export function ImportBotDialog() {
 					e.target.value = "";
 				}}
 			/>
-			{file && avatar ? (
-				<div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
-					<AgentAvatar avatar={avatar} size={44} />
-					<div className="min-w-0 flex-1">
-						<div className="truncate text-sm font-semibold">{file.bot.name}</div>
-						<div className="truncate text-xs text-fg-muted">{file.bot.label || "No label"}</div>
-						<div className="truncate text-xs text-fg-subtle">
-							{contents.length ? contents.join(" · ") : "Just the profile"}
-						</div>
-					</div>
-					<Button variant="ghost" size="sm" onClick={() => input.current?.click()}>
-						Change
-					</Button>
-				</div>
-			) : (
-				<button
-					type="button"
-					onClick={() => input.current?.click()}
-					className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border px-4 py-8 text-center hover:bg-muted/50"
-				>
-					<FileUp className="size-6 text-fg-subtle" />
-					<span className="text-sm font-medium">Choose a .sekai-bot.json file</span>
-					<span className="text-xs text-fg-subtle">Nothing is added until you press Import.</span>
-				</button>
-			)}
-			{file && (
-				<p className="text-xs leading-5 text-fg-subtle">
-					It comes in as a new bot. Routines start paused; apps it used connect again if you have one with the
-					same name. Chats, accounts and computers never travel in a bot file.
-				</p>
-			)}
-			{error && (
-				<Callout tone="danger" icon={<TriangleAlert />}>
-					{error}
-				</Callout>
-			)}
+			<div className="flex flex-col gap-4">
+				{file && avatar ? (
+					<List label="The bot in the file">
+						<Row
+							leading={<AgentAvatar avatar={avatar} size={40} />}
+							title={file.bot.name}
+							subtitle={[file.bot.label, contents.length ? contents.join(", ") : "Just the profile"]
+								.filter(Boolean)
+								.join(" · ")}
+							trailing={
+								<Button variant="ghost" size="sm" onClick={() => input.current?.click()}>
+									Change
+								</Button>
+							}
+						/>
+					</List>
+				) : (
+					<button
+						type="button"
+						onClick={() => input.current?.click()}
+						className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-strong px-4 py-8 text-center transition-colors duration-fast hover:bg-surface-2"
+					>
+						<FileUp className="size-6 text-fg-subtle" />
+						<span className="text-body font-medium">Choose a bot file</span>
+						<span className="text-small text-fg-muted">
+							A .sekai-bot.json. Nothing is added until you import it.
+						</span>
+					</button>
+				)}
+				{file && (
+					<p className="text-small text-fg-muted">
+						It comes in as a new bot, and its routines start paused. Chats, accounts and computers never
+						travel in a bot file.
+					</p>
+				)}
+				{error && (
+					<Callout tone="danger" icon={<TriangleAlert />}>
+						{error}
+					</Callout>
+				)}
+			</div>
 		</Dialog>
 	);
 }

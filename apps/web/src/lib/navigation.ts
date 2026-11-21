@@ -6,9 +6,11 @@ import {
 	type ChannelType,
 	type Conversation,
 } from "@sekai/shared";
-import { useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@sekai/ui";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { useUi } from "../stores/ui.ts";
 
 export interface MessagingChat {
@@ -51,32 +53,52 @@ export function useMessagingChat(conversation: Conversation | undefined): Messag
 	);
 }
 
-/** Opens an agent's main chat (its latest direct conversation, created if needed). */
+/**
+ * A bot's main chat: its latest direct chat in the app (not a Discord DM or channel, which are listed on their own),
+ * else a new one from the server (which also says when the bot isn't there for you: a 404).
+ */
+export async function mainChatOf(qc: QueryClient, agentId: string): Promise<Conversation> {
+	const list = qc.getQueryData<Conversation[]>(qk.conversations) ?? [];
+	const inChannels = messagingChats(
+		list,
+		qc.getQueryData<ChannelBinding[]>(qk.channelLinks) ?? [],
+		qc.getQueryData<Channel[]>(qk.channels()) ?? [],
+	);
+	const latest = list
+		.filter((c) => c.kind === "direct" && c.agentId === agentId && !c.archived && !inChannels.has(c.id))
+		.sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt))[0];
+	if (latest) return latest;
+	const conversation = await api.agents.directConversation(agentId);
+	qc.setQueryData<Conversation[]>(qk.conversations, (l) =>
+		l && !l.some((c) => c.id === conversation.id) ? [...l, conversation] : l,
+	);
+	return conversation;
+}
+
+/** Where the app is now (to tell whether someone moved on while a chat was opening). */
+const here = () => `${location.pathname}${location.search}${location.hash}`;
+
+/**
+ * Opens a bot's main chat. `replace` for redirects ("/", /bot/:id), so back doesn't land on them again. If it has
+ * to ask the server and you've gone somewhere else meanwhile, it stays where you are; if that fails, it says so in
+ * a toast. Resolves to whether it opened the chat.
+ */
 export function useOpenAgent() {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	return useCallback(
-		async (agentId: string) => {
+		async (agentId: string, { replace = false }: { replace?: boolean } = {}): Promise<boolean> => {
 			useUi.getState().setSidebarOpen(false);
-			const list = qc.getQueryData<Conversation[]>(qk.conversations) ?? [];
-			// A bot's Discord DMs and channels are listed on their own; its main chat is the app one.
-			const inChannels = messagingChats(
-				list,
-				qc.getQueryData<ChannelBinding[]>(qk.channelLinks) ?? [],
-				qc.getQueryData<Channel[]>(qk.channels()) ?? [],
-			);
-			const latest = list
-				.filter((c) => c.kind === "direct" && c.agentId === agentId && !c.archived && !inChannels.has(c.id))
-				.sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt))[0];
-			if (latest) {
-				navigate(`/c/${latest.id}`);
-				return;
+			const from = here();
+			try {
+				const chat = await mainChatOf(qc, agentId);
+				if (here() !== from) return false;
+				navigate(`/c/${chat.id}`, { replace });
+				return true;
+			} catch (err) {
+				if (here() === from) toast.error(errorMessage(err));
+				return false;
 			}
-			const conversation = await api.agents.directConversation(agentId);
-			qc.setQueryData<Conversation[]>(qk.conversations, (l) =>
-				l && !l.some((c) => c.id === conversation.id) ? [...l, conversation] : l,
-			);
-			navigate(`/c/${conversation.id}`);
 		},
 		[navigate, qc],
 	);

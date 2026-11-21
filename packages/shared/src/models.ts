@@ -46,7 +46,7 @@ export const AgentModels = z.object({
 	maxSteps: z.number().int().min(1).max(100).default(24),
 	maxOutputTokens: z.number().int().positive().nullable().default(null),
 	temperature: z.number().min(0).max(2).nullable().default(null),
-	/** How it sounds and listens on calls, reading aloud and dictation. Empty fields use Admin → Voice. */
+	/** How it sounds and listens on calls, reading aloud and dictation. Empty fields use Settings → Bots → Voice. */
 	voice: AgentVoice.prefault({}),
 });
 export type AgentModels = z.infer<typeof AgentModels>;

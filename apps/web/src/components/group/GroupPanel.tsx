@@ -1,202 +1,237 @@
-import { AgentAvatar, api, GroupAvatar, ModelRefPicker, useAgents } from "@sekai/client";
+import { AgentAvatar, api, ModelRefPicker, qk, useAgents } from "@sekai/client";
+import { type Agent, type Conversation, MAX_GROUP_MEMBERS } from "@sekai/shared";
 import {
-	type Agent,
-	APPROVAL_MODE_INFO,
-	APPROVAL_MODES,
-	type ApprovalModeSetting,
-	type Conversation,
-} from "@sekai/shared";
-import { Button, Confirm, Field, IconButton, Input, Popover, PopoverClose, Section, Select, Textarea } from "@sekai/ui";
-import { useMutation } from "@tanstack/react-query";
-import { Plus, Trash2, X } from "lucide-react";
+	Button,
+	Confirm,
+	Dialog,
+	EmptyState,
+	ErrorState,
+	Field,
+	Fold,
+	FormGroup,
+	Input,
+	List,
+	Row,
+	SaveState,
+	Section,
+	SkeletonRows,
+	Textarea,
+	useAutosave,
+	useFormValues,
+	useUnsavedChanges,
+} from "@sekai/ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { Plus, Trash2, UserMinus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useOpenAgent } from "../../lib/navigation.ts";
+import { ChatApprovals } from "../chat/ChatApprovals.tsx";
 
-export function GroupPanel({
-	conversation,
-	members,
-	onClose,
-}: {
-	conversation: Conversation;
-	members: Agent[];
-	onClose: () => void;
-}) {
-	const { data: agents = [] } = useAgents();
+export function GroupPanel({ conversation, members }: { conversation: Conversation; members: Agent[] }) {
+	const agents = useAgents();
 	const navigate = useNavigate();
 	const openAgent = useOpenAgent();
+	const qc = useQueryClient();
 	const [title, setTitle] = useState(conversation.title);
-	const [purpose, setPurpose] = useState(conversation.settings.purpose);
-	const [confirm, setConfirm] = useState(false);
-	useEffect(() => {
-		setTitle(conversation.title);
-		setPurpose(conversation.settings.purpose);
-	}, [conversation.title, conversation.settings.purpose]);
+	const [addOpen, setAddOpen] = useState(false);
+	const [confirm, setConfirm] = useState<Agent | "delete" | null>(null);
+	const [busy, setBusy] = useState(false);
+	const [failure, setFailure] = useState<{ title: string; retry: () => void } | null>(null);
+	const update = async (patch: Parameters<typeof api.conversations.update>[1]) => {
+		const chat = await api.conversations.update(conversation.id, patch).catch(() => {
+			throw new Error("Couldn't save the group. Try again.");
+		});
+		qc.setQueryData<Conversation[]>(qk.conversations, (list) => list?.map((c) => (c.id === chat.id ? chat : c)));
+		return chat;
+	};
+	const settings = conversation.settings;
+	const nameSave = useAutosave(async (next: string) => update({ title: next }));
+	const purpose = useFormValues({ purpose: settings.purpose });
+	const replies = useFormValues({ maxTurns: settings.maxTurns, routerModel: settings.routerModel });
+	// The reply draft stays here when Advanced is folded; don't silently discard it on close.
+	useUnsavedChanges(replies.dirty);
+	useEffect(() => setTitle(conversation.title), [conversation.title]);
+	const candidates = (agents.data ?? []).filter((a) => !conversation.memberIds.includes(a.id));
 
-	const update = useMutation({
-		mutationFn: (patch: Parameters<typeof api.conversations.update>[1]) =>
-			api.conversations.update(conversation.id, patch),
-	});
-	const del = useMutation({
-		mutationFn: () => api.conversations.delete(conversation.id),
-		onSuccess: () => navigate("/"),
-	});
-	const s = conversation.settings;
-	const candidates = agents.filter((a) => !conversation.memberIds.includes(a.id));
+	const membership = async (action: "add" | "remove" | "delete", bot?: Agent) => {
+		if (busy) return;
+		setBusy(true);
+		setFailure(null);
+		try {
+			if (action === "delete") {
+				await api.conversations.delete(conversation.id);
+				navigate("/", { replace: true });
+			} else if (bot) {
+				const ids = conversation.memberIds;
+				await update({ memberIds: action === "add" ? [...ids, bot.id] : ids.filter((id) => id !== bot.id) });
+				setAddOpen(false);
+			}
+		} catch {
+			setFailure({
+				title: action === "delete" ? "Couldn't delete the group" : "Couldn't update the members",
+				retry: () => void membership(action, bot),
+			});
+		} finally {
+			setBusy(false);
+		}
+	};
 
 	return (
-		<div className="flex h-full min-h-0 flex-col pt-safe">
-			<div className="flex items-start gap-3 px-4 pt-4 pb-3">
-				<GroupAvatar avatars={members.map((m) => m.avatar)} size={52} />
-				<div className="min-w-0 flex-1 pt-1">
-					<div className="truncate text-[17px] font-semibold tracking-tight">{conversation.title}</div>
-					<div className="truncate text-[13px] text-fg-subtle">{members.length} bots</div>
-				</div>
-				<IconButton label="Close" onClick={onClose}>
-					<X />
-				</IconButton>
-			</div>
-			<div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto border-t border-border p-4 pb-safe scrollbar-thin">
-				<Section title="About">
-					<Field label="Name">
-						<Input
-							value={title}
-							onChange={(e) => setTitle(e.target.value)}
-							onBlur={() =>
-								title.trim() && title !== conversation.title && update.mutate({ title: title.trim() })
-							}
-						/>
-					</Field>
-					<Field label="Purpose" hint="Shown to every member. Say who owns which step.">
+		<>
+			<Section title="About" saveState={<SaveState state={nameSave} />}>
+				<Field label="Name">
+					<Input
+						value={title}
+						maxLength={200}
+						onChange={(e) => setTitle(e.target.value)}
+						onBlur={() => {
+							if (!title.trim()) setTitle(conversation.title);
+							else if (title.trim() !== conversation.title) nameSave.save(title.trim());
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
+						}}
+					/>
+				</Field>
+				<FormGroup
+					dirty={purpose.dirty}
+					onCancel={() => purpose.reset()}
+					onSubmit={async () => {
+						const saved = await update({ settings: purpose.values });
+						purpose.reset({ purpose: saved.settings.purpose });
+					}}
+				>
+					<Field label="Purpose" optional>
 						<Textarea
-							value={purpose}
-							onChange={(e) => setPurpose(e.target.value)}
-							onBlur={() => purpose !== s.purpose && update.mutate({ settings: { purpose } })}
-							placeholder="Plan the launch. Ada researches, Bo drafts, Cy reviews."
+							maxLength={4000}
+							value={purpose.values.purpose}
+							onChange={(e) => purpose.set("purpose", e.target.value)}
+							placeholder="e.g. Plan the next issue"
 						/>
 					</Field>
-				</Section>
-
-				<Section
-					title="Members"
-					action={
-						candidates.length > 0 &&
-						conversation.memberIds.length < 8 && (
-							<Popover
-								align="end"
-								trigger={
-									<Button variant="secondary" size="xs">
-										<Plus /> Add
-									</Button>
-								}
-							>
-								{candidates.map((a) => (
-									<PopoverClose asChild key={a.id}>
-										<button
-											type="button"
-											onClick={() =>
-												update.mutate({ memberIds: [...conversation.memberIds, a.id] })
-											}
-											className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm hover:bg-surface-2"
-										>
-											<AgentAvatar avatar={a.avatar} size={24} />
-											{a.name}
-										</button>
-									</PopoverClose>
-								))}
-							</Popover>
-						)
-					}
-				>
-					<div className="flex flex-col gap-1">
-						{members.map((m) => (
-							<div
-								key={m.id}
-								className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface-2/50"
-							>
-								<button
-									type="button"
-									onClick={() => void openAgent(m.id)}
-									className="flex min-w-0 flex-1 items-center gap-3 text-left"
-								>
-									<AgentAvatar avatar={m.avatar} size={32} />
-									<span className="min-w-0">
-										<span className="block truncate text-sm font-medium">{m.name}</span>
-										<span className="block truncate text-xs text-fg-subtle">
-											{m.label || m.job || "General assistant"}
-										</span>
-									</span>
-								</button>
-								<IconButton
-									label="Remove from group"
-									size="icon-sm"
-									disabled={members.length <= 2}
-									onClick={() =>
-										update.mutate({ memberIds: conversation.memberIds.filter((id) => id !== m.id) })
-									}
-								>
-									<X />
-								</IconButton>
-							</div>
-						))}
-					</div>
-				</Section>
-
-				<Section
-					title="How the group talks"
-					description="Bots @mention each other to pass work. Every reply counts toward usage."
-				>
-					<Field
-						label="Replies per message"
-						hint="Maximum bot replies (including handoffs between bots) after each message you send."
-					>
-						<Input
-							type="number"
-							min={1}
-							max={30}
-							value={s.maxTurns}
-							onChange={(e) => {
-								const v = Number(e.target.value);
-								if (v >= 1 && v <= 30) update.mutate({ settings: { maxTurns: v } });
+				</FormGroup>
+			</Section>
+			<Section
+				title="Members"
+				action={
+					conversation.memberIds.length < MAX_GROUP_MEMBERS && (
+						<Button
+							variant="ghost"
+							onClick={() => {
+								setFailure(null);
+								setAddOpen(true);
 							}}
-						/>
-					</Field>
-					<Field label="Router model" hint="Picks who answers when nobody is @mentioned.">
-						<ModelRefPicker
-							value={s.routerModel}
-							onChange={(routerModel) => update.mutate({ settings: { routerModel } })}
-							allowNone="Default (background model)"
-						/>
-					</Field>
-					<Field label="Approvals in this group">
-						<Select
-							value={s.approvalMode}
-							onValueChange={(v) =>
-								update.mutate({ settings: { approvalMode: v as ApprovalModeSetting } })
-							}
-							options={[
-								{ value: "inherit", label: "Each bot's own setting" },
-								...APPROVAL_MODES.map((m) => ({ value: m, label: APPROVAL_MODE_INFO[m].title })),
+						>
+							<Plus /> Add a bot
+						</Button>
+					)
+				}
+			>
+				<List>
+					{members.map((bot) => (
+						<Row
+							key={bot.id}
+							leading={<AgentAvatar avatar={bot.avatar} size={32} />}
+							title={bot.name}
+							subtitle={bot.label || undefined}
+							onClick={() => void openAgent(bot.id)}
+							menuLabel={`More for ${bot.name}`}
+							menu={[
+								{
+									label: "Remove from group",
+									icon: <UserMinus />,
+									danger: true,
+									disabled: busy || conversation.memberIds.length <= 2,
+									onSelect: () => setConfirm(bot),
+								},
 							]}
 						/>
-					</Field>
-				</Section>
-
-				<Section title="Manage">
-					<Button variant="danger-ghost" size="sm" className="self-start" onClick={() => setConfirm(true)}>
-						<Trash2 /> Delete group
-					</Button>
-				</Section>
-			</div>
+					))}
+				</List>
+				{failure && !addOpen && <ErrorState title={failure.title} size="sm" onRetry={failure.retry} />}
+			</Section>
+			<Fold title="Advanced">
+				<div className="flex flex-col gap-6">
+					<Section
+						title="Replies"
+						description="Bots count toward the limit even when they hand off to each other."
+					>
+						<FormGroup
+							dirty={replies.dirty}
+							disabled={
+								!Number.isInteger(replies.values.maxTurns) ||
+								replies.values.maxTurns < 1 ||
+								replies.values.maxTurns > 30
+							}
+							onCancel={() => replies.reset()}
+							onSubmit={async () => {
+								const { settings: saved } = await update({ settings: replies.values });
+								replies.reset({ maxTurns: saved.maxTurns, routerModel: saved.routerModel });
+							}}
+						>
+							<Field label="Replies per message" hint="Choose a number from 1 to 30.">
+								<Input
+									type="number"
+									min={1}
+									max={30}
+									value={replies.values.maxTurns || ""}
+									onChange={(e) => replies.set("maxTurns", Number(e.target.value))}
+								/>
+							</Field>
+							<Field label="Routing model" hint="Picks who answers when nobody is mentioned.">
+								<ModelRefPicker
+									value={replies.values.routerModel}
+									onChange={(model) => replies.set("routerModel", model)}
+									allowNone="Default model"
+								/>
+							</Field>
+						</FormGroup>
+					</Section>
+					<Section title="Approvals">
+						<ChatApprovals conversation={conversation} />
+					</Section>
+				</div>
+			</Fold>
+			<Button variant="danger-ghost" className="self-start" disabled={busy} onClick={() => setConfirm("delete")}>
+				<Trash2 /> Delete group
+			</Button>
+			<Dialog open={addOpen} onOpenChange={setAddOpen} title="Add a bot" size="sm">
+				{agents.isPending ? (
+					<SkeletonRows count={3} leading />
+				) : agents.isError ? (
+					<ErrorState title="Couldn't load bots" onRetry={() => void agents.refetch()} />
+				) : candidates.length ? (
+					<List>
+						{candidates.map((bot) => (
+							<Row
+								key={bot.id}
+								title={bot.name}
+								leading={<AgentAvatar avatar={bot.avatar} size={32} />}
+								disabled={busy}
+								onClick={() => void membership("add", bot)}
+							/>
+						))}
+					</List>
+				) : (
+					<EmptyState title="Every available bot is already here." size="sm" />
+				)}
+				{failure && <ErrorState title={failure.title} size="sm" onRetry={failure.retry} />}
+			</Dialog>
 			<Confirm
-				open={confirm}
-				onOpenChange={setConfirm}
-				title="Delete this group?"
-				description="Its messages are deleted. The bots and their memory are kept."
-				confirmLabel="Delete"
+				open={Boolean(confirm)}
+				onOpenChange={(open) => !open && setConfirm(null)}
 				danger
-				onConfirm={() => del.mutate()}
+				title={confirm === "delete" ? "Delete this group?" : `Remove ${confirm?.name ?? "this bot"}?`}
+				description={
+					confirm === "delete"
+						? "The messages will be deleted. The bots and their memory stay."
+						: "This bot will no longer receive or reply to messages here."
+				}
+				confirmLabel={confirm === "delete" ? "Delete group" : "Remove"}
+				onConfirm={() =>
+					confirm === "delete" ? void membership("delete") : confirm && void membership("remove", confirm)
+				}
 			/>
-		</div>
+		</>
 	);
 }

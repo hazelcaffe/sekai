@@ -1,10 +1,9 @@
-import { AgentAvatar, api, type CallStatus, cn, useAgents, useCall } from "@sekai/client";
+import { AgentAvatar, api, type CallStatus, cn, useAccess, useAgents, useCall } from "@sekai/client";
 import { type Agent, avatarColor, type CallRing } from "@sekai/shared";
-import { Button, IconButton } from "@sekai/ui";
-import { ArrowUp, AudioLines, Mic, MicOff, Phone, PhoneOff, X } from "lucide-react";
+import { Button, Dialog, ErrorState, Fold, IconButton, Input } from "@sekai/ui";
+import { ArrowUp, AudioLines, Mic, MicOff, Phone, PhoneOff } from "lucide-react";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useLayout } from "../../lib/hooks.ts";
 import { useUi } from "../../stores/ui.ts";
 
 interface CallTarget {
@@ -52,6 +51,7 @@ function Halo({ level, color, active }: { level: () => number; color: string; ac
 	const a = useRef<HTMLSpanElement>(null);
 	const b = useRef<HTMLSpanElement>(null);
 	useEffect(() => {
+		if (!active || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 		let raf = 0;
 		let smooth = 0;
 		const tick = () => {
@@ -62,7 +62,7 @@ function Halo({ level, color, active }: { level: () => number; color: string; ac
 		};
 		raf = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(raf);
-	}, [level]);
+	}, [level, active]);
 	return (
 		<>
 			<span
@@ -87,8 +87,17 @@ function Halo({ level, color, active }: { level: () => number; color: string; ac
 	);
 }
 
-function CallCard({ target, onClose }: { target: CallTarget; onClose: () => void }) {
-	const { phone } = useLayout();
+function CallCard({
+	target,
+	onClose,
+	expanded,
+	onExpand,
+}: {
+	target: CallTarget;
+	onClose: () => void;
+	expanded: boolean;
+	onExpand: (value: boolean) => void;
+}) {
 	const call = useCall(target.conversationId, target.ring);
 	// Answering a bot's call is the go-ahead.
 	const [consented, setConsented] = useState(() => Boolean(target.ring) || localStorage.getItem(CONSENT_KEY) === "1");
@@ -127,170 +136,166 @@ function CallCard({ target, onClose }: { target: CallTarget; onClose: () => void
 		if (call.sendText(typed)) setTyped("");
 	};
 
-	return (
-		<div
-			role="dialog"
-			aria-label={`Call with ${target.agent.name}`}
-			className={cn(
-				"fixed z-[75] flex flex-col overflow-hidden bg-popover text-popover-foreground shadow-pop",
-				phone
-					? "inset-0 pt-safe pb-safe"
-					: "right-6 bottom-6 w-[340px] rounded-[28px] border border-border animate-in fade-in-0 slide-in-from-bottom-4 zoom-in-95 duration-300",
-			)}
+	const status = !consented
+		? "Ready to call"
+		: call.muted && call.status === "listening"
+			? "Muted"
+			: (call.label ?? STATUS[call.status]);
+	const muteLabel = call.muted ? "Unmute" : "Mute";
+	const mute = (
+		<IconButton
+			label={muteLabel}
+			aria-pressed={call.muted}
+			disabled={!call.active || Boolean(call.micError)}
+			onClick={call.toggleMute}
 		>
-			<div
-				aria-hidden
-				className="pointer-events-none absolute inset-x-0 top-0 h-64"
-				style={{
-					background: `radial-gradient(70% 70% at 50% 0%, color-mix(in oklab, ${color} 22%, transparent), transparent)`,
-				}}
-			/>
-			<div className="relative flex items-center gap-2 px-4 pt-4">
-				<span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-					<AudioLines className="size-3.5" /> Call{timer ? ` · ${timer}` : ""}
-				</span>
-				{!call.active && (
-					<IconButton label="Close" size="icon-sm" className="ml-auto" onClick={onClose}>
-						<X />
-					</IconButton>
-				)}
-			</div>
-			<div
-				className={cn(
-					"relative flex flex-col items-center px-6 text-center",
-					phone ? "flex-1 justify-center gap-6" : "gap-4 pt-4 pb-5",
-				)}
-			>
-				<div
-					className="relative flex items-center justify-center"
-					style={{ width: phone ? 176 : 128, height: phone ? 176 : 128 }}
+			{call.muted ? <MicOff /> : <Mic />}
+		</IconButton>
+	);
+	return (
+		<>
+			{!expanded && (
+				<section
+					aria-label="Current call"
+					className="fixed right-4 z-sticky flex max-w-[calc(100%-2rem)] items-center gap-1 rounded-xl border border-border bg-surface-raised px-2 shadow-pop max-md:bottom-[calc(max(1rem,var(--safe-bottom))+var(--toast-lift,0px))] md:right-6 md:bottom-6"
 				>
-					<Halo
-						level={call.status === "speaking" ? botLevel : youLevel}
-						color={call.status === "speaking" ? color : "var(--brand)"}
-						active={call.status === "speaking" || (call.status === "listening" && !call.muted)}
-					/>
-					<AgentAvatar avatar={target.agent.avatar} size={phone ? 148 : 108} state={presence} alive />
-				</div>
-				<div>
-					<div className="text-lg font-semibold tracking-tight">{target.agent.name}</div>
-					<div
-						className={cn(
-							"mt-0.5 text-sm",
-							call.status === "thinking" || call.status === "working"
-								? "shimmer-text"
-								: "text-muted-foreground",
-						)}
+					<button
+						type="button"
+						onClick={() => onExpand(true)}
+						className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2 text-left hover:bg-surface-2"
 					>
-						{consented
-							? call.muted && call.status === "listening"
-								? "Muted"
-								: (call.label ?? STATUS[call.status])
-							: "Ready to call"}
-					</div>
-				</div>
-				{consented ? (
-					<div
-						className={cn("flex w-full flex-col gap-1.5", phone ? "min-h-24" : "min-h-16")}
-						aria-live="polite"
+						<AgentAvatar avatar={target.agent.avatar} size={26} />
+						<span className="min-w-0">
+							<span className="block truncate text-body font-medium">{target.agent.name}</span>
+							<span className="block truncate text-caption text-fg-subtle">
+								{status}
+								{timer && ` · ${timer}`}
+							</span>
+						</span>
+					</button>
+					{call.active && mute}
+					<IconButton
+						label={call.active ? "End call" : "Close call"}
+						className="text-danger-ink"
+						onClick={call.active ? call.hangUp : onClose}
 					>
-						{lastBot?.text && <p className="line-clamp-3 text-[15px] leading-6">{lastBot.text}</p>}
-						{lastYou?.text && (
-							<p className="line-clamp-2 text-[13px] leading-5 text-fg-subtle">
-								You: {lastYou.text}
-								{!lastYou.final ? "…" : ""}
-							</p>
-						)}
+						<PhoneOff />
+					</IconButton>
+				</section>
+			)}
+			<Dialog
+				open={expanded}
+				onOpenChange={onExpand}
+				title={`Call with ${target.agent.name}`}
+				icon={<AudioLines />}
+				size="sm"
+			>
+				<div className="flex flex-col items-center gap-4 py-4 text-center">
+					<div className="relative flex size-28 items-center justify-center">
+						<Halo
+							level={call.status === "speaking" ? botLevel : youLevel}
+							color={call.status === "speaking" ? color : "var(--brand)"}
+							active={call.status === "speaking" || (call.status === "listening" && !call.muted)}
+						/>
+						<AgentAvatar avatar={target.agent.avatar} size={96} state={presence} />
 					</div>
-				) : (
-					<div className="flex flex-col gap-3 rounded-2xl bg-muted/70 p-3.5 text-left text-[13px] leading-5 text-muted-foreground">
-						<p>
-							Your voice goes to the speech-to-text service while you talk, and what you both say is saved
-							in this chat. Let anyone near you know before you start.
-						</p>
-						<Button
-							variant="primary"
-							onClick={() => {
-								localStorage.setItem(CONSENT_KEY, "1");
-								setConsented(true);
-							}}
+					<div>
+						<div
+							className={cn(
+								"mt-0.5 text-body",
+								call.status === "thinking" || call.status === "working"
+									? "shimmer-text"
+									: "text-fg-muted",
+							)}
 						>
-							<Phone /> Start the call
+							{status}
+							{timer && ` · ${timer}`}
+						</div>
+					</div>
+					{consented ? (
+						<div className="flex w-full flex-col gap-2" aria-live="polite">
+							{lastBot?.text && <p className="line-clamp-3 text-body">{lastBot.text}</p>}
+							{lastYou?.text && (
+								<p className="line-clamp-2 text-small text-fg-subtle">
+									You: {lastYou.text}
+									{!lastYou.final ? "…" : ""}
+								</p>
+							)}
+						</div>
+					) : (
+						<div className="flex w-full flex-col gap-3 text-left text-small text-fg-muted">
+							<p>
+								Your voice is sent to the speech-to-text service and the conversation is saved in this
+								chat.
+							</p>
+							<Fold title="Learn more" variant="link">
+								Let anyone nearby know before you start. You can mute your microphone at any time.
+							</Fold>
+							<Button
+								variant="primary"
+								onClick={() => {
+									localStorage.setItem(CONSENT_KEY, "1");
+									setConsented(true);
+								}}
+							>
+								<Phone /> Start the call
+							</Button>
+						</div>
+					)}
+					{call.error && (
+						<ErrorState
+							size="sm"
+							title="Couldn't connect the call"
+							description="Check your connection or voice settings, then try again."
+							onRetry={begin}
+						/>
+					)}
+					{consented && call.micError && call.active && (
+						<p className="text-small text-fg-subtle">
+							Couldn't use the microphone. Type a message to hear a reply.
+						</p>
+					)}
+				</div>
+				{consented && call.active && (
+					<form
+						className="flex items-center gap-2 border-t border-border pt-4"
+						onSubmit={(e) => {
+							e.preventDefault();
+							send();
+						}}
+					>
+						<Input
+							value={typed}
+							onChange={(e) => setTyped(e.target.value)}
+							placeholder={call.micError ? `Message ${target.agent.name}…` : "Or type…"}
+							aria-label={`Type to ${target.agent.name}`}
+							maxLength={2000}
+							className="min-w-0 flex-1"
+						/>
+						<IconButton
+							type="submit"
+							label="Send"
+							variant="primary"
+							className="rounded-full"
+							disabled={!typed.trim() || call.status === "connecting"}
+						>
+							<ArrowUp />
+						</IconButton>
+					</form>
+				)}
+				{consented && call.active && (
+					<div className="mt-4 flex flex-wrap items-center gap-2">
+						<Button variant="ghost" onClick={() => onExpand(false)}>
+							Minimize
+						</Button>
+						<span className="ml-auto">{mute}</span>
+						<Button variant="danger" onClick={call.hangUp}>
+							<PhoneOff /> End call
 						</Button>
 					</div>
 				)}
-				{call.error && <p className="text-[13px] text-destructive">{call.error}</p>}
-				{consented && call.micError && call.active && (
-					<p className="text-[13px] text-fg-subtle">
-						{call.micError} Type below and {target.agent.name} answers out loud.
-					</p>
-				)}
-			</div>
-			{consented && call.active && (
-				<form
-					className={cn("relative flex items-center gap-1.5 px-4", phone ? "pb-4" : "pb-3")}
-					onSubmit={(e) => {
-						e.preventDefault();
-						send();
-					}}
-				>
-					<input
-						value={typed}
-						onChange={(e) => setTyped(e.target.value)}
-						placeholder={call.micError ? `Message ${target.agent.name}…` : "Or type…"}
-						aria-label={`Type to ${target.agent.name}`}
-						maxLength={2000}
-						autoFocus={Boolean(call.micError)}
-						className="h-10 min-w-0 flex-1 rounded-full bg-muted px-4 text-[15px] outline-none placeholder:text-fg-subtle focus-visible:ring-[3px] focus-visible:ring-ring/20 coarse:h-11"
-					/>
-					<IconButton
-						type="submit"
-						label="Send"
-						variant="primary"
-						className="rounded-full"
-						disabled={!typed.trim() || call.status === "connecting"}
-					>
-						<ArrowUp />
-					</IconButton>
-				</form>
-			)}
-			{consented && (
-				<div className={cn("relative flex items-center justify-center gap-5 px-6", phone ? "pb-10" : "pb-6")}>
-					<button
-						type="button"
-						onClick={call.toggleMute}
-						disabled={!call.active || Boolean(call.micError)}
-						aria-pressed={call.muted}
-						aria-label={call.muted ? "Unmute" : "Mute"}
-						className={cn(
-							"flex size-14 items-center justify-center rounded-full transition-[background-color,color,scale] duration-200 ease-spring active:scale-90 disabled:opacity-40 [&_svg]:size-6",
-							call.muted ? "bg-foreground text-background" : "bg-muted text-foreground hover:bg-accent",
-						)}
-					>
-						{call.muted ? <MicOff /> : <Mic />}
-					</button>
-					{call.active ? (
-						<button
-							type="button"
-							onClick={call.hangUp}
-							aria-label="End call"
-							className="flex size-14 items-center justify-center rounded-full bg-destructive text-white shadow-[0_8px_24px_-8px] shadow-destructive/60 transition-[scale,background-color] duration-200 ease-spring hover:bg-destructive/90 active:scale-90 [&_svg]:size-6"
-						>
-							<PhoneOff />
-						</button>
-					) : (
-						<button
-							type="button"
-							onClick={begin}
-							aria-label="Call again"
-							className="flex size-14 items-center justify-center rounded-full bg-success text-white transition-[scale] duration-200 ease-spring active:scale-90 [&_svg]:size-6"
-						>
-							<Phone />
-						</button>
-					)}
-				</div>
-			)}
-		</div>
+			</Dialog>
+		</>
 	);
 }
 
@@ -332,77 +337,44 @@ function useRingTone(on: boolean) {
 
 /** A bot calling you: answer or decline (it messages you instead if you don't). */
 function IncomingCall({ ring, agent, onAnswer }: { ring: CallRing; agent: Agent; onAnswer: () => void }) {
-	const { phone } = useLayout();
-	const color = avatarColor(agent.avatar) ?? "var(--brand)";
 	useRingTone(true);
 	const decline = () => {
 		useUi.getState().setRings((r) => r.filter((x) => x.id !== ring.id));
 		void api.voice.declineRing(ring.id).catch(() => {});
 	};
 	return (
-		<div
-			role="alertdialog"
-			aria-label={`${agent.name} is calling`}
-			className={cn(
-				"fixed z-[80] flex flex-col items-center overflow-hidden bg-popover text-center text-popover-foreground shadow-pop",
-				phone
-					? "inset-0 justify-center gap-8 px-8 pt-safe pb-safe"
-					: "right-6 bottom-6 w-[320px] gap-4 rounded-[28px] border border-border px-6 py-6 animate-in fade-in-0 slide-in-from-bottom-4 zoom-in-95 duration-300",
-			)}
+		<Dialog
+			open
+			onOpenChange={(open) => !open && decline()}
+			title={`${agent.name} is calling`}
+			size="sm"
+			footer={
+				<>
+					<Button variant="ghost" onClick={decline}>
+						<PhoneOff /> Decline
+					</Button>
+					<Button onClick={onAnswer}>
+						<Phone /> Answer
+					</Button>
+				</>
+			}
 		>
-			<div
-				aria-hidden
-				className="pointer-events-none absolute inset-x-0 top-0 h-56"
-				style={{
-					background: `radial-gradient(70% 70% at 50% 0%, color-mix(in oklab, ${color} 28%, transparent), transparent)`,
-				}}
-			/>
-			<div
-				className="relative flex items-center justify-center"
-				style={{ width: phone ? 170 : 116, height: phone ? 170 : 116 }}
-			>
-				<span
-					aria-hidden
-					className="absolute inset-0 animate-ping rounded-full opacity-20"
-					style={{ background: color }}
-				/>
-				<AgentAvatar avatar={agent.avatar} size={phone ? 150 : 100} alive />
+			<div className="flex items-center gap-3">
+				<AgentAvatar avatar={agent.avatar} size={52} />
+				<p className="text-body text-fg-muted">{ring.reason}</p>
 			</div>
-			<div className="relative">
-				<div className="text-lg font-semibold tracking-tight">{agent.name} is calling</div>
-				<p className="mt-1 line-clamp-3 text-sm leading-5 text-muted-foreground">{ring.reason}</p>
-			</div>
-			<div className="relative flex items-center gap-8">
-				<button
-					type="button"
-					onClick={decline}
-					aria-label="Decline"
-					className="flex size-14 items-center justify-center rounded-full bg-destructive text-white transition-transform duration-200 ease-spring active:scale-90 [&_svg]:size-6"
-				>
-					<PhoneOff />
-				</button>
-				<span className="relative flex">
-					<span aria-hidden className="absolute inset-0 animate-ping rounded-full bg-success/40" />
-					<button
-						type="button"
-						onClick={onAnswer}
-						aria-label="Answer"
-						className="relative flex size-14 items-center justify-center rounded-full bg-success text-white transition-transform duration-200 ease-spring active:scale-90 [&_svg]:size-6"
-					>
-						<Phone />
-					</button>
-				</span>
-			</div>
-			<p className="relative text-xs text-fg-subtle">
-				If you don't answer, {agent.name} sends you a message instead.
+			<p className="mt-3 text-small text-fg-subtle">
+				If you don't answer, {agent.name} will send a message instead.
 			</p>
-		</div>
+		</Dialog>
 	);
 }
 
 /** Holds the current call so it keeps going while you move around the app. */
 export function CallProvider({ children }: { children: ReactNode }) {
 	const [current, setCurrent] = useState<CallTarget | null>(null);
+	const [expanded, setExpanded] = useState(false);
+	const canVoice = useAccess().can("voice");
 	const [key, setKey] = useState(0);
 	const currentRef = useRef<CallTarget | null>(null);
 	currentRef.current = current;
@@ -410,20 +382,30 @@ export function CallProvider({ children }: { children: ReactNode }) {
 		const c = currentRef.current;
 		if (c) {
 			if (c.conversationId !== target.conversationId) toast(`You're already on a call with ${c.agent.name}`);
+			setExpanded(true);
 			return;
 		}
 		setCurrent(target);
+		setExpanded(true);
 		setKey((k) => k + 1);
 	}, []);
 	const close = useCallback(() => setCurrent(null), []);
 	const rings = useUi((s) => s.rings);
 	const { data: agents = [] } = useAgents();
-	const ring = current ? null : rings.find((r) => agents.some((a) => a.id === r.agentId));
+	const ring = current || !canVoice ? null : rings.find((r) => agents.some((a) => a.id === r.agentId));
 	const ringAgent = ring ? agents.find((a) => a.id === ring.agentId) : undefined;
 	return (
 		<CallContext.Provider value={{ current, startCall }}>
 			{children}
-			{current && <CallCard key={key} target={current} onClose={close} />}
+			{current && (
+				<CallCard
+					key={key}
+					target={current}
+					onClose={close}
+					expanded={expanded}
+					onExpand={(open) => setExpanded(open)}
+				/>
+			)}
 			{ring && ringAgent && (
 				<IncomingCall
 					key={ring.id}

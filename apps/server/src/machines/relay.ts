@@ -4,7 +4,7 @@ import { log } from "../lib/log.ts";
 import { type SshTarget, sshText, sshTunnel, type Tunnel } from "./ssh.ts";
 
 /**
- * Faster screen control (experimental, Admin → Computers): screen-relay (github.com/vercel-labs/screen-relay)
+ * Faster screen control (experimental, Settings → Computers): screen-relay (github.com/vercel-labs/screen-relay)
  * on a bot's Linux computer, attached to its screen, reached through one SSH tunnel. Screenshots and input go
  * through it instead of a helper command over SSH each time (about 34 ms against 250 for a screenshot, 3 against
  * 150 for a click); everything else stays with the helper, and so does anything screen-relay can't do or fails at.

@@ -36,7 +36,7 @@ function ChoosePassword({ onDone, onSignOut }: { onDone: () => void; onSignOut: 
 	return (
 		<AuthLayout
 			title="Choose your password"
-			subtitle="You signed in with a temporary password. Pick your own: only you will know it."
+			subtitle="You signed in with a temporary one. Pick your own. Only you will know it."
 			footer={
 				<button type="button" className="hover:underline coarse:py-2" onClick={onSignOut}>
 					Sign out
@@ -74,7 +74,7 @@ function ChoosePassword({ onDone, onSignOut }: { onDone: () => void; onSignOut: 
 					</Callout>
 				)}
 				<Button type="submit" variant="primary" size="lg" className="mt-1 w-full" disabled={!ready || busy}>
-					{busy && <Spinner className="text-primary-foreground" />}
+					{busy && <Spinner />}
 					Save
 				</Button>
 			</form>
@@ -109,8 +109,8 @@ function SetUpTwoFactor({
 	};
 	return (
 		<AuthLayout
-			title="Set up two-factor sign-in"
-			subtitle="Your role asks for a second step when you sign in, so a stolen password isn't enough."
+			title="Set up two-step"
+			subtitle="Your role asks for a second step, so a stolen password isn't enough."
 			footer={
 				<button type="button" className="hover:underline coarse:py-2" onClick={onSignOut}>
 					Sign out
@@ -127,11 +127,11 @@ function SetUpTwoFactor({
 							disabled={busy}
 							onClick={() => void addPasskey()}
 						>
-							{busy ? <Spinner className="text-primary-foreground" /> : <Fingerprint />}
+							{busy ? <Spinner /> : <Fingerprint />}
 							Add a passkey
 						</Button>
-						<p className="-mt-2 text-center text-xs text-fg-subtle">
-							Face ID, Touch ID, Windows Hello or your password manager. Or use one of these:
+						<p className="-mt-2 text-center text-small text-fg-subtle">
+							Your face, fingerprint or device. Or use one of these.
 						</p>
 					</>
 				)}

@@ -121,7 +121,7 @@ async function checkAgents(agentIds: string[]): Promise<string[]> {
 			!agent ||
 			!(await mayUseShared({ ownerId: actor?.userId ?? agent.userId, shareWithViewers: false }, agent))
 		) {
-			throw notFound("Agent");
+			throw notFound("Bot");
 		}
 	}
 	return ids;

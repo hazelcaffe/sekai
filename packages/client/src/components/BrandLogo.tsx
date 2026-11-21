@@ -7,7 +7,8 @@ const PRESET_BRANDS: Record<string, Brand> = {
 	codex: "codex",
 	claude: "claude-code",
 	grok: "grok",
-	gemini: "gemini-cli",
+	opencode: "opencode",
+	pi: "pi",
 	devin: "devin",
 	antigravity: "antigravity",
 	muse: "muse",
@@ -82,8 +83,8 @@ export function BrandTile({
 		<span
 			aria-hidden
 			className={cn(
-				"inline-flex shrink-0 items-center justify-center border border-border bg-white text-[#0d0d0d] shadow-[0_1px_2px_rgb(0_0_0/0.04)] dark:bg-surface-2 dark:text-fg",
-				size >= 32 ? "rounded-xl" : "rounded-lg",
+				"inline-flex shrink-0 items-center justify-center border border-border bg-paper text-paper-ink dark:bg-surface-2 dark:text-fg",
+				size >= 32 ? "rounded-lg" : "rounded-md",
 				className,
 			)}
 			style={{ width: size, height: size }}

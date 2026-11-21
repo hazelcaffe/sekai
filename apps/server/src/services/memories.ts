@@ -26,7 +26,7 @@ import { isMine, newOwner, ownWhere } from "./visibility.ts";
 
 /** The bot a memory or note is about must be one you see. */
 async function checkAgent(agentId: string | null | undefined): Promise<void> {
-	if (agentId && !(await getAgent(agentId))) throw notFound("Agent");
+	if (agentId && !(await getAgent(agentId))) throw notFound("Bot");
 }
 
 // ---------------------------------------------------------------- memories
@@ -145,7 +145,7 @@ export async function getNote(id: string): Promise<Note | null> {
 export async function createNote(input: NoteCreateInput, createdBy: Note["createdBy"] = "user"): Promise<Note> {
 	const data = parse(NoteCreate, input);
 	const agent = await getAgent(data.agentId);
-	if (!agent) throw notFound("Agent");
+	if (!agent) throw notFound("Bot");
 	const now = Date.now();
 	const row = { id: ID.note(), userId: newOwner(agent.userId), ...data, createdBy, createdAt: now, updatedAt: now };
 	await db.insert(schema.notes).values(row);

@@ -12,7 +12,10 @@ src/main.ts        windows, tray, menu, single instance + sekai:// deep links, n
 src/preload.ts     the only bridge to the page (contextBridge): a small, typed API (window.sekaiDesktop);
                    the web app reads it through packages/client/src/desktop.ts
 src/config.ts      saved server URL and settings (userData)
-src/connect.html   first-run "which server?" page
+src/connect.html   connect, change server and "couldn't reach it" screen
+src/about.html     About Sekai: version, server, this computer, updates
+src/bundled.ts     which file:// pages are the app's own screens (only they get sekaiConnect's powers)
+scripts/tokens.ts  makes dist/tokens.css from @sekai/ui's tokens for the HTML screens and the overlay
 src/updates.ts     auto-update with electron-updater from ${server}/api/desktop/updates
 src/local/         lending the computer: index.ts (bridge client over WebSocket to the server, which bots
                    may use it), screen.ts, keys.ts/combos.ts (input), exec.ts (commands), code.ts (files),

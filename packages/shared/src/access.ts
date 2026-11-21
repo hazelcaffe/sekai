@@ -28,30 +28,30 @@ export type Permission = z.infer<typeof Permission>;
 export const PERMISSION_INFO: Record<Permission, { label: string; description: string; risky?: boolean }> = {
 	admin: {
 		label: "Admin",
-		description: "Everything: server settings, users and roles, backups, every feature, no limits.",
+		description: "Everything: server settings, people and roles, backups, every feature, no limits.",
 		risky: true,
 	},
-	bots: { label: "Make bots", description: "Create and change their own bots (up to the role's limit)." },
+	bots: { label: "Make bots", description: "Create and change their own bots, up to the limit." },
 	web: { label: "Web", description: "Bots search the web and read pages." },
 	browser: {
 		label: "Browser",
-		description: "Bots use a browser on this server: sign in to sites, click, fill forms.",
+		description: "Bots use a browser on this server: sign in to sites, click and fill forms.",
 	},
 	routines: { label: "Routines", description: "Schedules, reminders and webhooks that run on their own." },
 	library: { label: "Library", description: "Their own documents for bots to search." },
 	voice: { label: "Voice", description: "Calls, read-aloud, voice messages and making voices." },
-	apps: { label: "Apps", description: "Connect apps (MCP servers) for their own bots." },
-	channels: { label: "Accounts", description: "Discord, X, Instagram and TikTok accounts for their bots." },
+	apps: { label: "Apps", description: "Connect apps for their own bots." },
+	channels: { label: "Accounts", description: "Discord, Slack, X, Instagram and TikTok accounts for their bots." },
 	computers: {
 		label: "Computers",
-		description: "Bots' own computers and devboxes on your Proxmox server.",
+		description: "Bots' own computers and devboxes.",
 		risky: true,
 	},
 	code: { label: "Code search", description: "Index and search code on their bots' computers." },
 	subscriptions: {
 		label: "Subscriptions",
 		description:
-			"Use the agent subscriptions connected here (Codex, Claude Code…) as their bots' brains. These run on this server and can run commands in their bot's folder.",
+			"Use the subscriptions connected here (Codex, Claude Code…) as a model. They can run commands on this server.",
 		risky: true,
 	},
 	compare: { label: "Compare models", description: "Send one prompt to several models side by side." },
@@ -125,8 +125,15 @@ export interface ManagedUser {
 	roleId: string;
 	disabled: boolean;
 	mustChangePassword: boolean;
-	/** Two-factor methods set up (totp, email, sms), and whether recovery codes are left. */
-	mfa: { totp: boolean; email: boolean; sms: boolean; passkeys: number; recoveryCodes: number };
+	/** Two-factor methods set up (totp, email, sms), whether recovery codes are left, and a required passkey. */
+	mfa: {
+		totp: boolean;
+		email: boolean;
+		sms: boolean;
+		passkeys: number;
+		recoveryCodes: number;
+		passkeyRequired: boolean;
+	};
 	/** Single sign-on accounts linked to it (provider names). */
 	identities: { providerId: string; providerName: string; email: string | null }[];
 	lastLoginAt: number | null;

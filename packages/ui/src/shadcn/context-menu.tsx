@@ -1,7 +1,7 @@
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
 import type * as React from "react";
 import { cn } from "../lib/utils.ts";
-import { menuItem, menuSurface } from "./dropdown-menu.tsx";
+import { menuItem, menuItemDanger, menuSurface } from "./dropdown-menu.tsx";
 import { floatingMotion } from "./popover.tsx";
 
 function ContextMenu(props: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
@@ -43,11 +43,7 @@ function ContextMenuItem({
 		<ContextMenuPrimitive.Item
 			data-slot="context-menu-item"
 			data-variant={variant}
-			className={cn(
-				menuItem,
-				"data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive/10 data-[variant=destructive]:[&_svg]:text-destructive",
-				className,
-			)}
+			className={cn(menuItem, menuItemDanger, className)}
 			{...props}
 		/>
 	);
@@ -57,7 +53,7 @@ function ContextMenuLabel({ className, ...props }: React.ComponentProps<typeof C
 	return (
 		<ContextMenuPrimitive.Label
 			data-slot="context-menu-label"
-			className={cn("truncate px-2.5 pt-1.5 pb-1 text-xs font-medium text-fg-subtle", className)}
+			className={cn("truncate px-2.5 pt-1.5 pb-1 text-caption font-medium text-fg-subtle", className)}
 			{...props}
 		/>
 	);
@@ -77,7 +73,7 @@ function ContextMenuShortcut({ className, ...props }: React.ComponentProps<"span
 	return (
 		<span
 			data-slot="context-menu-shortcut"
-			className={cn("ml-auto text-xs tracking-wide text-fg-subtle coarse:hidden", className)}
+			className={cn("ml-auto text-caption tracking-wide text-fg-subtle coarse:hidden", className)}
 			{...props}
 		/>
 	);

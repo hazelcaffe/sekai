@@ -185,7 +185,7 @@ export async function getServer(id: string): Promise<McpServer | null> {
 
 async function requireServer(id: string): Promise<McpServer> {
 	const s = await getServer(id);
-	if (!s) throw notFound("MCP server");
+	if (!s) throw notFound("App");
 	return s;
 }
 
@@ -217,7 +217,7 @@ export async function createServer(input: McpServerCreateInput): Promise<McpServ
 	const clash = await db.query.mcpServers.findFirst({
 		where: and(eq(schema.mcpServers.name, data.name), eq(schema.mcpServers.userId, userId)),
 	});
-	if (clash) throw new HttpError(409, `An MCP server named "${data.name}" already exists`);
+	if (clash) throw new HttpError(409, `An app named "${data.name}" already exists`);
 	if (oauth && data.transport.type === "stdio") throw new HttpError(400, "Sign-in only works for remote servers");
 	const firstState: OAuthState | null = oauth
 		? {
@@ -267,7 +267,7 @@ export async function createServer(input: McpServerCreateInput): Promise<McpServ
 async function toAgentById(id: string) {
 	const { getAgent } = await import("../services/agents.ts");
 	const a = await getAgent(id);
-	if (!a) throw notFound("Agent");
+	if (!a) throw notFound("Bot");
 	return a;
 }
 
@@ -281,7 +281,7 @@ export async function updateServer(id: string, input: McpServerUpdateInput): Pro
 		const clash = await db.query.mcpServers.findFirst({
 			where: and(eq(schema.mcpServers.name, patch.name), eq(schema.mcpServers.userId, current.userId)),
 		});
-		if (clash) throw new HttpError(409, `An MCP server named "${patch.name}" already exists`);
+		if (clash) throw new HttpError(409, `An app named "${patch.name}" already exists`);
 	}
 	const transport = patch.transport ? sealTransport(mergeTransport(patch.transport, current.transport)) : undefined;
 	await db
@@ -386,7 +386,7 @@ export async function connect(serverId: string): Promise<McpServerStatus> {
 	if (c.connecting) return c.connecting;
 	const attempt = (async () => {
 		const row = await getRow(serverId);
-		if (!row) throw notFound("MCP server");
+		if (!row) throw notFound("App");
 		const server = toServer(row);
 		const st = readOAuth(row.oauth);
 		// Not signed in yet: nothing to try until you do.
@@ -470,9 +470,9 @@ export async function disconnect(serverId: string): Promise<McpServerStatus> {
  */
 export async function startSignIn(serverId: string, origin: string): Promise<{ url: string | null }> {
 	const row = await getRow(serverId);
-	if (!row || !serverUsableBy(row)) throw notFound("MCP server");
+	if (!row || !serverUsableBy(row)) throw notFound("App");
 	requireOwnServer(row);
-	if (row.transport.type === "stdio") throw new HttpError(400, "Only remote servers sign in");
+	if (row.transport.type === "stdio") throw new HttpError(400, "Only apps reached by a web address sign in");
 	const st: OAuthState = readOAuth(row.oauth) ?? {};
 	const redirectUri = `${origin}${OAUTH_CALLBACK_PATH}`;
 	// A different address means a different callback: register again (your own client keeps its id).

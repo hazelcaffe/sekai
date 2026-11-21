@@ -1,8 +1,8 @@
 import { type CustomVoice, parseApiModel, type VoiceCandidate } from "@sekai/shared";
-import { Button, Checkbox, Dialog, Field, Input, Segmented, Select, Spinner, Textarea } from "@sekai/ui";
+import { Button, Checkbox, Dialog, Field, Input, Segmented, Select, Spinner, Textarea, Tooltip } from "@sekai/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Mic, Pause, Play, RotateCcw, Square, Upload, Wand2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.ts";
 import { useVoiceModels } from "../data.ts";
 import { qk } from "../query.ts";
@@ -36,23 +36,26 @@ function usePlayer() {
 		setPlaying(key);
 		void a.play().catch(() => setPlaying(null));
 	};
-	const stop = () => {
+	// Stable, so effects that stop playback (closing the dialog) don't run again on every render.
+	const stop = useCallback(() => {
 		audio.current?.pause();
 		setPlaying(null);
-	};
+	}, []);
 	return { playing, toggle, stop };
 }
 
 function PlayButton({ playing, onClick, label }: { playing: boolean; onClick: () => void; label: string }) {
 	return (
-		<button
-			type="button"
-			onClick={onClick}
-			aria-label={playing ? `Stop ${label}` : `Hear ${label}`}
-			className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-transform active:scale-90 [&_svg]:size-4"
-		>
-			{playing ? <Pause className="fill-current" /> : <Play className="translate-x-px fill-current" />}
-		</button>
+		<Tooltip content={playing ? `Stop ${label}` : `Hear ${label}`}>
+			<button
+				type="button"
+				onClick={onClick}
+				aria-label={playing ? `Stop ${label}` : `Hear ${label}`}
+				className="flex size-9 shrink-0 items-center justify-center rounded-full bg-fg text-bg transition-transform active:scale-90 [&_svg]:size-4"
+			>
+				{playing ? <Pause className="fill-current" /> : <Play className="translate-x-px fill-current" />}
+			</button>
+		</Tooltip>
 	);
 }
 
@@ -210,7 +213,7 @@ export function MakeVoiceDialog({
 					disabled={!picked || busy !== null || !name.trim()}
 					onClick={() => void keep()}
 				>
-					{busy === "save" && <Spinner className="text-primary-foreground" />} Keep this voice
+					{busy === "save" && <Spinner />} Keep this voice
 				</Button>
 			</>
 		) : (
@@ -223,7 +226,7 @@ export function MakeVoiceDialog({
 					disabled={!recording || !consent || busy !== null || !name.trim()}
 					onClick={() => void clone()}
 				>
-					{busy === "save" && <Spinner className="text-primary-foreground" />} Make the voice
+					{busy === "save" && <Spinner />} Make the voice
 				</Button>
 			</>
 		);
@@ -238,8 +241,8 @@ export function MakeVoiceDialog({
 			footer={services.length ? footer : undefined}
 		>
 			{services.length === 0 ? (
-				<p className="text-[13px] leading-5 text-fg-subtle">
-					Add Fish Audio (or ElevenLabs) in Admin → Voice first. Fish Audio makes voices on any plan.
+				<p className="text-small text-fg-subtle">
+					Add Fish Audio (or ElevenLabs) in Settings → Voice first. Fish Audio makes voices on any plan.
 				</p>
 			) : (
 				<div className="flex flex-col gap-4">
@@ -288,7 +291,7 @@ export function MakeVoiceDialog({
 											key={idea}
 											type="button"
 											onClick={() => setDescription(idea)}
-											className="rounded-full border border-border px-2.5 py-1 text-left text-xs text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+											className="rounded-full border border-border px-2.5 py-1 text-left text-small text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
 										>
 											{idea.split(":")[0]?.split(",")[0]}
 										</button>
@@ -317,9 +320,9 @@ export function MakeVoiceDialog({
 										<div
 											key={c.id}
 											className={cn(
-												"flex items-center gap-3 rounded-2xl border p-2 pr-3 transition-colors",
+												"flex items-center gap-3 rounded-lg border p-2 pr-3 transition-colors",
 												picked === c.id
-													? "border-brand/50 bg-brand/6 ring-[3px] ring-ring/10"
+													? "border-brand/50 bg-brand/6 ring-[3px] ring-brand-ink/10"
 													: "border-border",
 											)}
 										>
@@ -336,8 +339,8 @@ export function MakeVoiceDialog({
 												onClick={() => setPicked(c.id)}
 												className="min-w-0 flex-1 text-left"
 											>
-												<span className="block text-sm font-medium">Take {i + 1}</span>
-												<span className="block truncate text-xs text-fg-subtle">
+												<span className="block text-body font-medium">Take {i + 1}</span>
+												<span className="block truncate text-small text-fg-subtle">
 													{c.traits ?? `${(c.durationMs / 1000).toFixed(1)} s`}
 												</span>
 											</button>
@@ -356,37 +359,39 @@ export function MakeVoiceDialog({
 						</>
 					) : (
 						<>
-							<p className="text-[13px] leading-5 text-fg-subtle">
+							<p className="text-small text-fg-subtle">
 								Record 10–30 seconds of one person talking clearly, with no music or background noise.
 								You can read this:
 							</p>
-							<blockquote className="rounded-2xl bg-muted/60 px-4 py-3 text-[13px] leading-6 text-fg-muted">
+							<blockquote className="rounded-lg bg-surface-2/60 px-4 py-3 text-small text-fg-muted">
 								{SCRIPT}
 							</blockquote>
 							{recorder.state !== "idle" ? (
-								<div className="flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/6 p-2 pr-3">
-									<button
-										type="button"
-										onClick={stopRecording}
-										aria-label="Stop recording"
-										className="flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive text-white [&_svg]:size-4"
-									>
-										<Square className="fill-current" />
-									</button>
-									<span className="flex-1 text-sm font-medium text-destructive">
+								<div className="flex items-center gap-3 rounded-lg border border-danger/30 bg-danger/6 p-2 pr-3">
+									<Tooltip content="Stop recording">
+										<button
+											type="button"
+											onClick={stopRecording}
+											aria-label="Stop recording"
+											className="flex size-9 shrink-0 items-center justify-center rounded-full bg-danger text-danger-foreground [&_svg]:size-4"
+										>
+											<Square className="fill-current" />
+										</button>
+									</Tooltip>
+									<span className="flex-1 text-body font-medium text-danger-ink">
 										Recording… {recorder.startedAt && <Clock startedAt={recorder.startedAt} />}
 									</span>
 								</div>
 							) : recording ? (
-								<div className="flex items-center gap-3 rounded-2xl border border-border p-2 pr-2">
+								<div className="flex items-center gap-3 rounded-lg border border-border p-2 pr-2">
 									<PlayButton
 										playing={player.playing === "rec"}
 										onClick={() => player.toggle("rec", recording.url)}
 										label="your recording"
 									/>
-									<span className="min-w-0 flex-1 text-sm">
+									<span className="min-w-0 flex-1 text-body">
 										Your recording
-										<span className="block text-xs text-fg-subtle">
+										<span className="block text-small text-fg-subtle">
 											{recording.secs ? `${Math.round(recording.secs)} s` : "From a file"}
 											{recording.secs && recording.secs < 8
 												? " · a bit short; 10–30 s works best"
@@ -440,7 +445,7 @@ export function MakeVoiceDialog({
 							/>
 						</>
 					)}
-					{error && <p className="text-[13px] leading-5 text-destructive">{error}</p>}
+					{error && <p className="text-body text-danger-ink">{error}</p>}
 				</div>
 			)}
 		</Dialog>

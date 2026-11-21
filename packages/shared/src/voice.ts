@@ -3,7 +3,7 @@ import { type ApiKind, parseApiModel } from "./model-provider.ts";
 import { patchOf } from "./patch.ts";
 
 /**
- * What a voice model does (voice models come from ElevenLabs and Fish Audio, added in Admin → Voice):
+ * What a voice model does (voice models come from ElevenLabs and Fish Audio, added in Settings → Bots → Voice):
  * - tts: text to speech (talking on calls, reading messages aloud, voice messages)
  * - stt: speech to text (hearing you on calls, dictation, your voice messages)
  */
@@ -78,8 +78,8 @@ const OwnModelId = z
 const VoiceId = z.string().trim().max(200);
 
 /**
- * Defaults for every bot (Admin → Voice). On calls you're heard with the speech-to-text model, the bot's own model
- * answers (with all its tools), and the speaking voice reads the answer out as it's written.
+ * Defaults for every bot (Settings → Bots → Voice). On calls you're heard with the speech-to-text model, the bot's
+ * own model answers (with all its tools), and the speaking voice reads the answer out as it's written.
  */
 export const VoiceSettings = z.object({
 	/** Talking on calls, reading aloud and voice messages. */
@@ -97,7 +97,7 @@ export type VoiceSettings = z.infer<typeof VoiceSettings>;
 export const VoiceSettingsUpdate = patchOf(VoiceSettings);
 export type VoiceSettingsUpdate = z.input<typeof VoiceSettingsUpdate>;
 
-/** A bot's own voice. Anything left null uses the default from Admin → Voice. */
+/** A bot's own voice. Anything left null uses the default from Settings → Bots → Voice. */
 export const AgentVoice = z.object({
 	ttsModel: OwnModelId.default(null),
 	ttsVoice: VoiceId.nullable().default(null),

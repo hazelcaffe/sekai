@@ -76,12 +76,15 @@ describe("request helpers", () => {
 
 const MAIN_DB = process.env.DATABASE_URL ?? "postgres://sekai:sekai@127.0.0.1:5433/sekai";
 const TEST_DB = MAIN_DB.replace(/\/[^/?]+(\?.*)?$/, "/sekai_auth_test$1");
+const PASSKEY_DB = MAIN_DB.replace(/\/[^/?]+(\?.*)?$/, "/sekai_passkey_test$1");
 
 async function prepareDb(): Promise<boolean> {
 	const sql = postgres(MAIN_DB, { max: 1, connect_timeout: 3, onnotice: () => {} });
 	try {
-		const [row] = await sql`select 1 from pg_database where datname = 'sekai_auth_test'`;
-		if (!row) await sql.unsafe("create database sekai_auth_test");
+		for (const name of ["sekai_auth_test", "sekai_passkey_test"]) {
+			const [row] = await sql`select 1 from pg_database where datname = ${name}`;
+			if (!row) await sql.unsafe(`create database ${name}`);
+		}
 		return true;
 	} catch {
 		return false;
@@ -91,6 +94,19 @@ async function prepareDb(): Promise<boolean> {
 }
 
 const dbReady = await prepareDb();
+
+/** Runs a fixture as its own process (so its environment applies before the server's modules load). */
+async function runFixture(file: string, env: Record<string, string>): Promise<unknown> {
+	const p = Bun.spawn(["bun", join(import.meta.dir, "fixtures", file)], {
+		stdout: "pipe",
+		stderr: "pipe",
+		env: { ...process.env, SEKAI_LOG_LEVEL: "error", ...env },
+	});
+	const out = await new Response(p.stdout).text();
+	const line = out.split("\n").find((l) => l.startsWith("REPORT "));
+	if (!line) throw new Error(`no report: ${out}\n${await new Response(p.stderr).text()}`);
+	return JSON.parse(line.slice(7));
+}
 
 describe("sign-in", () => {
 	test.skipIf(!dbReady)(
@@ -136,6 +152,73 @@ describe("sign-in", () => {
 				afterLogout: 401,
 				rateLimited: 429,
 				passkeysOnIp: 400,
+			});
+		},
+		60_000,
+	);
+
+	test.skipIf(!dbReady)(
+		"require a passkey to sign in: the second step, codes refused, recovery, last passkey, admin reset (needs Postgres)",
+		async () => {
+			const report = await runFixture("passkey-check.ts", {
+				DATABASE_URL: PASSKEY_DB,
+				// Its own data folder (and so its own secret key), not the checkout's.
+				SEKAI_DATA_DIR: join(import.meta.dir, ".passkey-data"),
+				SEKAI_AUTH_TOKEN: "",
+			});
+			const step = (passkey: boolean, passkeyRequired: boolean, methods: string[]) => ({
+				status: "mfa",
+				passkey,
+				passkeyRequired,
+				methods,
+			});
+			expect(report).toEqual({
+				// Turning it on: a passkey first, from a signed-in page (not a token), after confirming it's you.
+				onWithoutPasskey: 400,
+				addedPasskey: { status: 200, rpId: "localhost" },
+				onWithToken: 403,
+				onNotRecent: { status: 403, code: "reauth_required" },
+				on: { status: 200, required: true, newCodes: null },
+				mfaStatus: true,
+				listedRpId: "localhost",
+				// A password alone, or with an authenticator or email code, doesn't sign in.
+				passwordOnly: { ...step(true, true, ["recovery"]), session: 401 },
+				passwordAndTotp: 400,
+				emailCode: 400,
+				stillNoSession: 401,
+				// Only their own passkey answers.
+				allowCredentials: ["ada's"],
+				othersPasskey: { status: 401, session: 401 },
+				crossSignIn: 400,
+				ownPasskey: { status: "signed_in", session: 200 },
+				// Signing in with the passkey itself stays one step.
+				passkeyDirect: { status: "signed_in", session: 200 },
+				passkeyUnverified: { ...step(false, false, ["totp", "recovery"]), thenTotp: "signed_in" },
+				// On an address their passkeys aren't for: which ones they are for, and a recovery code works once.
+				otherAddress: { ...step(false, true, ["recovery"]), hosts: ["localhost"] },
+				otherAddressOptions: {
+					status: 400,
+					error: "Your passkeys are for localhost. Sign in there, or use a recovery code.",
+				},
+				recoveryCode: { status: "signed_in", session: 200 },
+				recoveryCodeReused: 400,
+				wrongPasskeys: { tries: [401, 401, 401, 401, 401], last: "Too many tries. Sign in again." },
+				afterTooMany: 401,
+				// The last passkey stays while it's required.
+				removeLast: 400,
+				removeOneOfTwo: 200,
+				removeNewLast: 400,
+				offNotRecent: 403,
+				off: { required: false },
+				afterOff: step(true, false, ["totp", "recovery"]),
+				boOn: { status: 200, recoveryCodes: 10 },
+				resetLink: step(true, true, ["recovery"]),
+				memberUsesAdminRoute: 403,
+				adminNotRecent: 403,
+				adminReset: { status: 200, required: false },
+				adminOwn: 400,
+				boAfterReset: "signed_in",
+				boCodesDropped: 0,
 			});
 		},
 		60_000,

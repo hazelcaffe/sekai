@@ -67,6 +67,19 @@ export async function listProviders(publicUrl: string): Promise<SsoProvider[]> {
 	return Promise.all(rows.map((r) => toProvider(r, publicUrl, by.get(r.id) ?? 0)));
 }
 
+/**
+ * Whether single sign-on can find an account nobody linked yet: an enabled provider that matches a verified email
+ * (what someone added with single sign-on only needs for their first sign-in).
+ */
+export async function ssoFindsByEmail(): Promise<boolean> {
+	const [row] = await db
+		.select({ id: schema.authProviders.id })
+		.from(schema.authProviders)
+		.where(and(eq(schema.authProviders.enabled, true), eq(schema.authProviders.linkByEmail, true)))
+		.limit(1);
+	return Boolean(row);
+}
+
 export async function ssoButtons(): Promise<SsoButton[]> {
 	const rows = await db
 		.select({ id: schema.authProviders.id, kind: schema.authProviders.kind, name: schema.authProviders.name })

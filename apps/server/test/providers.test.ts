@@ -1,11 +1,65 @@
+import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { byosModelId, isByosModel, type Provider, parseByosModel } from "@sekai/shared";
+import {
+	byosModelId,
+	isByosModel,
+	PROVIDER_PRESET_IDS,
+	PROVIDER_PRESETS,
+	type Provider,
+	ProviderCreate,
+	parseByosModel,
+} from "@sekai/shared";
 import { authorizeToolCall, type ToolCallEnv } from "../src/agent/loop.ts";
-import { checkAcp, pickLevel } from "../src/providers/acp.ts";
+import { db } from "../src/db/index.ts";
+import { checkAcp, invalidateAcpHost, pickLevel, runAcpTurn, shutdownAcpHosts } from "../src/providers/acp.ts";
 import { ExternalTurnState } from "../src/providers/bridge.ts";
 import { claudeToolKind, claudeToolTitle, gatedExternalTool, kindRisk } from "../src/providers/kinds.ts";
-import { agentEnv } from "../src/providers/process.ts";
+import { acpEnv, agentEnv, checkDir } from "../src/providers/process.ts";
+import { geminiSubscriptionMigration } from "../src/providers/store.ts";
+
+describe("subscription presets", () => {
+	test("validates the catalog and keeps Antigravity, not Gemini CLI", () => {
+		expect(Object.keys(PROVIDER_PRESETS)).toEqual([...PROVIDER_PRESET_IDS]);
+		for (const id of PROVIDER_PRESET_IDS) {
+			expect(PROVIDER_PRESETS[id].id).toBe(id);
+			expect(ProviderCreate.safeParse({ preset: id }).success).toBe(true);
+		}
+		expect(ProviderCreate.safeParse({ preset: "gemini" }).success).toBe(false);
+		expect(PROVIDER_PRESETS.antigravity.command).toBe("agy_acp_server.par");
+		expect(PROVIDER_PRESETS.opencode).toMatchObject({
+			kind: "acp",
+			command: "opencode",
+			args: ["acp"],
+			models: [],
+		});
+		expect(PROVIDER_PRESETS.pi).toMatchObject({ kind: "acp", command: "pi-acp", args: [], models: [] });
+	});
+
+	test("upgrades only the legacy preset and preserves existing model and session references", () => {
+		// The UPDATE uses SQL shared by Postgres and SQLite, so it can run without a Postgres service.
+		using scratch = new Database(":memory:");
+		scratch.exec(`
+			CREATE TABLE providers (id TEXT PRIMARY KEY, preset TEXT, kind TEXT, title TEXT, enabled INTEGER,
+				command TEXT, args TEXT, env TEXT, extra_models TEXT, status TEXT, created_at INTEGER, updated_at INTEGER);
+			INSERT INTO providers VALUES
+			  ('prv_legacy', 'gemini', 'acp', 'My Gemini', 0, '/my/gemini', '["--acp"]',
+			    '{"GEMINI_API_KEY":"example"}', '["my-model"]', '{"state":"ready"}', 12, 23),
+			  ('prv_agy', 'antigravity', 'acp', 'Antigravity', 1, 'agy_acp_server.par', '[]', '{}', '[]', NULL, 1, 2);
+			CREATE TABLE saved (provider_id TEXT REFERENCES providers(id), model TEXT, session_id TEXT);
+			INSERT INTO saved VALUES ('prv_legacy', 'prv_legacy::my-model', 'original-session');
+		`);
+		const rows = () => scratch.query("SELECT * FROM providers ORDER BY id").all();
+		const before = rows();
+		const { sql, params } = geminiSubscriptionMigration(db).toSQL();
+		for (let i = 0; i < 2; i++) scratch.run(sql, params.map(String));
+		expect(rows()).toEqual([before[0], { ...(before[1] as object), preset: "custom" }]);
+		expect(scratch.query("SELECT model, session_id FROM saved JOIN providers ON provider_id = id").get()).toEqual({
+			model: "prv_legacy::my-model",
+			session_id: "original-session",
+		});
+	});
+});
 
 describe("BYOS model ids", () => {
 	test("round-trip", () => {
@@ -213,4 +267,84 @@ describe("ACP check against a scripted agent", () => {
 			/Couldn't run "definitely-not-installed-agent"/,
 		);
 	});
+
+	test.skipIf(process.platform === "win32")("Pi launches with tools and extensions disabled", async () => {
+		const env = acpEnv({ ...provider({ PI_ACP_PI_COMMAND: "/bin/echo" }), preset: "pi" });
+		expect(env.PI_ACP_PI_COMMAND).toEndWith("/pi-chat.sh");
+		const proc = Bun.spawn([env.PI_ACP_PI_COMMAND ?? "", "--mode", "rpc"], { env, stdout: "pipe" });
+		expect((await new Response(proc.stdout).text()).trim().split(" ")).toEqual([
+			"--no-tools",
+			"--no-mcp",
+			"--no-extensions",
+			"--no-skills",
+			"--no-prompt-templates",
+			"--no-context-files",
+			"--mode",
+			"rpc",
+		]);
+		expect(await proc.exited).toBe(0);
+	});
+
+	test.skipIf(process.platform === "win32")(
+		"Pi keeps separate chat processes and invalidates them together",
+		async () => {
+			const pi = {
+				...provider({ MOCK_ACP_ONE_CHAT: "1", PI_ACP_PI_COMMAND: process.execPath }),
+				preset: "pi" as const,
+			};
+			const run = async (id: string, sessionId: string | null) => {
+				const { env } = fakeEnv("readonly");
+				const state = new ExternalTurnState(env);
+				let text = "";
+				Object.assign(env.writer, {
+					appendText: (chunk: string) => {
+						text += chunk;
+					},
+					appendReasoning() {},
+					closeReasoning() {},
+					addAdvisor: () => 0,
+					updateAdvisor() {},
+				});
+				const result = await runAcpTurn({
+					provider: pi,
+					agent: env.ctx.agent,
+					session: {
+						id,
+						sessionId,
+						agentId: env.ctx.agent.id,
+						conversationId: id,
+						providerId: pi.id,
+						token: "test",
+						syncedAt: null,
+						promptHashes: null,
+						createdAt: 0,
+						updatedAt: 0,
+					},
+					env,
+					state,
+					cwd: checkDir(),
+					model: "mock-smart",
+					thinking: "high",
+					system: "Test",
+					mcpUrl: "http://localhost/unused",
+					compose: async () => ({ blocks: [{ type: "text", text: "Hi" }], syncedAt: null, hashes: {} }),
+					onSession: async () => {},
+				});
+				return { sessionId: result.sessionId, text };
+			};
+			try {
+				const first = await run("chat-a", null);
+				const second = await run("chat-b", null);
+				expect(first.text).toContain("model=mock-smart, thought=high, turn=1");
+				expect(second.text).toContain("model=mock-smart, thought=high, turn=1");
+				expect((await run("chat-a", first.sessionId)).text).toContain("turn=2");
+				await invalidateAcpHost(pi.id);
+				expect((await run("chat-a", first.sessionId)).text).toContain("turn=1");
+				expect((await run("chat-b", second.sessionId)).text).toContain("turn=1");
+			} finally {
+				await shutdownAcpHosts();
+			}
+		},
+		30_000,
+	);
 });

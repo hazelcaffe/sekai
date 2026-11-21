@@ -36,7 +36,7 @@ export interface ApiPreset {
 	/** Runs on your own machine; usually no key. */
 	local?: boolean;
 	hint?: string;
-	/** Where it's offered: Admin → Models or Admin → Voice. */
+	/** Where it's offered: Settings → Bots → Models or Settings → Bots → Voice. */
 	scope: "models" | "voice";
 }
 

@@ -1,5 +1,5 @@
 // The phone apps against a scratch database: signing in through the browser (start → finish → exchange), and
-// push setup (Admin → Phone apps, a phone's token). mobile.test.ts runs this as its own process, like auth-check.
+// push setup (PUT /api/admin/mobile, a phone's token). mobile.test.ts runs this as its own process, like auth-check.
 import { createHash, randomBytes } from "node:crypto";
 import { rmSync } from "node:fs";
 import { createApp } from "../../src/app.ts";

@@ -35,7 +35,7 @@ export const MobilePushToken = z.object({
 export type MobilePushToken = z.infer<typeof MobilePushToken>;
 
 /**
- * Admin → Phone apps: Firebase for Android (the project's google-services.json and a service account key) and
+ * Settings → Server → Network & devices (Phone notifications): Firebase for Android (the project's google-services.json and a service account key) and
  * Apple push for iOS (a .p8 key with its key and team ids). The service account and the .p8 key are masked when
  * read back.
  */
@@ -49,7 +49,7 @@ export const MobilePushSettings = z.object({
 });
 export type MobilePushSettings = z.infer<typeof MobilePushSettings>;
 
-/** Admin → Phone apps, as shown: the settings (secrets masked) and whether each side is ready. */
+/** Settings → Server → Network & devices, as shown: the settings (secrets masked) and whether each side is ready. */
 export interface MobilePushStatus {
 	settings: MobilePushSettings;
 	android: { ready: boolean; projectId: string | null; problem: string | null };

@@ -1,14 +1,13 @@
 import { AgentAvatar, api, cn, useAgents } from "@sekai/client";
-import { Button, Dialog, Field, Input, Textarea } from "@sekai/ui";
+import { MAX_GROUP_MEMBERS } from "@sekai/shared";
+import { Button, Dialog, Field, Input, Textarea, Tooltip } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
 import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useUi } from "../../stores/ui.ts";
 
-const MAX_MEMBERS = 6;
-
-/** New group chat: pick 2–6 bots in the To: field, then name it and say what it's for. */
+/** New group chat: pick 2–8 bots in the To: field, then name it and say what it's for. */
 export function NewGroupDialog() {
 	const open = useUi((s) => s.newGroupOpen);
 	const setOpen = useUi((s) => s.setNewGroupOpen);
@@ -44,7 +43,9 @@ export function NewGroupDialog() {
 	});
 
 	const toggle = (id: string) =>
-		setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length < MAX_MEMBERS ? [...s, id] : s));
+		setSelected((s) =>
+			s.includes(id) ? s.filter((x) => x !== id) : s.length < MAX_GROUP_MEMBERS ? [...s, id] : s,
+		);
 	const matches = agents.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()));
 
 	return (
@@ -69,26 +70,28 @@ export function NewGroupDialog() {
 			}
 		>
 			<div className="flex flex-col gap-5">
-				<Field label="To" hint={`Pick 2–${MAX_MEMBERS} bots.`}>
-					<div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-xl border border-border bg-surface px-2 py-1.5">
+				<Field label="To" hint={`Pick 2–${MAX_GROUP_MEMBERS} bots.`}>
+					<div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-lg border border-border bg-surface px-2 py-1.5">
 						{selected.map((id) => {
 							const a = agents.find((x) => x.id === id);
 							if (!a) return null;
 							return (
 								<span
 									key={id}
-									className="flex items-center gap-1.5 rounded-full bg-surface-2 py-0.5 pr-1 pl-0.5 text-[13px]"
+									className="flex items-center gap-1.5 rounded-full bg-surface-2 py-0.5 pr-1 pl-0.5 text-small"
 								>
 									<AgentAvatar avatar={a.avatar} size={20} />
 									{a.name}
-									<button
-										type="button"
-										aria-label={`Remove ${a.name}`}
-										onClick={() => toggle(id)}
-										className="rounded-full p-0.5 hover:bg-surface-3"
-									>
-										<X className="size-3" />
-									</button>
+									<Tooltip content={`Remove ${a.name}`}>
+										<button
+											type="button"
+											aria-label={`Remove ${a.name}`}
+											onClick={() => toggle(id)}
+											className="rounded-full p-0.5 hover:bg-surface-3"
+										>
+											<X className="size-4" />
+										</button>
+									</Tooltip>
 								</span>
 							);
 						})}
@@ -96,7 +99,7 @@ export function NewGroupDialog() {
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
 							placeholder={selected.length ? "" : "Search bots"}
-							className="h-8 min-w-24 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-fg-subtle"
+							className="h-8 min-w-24 flex-1 bg-transparent px-1 text-body outline-none placeholder:text-fg-subtle"
 						/>
 					</div>
 				</Field>
@@ -109,14 +112,14 @@ export function NewGroupDialog() {
 								type="button"
 								onClick={() => toggle(a.id)}
 								className={cn(
-									"flex items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors coarse:py-2.5",
+									"flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors coarse:py-2.5",
 									on ? "bg-surface-2" : "hover:bg-surface-2/60",
 								)}
 							>
 								<AgentAvatar avatar={a.avatar} size={32} />
 								<div className="min-w-0 flex-1">
-									<div className="truncate text-sm font-medium">{a.name}</div>
-									<div className="truncate text-xs text-fg-subtle">
+									<div className="truncate text-body font-medium">{a.name}</div>
+									<div className="truncate text-small text-fg-subtle">
 										{a.label || a.job || "General assistant"}
 									</div>
 								</div>
@@ -128,7 +131,7 @@ export function NewGroupDialog() {
 											: "border-border-strong",
 									)}
 								>
-									{on && <Check className="size-3" />}
+									{on && <Check className="size-4" />}
 								</span>
 							</button>
 						);

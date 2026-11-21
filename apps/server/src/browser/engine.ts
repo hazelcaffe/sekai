@@ -196,7 +196,7 @@ async function targetFor(
 	}
 	if (r) {
 		const m = pickMachine(all, on);
-		if (!m) throw new Error(`There's no machine or shared browser called "${on}" for this bot`);
+		if (!m) throw new Error(`There's no computer or shared browser called "${on}" for this bot`);
 		if (m.kind === "devbox") throw new Error(`${m.name} is a devbox: it has no screen or browser`);
 		if (!hasDesktop(m)) {
 			throw new Error(

@@ -53,8 +53,8 @@ export async function startUpdates(serverUrl: () => string): Promise<void> {
 		set({ state: "ready", version: info.version });
 		if (Notification.isSupported()) {
 			const n = new Notification({
-				title: "Sekai update ready",
-				body: `Version ${info.version} is downloaded. Click to restart now (or it installs when you quit).`,
+				title: "Update ready",
+				body: `Sekai ${info.version} is ready. Click to restart now, or it will install when you quit.`,
 			});
 			n.on("click", () => installNow());
 			n.show();

@@ -1,13 +1,13 @@
 /**
- * bun run dev: starts Postgres (Docker), the API server (watch mode) and the Vite dev servers for the web app and
- * the admin app together. Open the web app's address; it forwards /admin to the admin app's dev server.
+ * bun run dev: starts Postgres (Docker), the API server (watch mode) and the web app's Vite dev server together. Open
+ * the web app's address.
  *   --no-db   skip `docker compose up -d db`
  */
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
 const args = new Set(process.argv.slice(2));
-const colors = { db: "\x1b[35m", api: "\x1b[36m", web: "\x1b[33m", adm: "\x1b[32m" } as const;
+const colors = { db: "\x1b[35m", api: "\x1b[36m", web: "\x1b[33m" } as const;
 const reset = "\x1b[0m";
 
 function prefix(name: keyof typeof colors, stream: ReadableStream<Uint8Array>): void {
@@ -52,7 +52,6 @@ if (!args.has("--no-db")) {
 const procs = [
 	{ name: "api" as const, cmd: ["bun", "--watch", "run", "src/index.ts"], cwd: join(root, "apps/server") },
 	{ name: "web" as const, cmd: ["bunx", "--bun", "vite"], cwd: join(root, "apps/web") },
-	{ name: "adm" as const, cmd: ["bunx", "--bun", "vite"], cwd: join(root, "apps/admin") },
 ].map(({ name, cmd, cwd }) => {
 	const p = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, FORCE_COLOR: "1" } });
 	prefix(name, p.stdout);

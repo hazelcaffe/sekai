@@ -34,7 +34,7 @@ export const APPROVAL_MODE_INFO: Record<ApprovalMode, { title: string; short: st
 	readonly: {
 		title: "Read-only",
 		short: "Read-only",
-		description: "Agents can look things up but can't change anything.",
+		description: "Bots can look things up but can't change anything.",
 	},
 	manual: {
 		title: "Ask every time",
@@ -42,8 +42,8 @@ export const APPROVAL_MODE_INFO: Record<ApprovalMode, { title: string; short: st
 		description: "Look-ups run on their own. Every action that changes something waits for your approval.",
 	},
 	auto: {
-		title: "Auto (agent discretion)",
-		short: "Auto",
+		title: "Reviewer checks risky actions",
+		short: "Reviewer",
 		description:
 			"Routine actions run on their own. Risky ones are checked by a reviewer model, which asks you when an action isn't clearly what you wanted.",
 	},
@@ -54,15 +54,43 @@ export const APPROVAL_MODE_INFO: Record<ApprovalMode, { title: string; short: st
 			"Routine actions run on their own. Risky ones go to your primary bot, which approves what it's sure you'd want and asks you otherwise.",
 	},
 	yolo: {
-		title: "YOLO (bypass approvals)",
-		short: "YOLO",
-		description: "Everything runs without asking, except tools you've explicitly set to Ask.",
+		title: "Don't ask",
+		short: "Don't ask",
+		description: "Everything runs without asking, except tools set to Ask and actions that always need you.",
 	},
 };
+
+/**
+ * The one way to say a bot or chat follows another rule: "Follow Nori's rule (Ask)" or, with no bot,
+ * "Follow your default (Ask)".
+ */
+export function followRuleLabel(mode: ApprovalMode, bot?: string | null): string {
+	return `Follow ${bot ? `${bot}'s rule` : "your default"} (${APPROVAL_MODE_INFO[mode].short})`;
+}
 
 /** Rules keyed by tool name ("memory_save") or kind ("category:memory", "category:mcp:github"). */
 export const ToolRules = z.record(z.string(), ToolPermission);
 export type ToolRules = z.infer<typeof ToolRules>;
+
+/** The kinds of built-in tools, in plain words (a rule for a whole kind is keyed "category:<kind>"). */
+export const TOOL_CATEGORIES = {
+	memory: "Memory",
+	notes: "Notes",
+	routines: "Routines & reminders",
+	skills: "Skills",
+	agents: "Team",
+	web: "Web",
+	browser: "Browser",
+	computer: "Computer",
+	machines: "Files, commands & devices",
+	code: "Code search",
+	library: "Library",
+	media: "Images",
+	contact: "Messages & calls",
+	x: "X (Twitter)",
+	system: "System",
+} as const;
+export type ToolCategory = keyof typeof TOOL_CATEGORIES;
 
 export const AgentCapabilities = z.object({
 	/** Lets the agent search the web (run by the gateway). */
@@ -155,7 +183,7 @@ export const AgentUpdate = z
 	.partial();
 export type AgentUpdate = z.input<typeof AgentUpdate>;
 
-/** What the agent actually sees on its next turn, for the Brain view. */
+/** What the agent actually sees on its next turn, for the chat details' Context. */
 export interface AgentContextSection {
 	id: string;
 	title: string;

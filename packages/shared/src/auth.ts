@@ -50,16 +50,32 @@ export type SessionMethod = "password" | "passkey" | "setup" | "sso" | "invite" 
 export const MFA_METHODS = ["totp", "email", "sms", "recovery"] as const;
 export type MfaMethod = (typeof MFA_METHODS)[number];
 
+/** What a sign-in waiting for its second step can use. */
+export interface MfaChallenge {
+	/** Codes this account can use (only "recovery" when it requires a passkey). */
+	methods: MfaMethod[];
+	/** Where email and text codes go, partly hidden (h•••@example.com, +1 ••• ••• 4567). */
+	hints: { email?: string; sms?: string };
+	/** One of their passkeys is for this address, so "Use your passkey" works here. */
+	passkey: boolean;
+	/** Their account requires a passkey: only a passkey (or a recovery code, once) finishes signing in. */
+	passkeyRequired: boolean;
+	/** When a passkey is required but none is for this address: the addresses their passkeys are for. */
+	passkeyHosts: string[];
+}
+
 /** What signing in returns: done, or a second step. */
 export type SignInResult =
 	| { status: "signed_in"; user: AuthUser; restriction: SessionRestriction | null }
-	| {
-			status: "mfa";
-			/** What this account can use for the second step. */
-			methods: MfaMethod[];
-			/** Where email and text codes go, partly hidden (h•••@example.com, +1 ••• ••• 4567). */
-			hints: { email?: string; sms?: string };
-	  };
+	| ({ status: "mfa" } & MfaChallenge);
+
+/** Turning "Require a passkey to sign in" on or off (Account). */
+export const PasskeyRequirement = z.object({ required: z.boolean() });
+export interface PasskeyRequirementResult {
+	required: boolean;
+	/** New recovery codes when it was turned on without any (shown once). */
+	recoveryCodes?: string[];
+}
 
 export const MfaSend = z.object({ method: z.enum(["email", "sms"]) });
 export const MfaVerify = z.object({
@@ -81,6 +97,8 @@ export interface MfaStatus {
 	recoveryCodesLeft: number;
 	/** Your role requires two-factor sign-in. */
 	required: boolean;
+	/** You turned on "Require a passkey to sign in". */
+	passkeyRequired: boolean;
 	/** Email and text codes can be sent here (an admin set them up). */
 	emailAvailable: boolean;
 	smsAvailable: boolean;

@@ -68,7 +68,7 @@ export type ServerEvent =
 			body: string;
 			agentId: string | null;
 			conversationId: string | null;
-			/** Where tapping it goes, when that isn't the chat (e.g. /admin for a server problem). */
+			/** Where tapping it goes, when that isn't the chat (e.g. /settings/status for a server problem). */
 			url?: string;
 			/** A request waiting for your approval: push notifications can offer Approve / Deny. */
 			approval?: { toolCallId: string; alwaysAsk: boolean };

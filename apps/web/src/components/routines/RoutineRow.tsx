@@ -1,21 +1,11 @@
-import { AgentAvatar, api, cn, dateTime, timeAgo, useRoutineRuns } from "@sekai/client";
+import { AgentAvatar, api, dateTime, timeAgo, useAccess, useRoutineRuns } from "@sekai/client";
 import type { Agent, Routine } from "@sekai/shared";
-import { Badge, Button, Confirm, Switch } from "@sekai/ui";
+import { Button, Confirm, CopyField, Dialog, List, Row, Switch } from "@sekai/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-	Bell,
-	ChevronRight,
-	CircleAlert,
-	CircleCheck,
-	Clock,
-	FlaskConical,
-	Loader2,
-	Pencil,
-	Trash2,
-	Zap,
-} from "lucide-react";
+import { Bell, CircleAlert, CircleCheck, Clock, FlaskConical, Loader2, Pencil, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
-import { CopyAddress, hookUrl, RoutineDialog } from "./RoutineDialog.tsx";
+import { toast } from "sonner";
+import { hookUrl, RoutineDialog } from "./RoutineDialog.tsx";
 
 export function useScheduleText(routine: Routine): string {
 	const { data } = useQuery({
@@ -26,122 +16,217 @@ export function useScheduleText(routine: Routine): string {
 	return data?.description ?? "…";
 }
 
+/** Everything about one routine: what it does, when it runs, and how its last runs went. */
+function RoutineDetails({
+	routine,
+	onClose,
+	onEdit,
+	onTest,
+	onDelete,
+	testing,
+	mayRun,
+}: {
+	routine: Routine;
+	onClose: () => void;
+	onEdit: () => void;
+	onTest: () => void;
+	onDelete: () => void;
+	testing: boolean;
+	/** Your role includes routines (without it they don't run, so there's nothing to test or change). */
+	mayRun: boolean;
+}) {
+	const when = useScheduleText(routine);
+	const runs = useRoutineRuns(routine.id);
+	const webhook =
+		routine.schedule.type === "event" && routine.schedule.event.kind === "webhook" && routine.schedule.event.token;
+	return (
+		<Dialog
+			open
+			onOpenChange={(o) => !o && onClose()}
+			size="lg"
+			title={routine.name}
+			description={when}
+			footer={
+				<>
+					<Button variant="danger-ghost" className="sm:mr-auto" onClick={onDelete}>
+						<Trash2 /> Delete
+					</Button>
+					{mayRun && (
+						<>
+							<Button variant="secondary" loading={testing} onClick={onTest}>
+								<FlaskConical /> Test now
+							</Button>
+							<Button variant="primary" onClick={onEdit}>
+								<Pencil /> Edit
+							</Button>
+						</>
+					)}
+				</>
+			}
+		>
+			<div className="flex flex-col gap-4">
+				{!mayRun && (
+					<p className="text-small text-fg-muted">
+						Your role doesn't include routines, so it doesn't run. Ask an admin if you need it.
+					</p>
+				)}
+				<p className="text-body whitespace-pre-wrap text-fg-muted">{routine.instruction}</p>
+				{webhook && <CopyField label="webhook address" value={hookUrl(webhook)} />}
+				<p className="text-small text-fg-subtle">
+					{routine.nextRunAt && routine.enabled ? `Next run ${dateTime(routine.nextRunAt)}. ` : ""}
+					Ran {routine.runCount} {routine.runCount === 1 ? "time" : "times"}
+					{routine.lastRunAt && `, last ${timeAgo(routine.lastRunAt)}`}. Made by{" "}
+					{routine.createdBy === "agent" ? "the bot" : "you"}.
+				</p>
+				{runs.data && runs.data.length > 0 && (
+					<div className="flex flex-col gap-1.5">
+						<div className="text-caption font-medium text-fg-subtle">Recent runs</div>
+						<List label="Recent runs">
+							{runs.data.slice(0, 8).map((r) => (
+								<Row
+									key={r.id}
+									icon={
+										r.status === "running" ? (
+											<Loader2 className="animate-spin" />
+										) : r.status === "succeeded" ? (
+											<CircleCheck />
+										) : (
+											<CircleAlert />
+										)
+									}
+									iconTone={
+										r.status === "succeeded"
+											? "success"
+											: r.status === "running"
+												? "neutral"
+												: "danger"
+									}
+									title={<span className="font-normal">{dateTime(r.startedAt)}</span>}
+									subtitle={r.error ? <span className="text-danger-ink">{r.error}</span> : undefined}
+								/>
+							))}
+						</List>
+					</div>
+				)}
+			</div>
+		</Dialog>
+	);
+}
+
+/**
+ * One routine in a List (RoutineList, or your own): its name, when it runs and a switch; open it for the details
+ * (test, edit, delete), which its menu also has (on hover, or touch and hold). `agent`: show whose it is (the list of
+ * every bot's).
+ */
 export function RoutineRow({ routine, agent }: { routine: Routine; agent?: Agent }) {
 	const [open, setOpen] = useState(false);
 	const [editing, setEditing] = useState(false);
 	const [confirm, setConfirm] = useState(false);
 	const when = useScheduleText(routine);
-	const runs = useRoutineRuns(open ? routine.id : null);
+	const { can } = useAccess();
+	// Without routines in your role they don't run: only deleting is left.
+	const mayRun = can("routines");
 	const toggle = useMutation({ mutationFn: (enabled: boolean) => api.routines.update(routine.id, { enabled }) });
-	const test = useMutation({ mutationFn: () => api.routines.test(routine.id) });
+	const test = useMutation({
+		mutationFn: () => api.routines.test(routine.id),
+		onSuccess: () => toast("Test started. The result shows up in the bot's chat. A test does real work."),
+	});
 	const del = useMutation({ mutationFn: () => api.routines.delete(routine.id) });
 	const finished = routine.schedule.type === "once" && !routine.enabled && routine.runCount > 0;
 
 	return (
-		<div className="rounded-2xl border border-border">
-			<div className="flex items-center gap-3 px-3.5 py-3">
-				<button
-					type="button"
-					onClick={() => setOpen((o) => !o)}
-					className="flex min-w-0 flex-1 items-center gap-3 text-left"
-				>
-					{agent ? (
-						<AgentAvatar avatar={agent.avatar} size={28} />
+		<>
+			<Row
+				leading={agent ? <AgentAvatar avatar={agent.avatar} size={28} /> : undefined}
+				icon={
+					agent ? undefined : routine.action === "notify" ? (
+						<Bell />
+					) : routine.schedule.type === "event" ? (
+						<Zap />
 					) : (
-						<span className="flex size-7 items-center justify-center rounded-lg bg-surface-2 text-fg-subtle">
-							{routine.action === "notify" ? (
-								<Bell className="size-3.5" />
-							) : routine.schedule.type === "event" ? (
-								<Zap className="size-3.5" />
-							) : (
-								<Clock className="size-3.5" />
-							)}
-						</span>
-					)}
-					<span className="min-w-0 flex-1">
-						<span className="flex items-center gap-2">
-							<span className="truncate text-sm font-medium">{routine.name}</span>
-							{routine.action === "notify" && <Badge>reminder</Badge>}
-							{routine.lastStatus === "failed" && (
-								<CircleAlert className="size-3.5 shrink-0 text-danger" />
-							)}
-						</span>
-						<span className="block truncate text-xs text-fg-subtle">
-							{finished
-								? `Done · ${routine.lastRunAt ? timeAgo(routine.lastRunAt) : ""}`
+						<Clock />
+					)
+				}
+				title={routine.name}
+				subtitle={
+					<>
+						{routine.lastStatus === "failed" && (
+							<span className="text-danger-ink">Failed last time · </span>
+						)}
+						{routine.action === "notify" && "Reminder · "}
+						{finished
+							? `Done${routine.lastRunAt ? ` · ${timeAgo(routine.lastRunAt)}` : ""}`
+							: !mayRun
+								? `Not running · ${when}`
 								: routine.enabled
 									? `${when}${routine.nextRunAt ? ` · next ${timeAgo(routine.nextRunAt)}` : ""}`
-									: `Paused · ${when}`}
-						</span>
-					</span>
-					<ChevronRight
-						className={cn("size-4 shrink-0 text-fg-subtle transition-transform", open && "rotate-90")}
-					/>
-				</button>
-				{!finished && (
-					<Switch checked={routine.enabled} onCheckedChange={(v) => toggle.mutate(v)} label="Enabled" />
-				)}
-			</div>
+									: when}
+					</>
+				}
+				trailing={
+					finished || !mayRun ? undefined : (
+						<Switch
+							checked={routine.enabled}
+							onCheckedChange={(v) => toggle.mutate(v)}
+							label={`${routine.name} is on`}
+						/>
+					)
+				}
+				onClick={() => setOpen(true)}
+				menu={[
+					mayRun && { label: "Edit", icon: <Pencil />, onSelect: () => setEditing(true) },
+					mayRun && { label: "Test now", icon: <FlaskConical />, onSelect: () => test.mutate() },
+					{ label: "Delete", icon: <Trash2 />, danger: true, onSelect: () => setConfirm(true) },
+				]}
+				menuLabel={`${routine.name} actions`}
+				menuButton="hover"
+			/>
 			{open && (
-				<div className="flex flex-col gap-3 border-t border-border px-3.5 py-3">
-					<p className="text-[13px] leading-5 whitespace-pre-wrap text-fg-muted">{routine.instruction}</p>
-					{routine.schedule.type === "event" &&
-						routine.schedule.event.kind === "webhook" &&
-						routine.schedule.event.token && <CopyAddress value={hookUrl(routine.schedule.event.token)} />}
-					<div className="text-xs text-fg-subtle">
-						{routine.nextRunAt && routine.enabled && <div>Next run: {dateTime(routine.nextRunAt)}</div>}
-						<div>
-							Ran {routine.runCount} {routine.runCount === 1 ? "time" : "times"}
-							{routine.lastRunAt && ` · last ${timeAgo(routine.lastRunAt)}`} · created by{" "}
-							{routine.createdBy === "agent" ? "the bot" : "you"}
-						</div>
-					</div>
-					{runs.data && runs.data.length > 0 && (
-						<div className="flex flex-col gap-1">
-							<div className="text-xs font-medium text-fg-subtle">Run history</div>
-							{runs.data.slice(0, 8).map((r) => (
-								<div key={r.id} className="flex items-center gap-2 text-xs">
-									{r.status === "running" ? (
-										<Loader2 className="size-3.5 animate-spin text-fg-subtle" />
-									) : r.status === "succeeded" ? (
-										<CircleCheck className="size-3.5 text-success" />
-									) : (
-										<CircleAlert className="size-3.5 text-danger" />
-									)}
-									<span className="text-fg-muted">{dateTime(r.startedAt)}</span>
-									{r.error && <span className="truncate text-danger">{r.error}</span>}
-								</div>
-							))}
-						</div>
-					)}
-					<div className="flex flex-wrap gap-1.5">
-						<Button variant="secondary" size="xs" onClick={() => test.mutate()} disabled={test.isPending}>
-							<FlaskConical /> Test now
-						</Button>
-						<Button variant="secondary" size="xs" onClick={() => setEditing(true)}>
-							<Pencil /> Edit
-						</Button>
-						<Button variant="danger-ghost" size="xs" onClick={() => setConfirm(true)}>
-							<Trash2 /> Delete
-						</Button>
-					</div>
-					{test.isSuccess && (
-						<p className="text-xs text-fg-subtle">
-							Test started. The result appears in the bot's chat. A test does real work.
-						</p>
-					)}
-				</div>
+				<RoutineDetails
+					routine={routine}
+					onClose={() => setOpen(false)}
+					onEdit={() => {
+						setOpen(false);
+						setEditing(true);
+					}}
+					onTest={() => test.mutate()}
+					onDelete={() => {
+						setOpen(false);
+						setConfirm(true);
+					}}
+					testing={test.isPending}
+					mayRun={mayRun}
+				/>
 			)}
-			<RoutineDialog open={editing} onOpenChange={setEditing} routine={routine} />
+			{mayRun && <RoutineDialog open={editing} onOpenChange={setEditing} routine={routine} />}
 			<Confirm
 				open={confirm}
 				onOpenChange={setConfirm}
 				title={`Delete “${routine.name}”?`}
-				description="Its future runs stop. This can't be undone."
+				description="It stops running, and its history goes with it."
 				confirmLabel="Delete"
 				danger
 				onConfirm={() => del.mutate()}
 			/>
-		</div>
+		</>
+	);
+}
+
+/** Routines as one group; `agents` (by id) show whose each one is, for a list across bots. */
+export function RoutineList({
+	routines,
+	agents,
+	label = "Routines",
+}: {
+	routines: Routine[];
+	agents?: Map<string, Agent>;
+	label?: string;
+}) {
+	return (
+		<List label={label}>
+			{routines.map((r) => (
+				<RoutineRow key={r.id} routine={r} agent={agents?.get(r.agentId)} />
+			))}
+		</List>
 	);
 }

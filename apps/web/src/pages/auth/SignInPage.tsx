@@ -8,15 +8,14 @@ import {
 	signInWithPasskey,
 	ssoBrand,
 } from "@sekai/client";
-import type { AuthStatus, MfaMethod, SignInResult } from "@sekai/shared";
-import { Button, Callout, Field, Input, PasswordInput, Spinner } from "@sekai/ui";
+import type { AuthStatus, MfaChallenge, SignInResult } from "@sekai/shared";
+import { Button, Callout, Field, Fold, Input, PasswordInput, Spinner } from "@sekai/ui";
 import { CircleAlert, Fingerprint, Globe, KeyRound, MailCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { AuthLayout, OrDivider } from "./AuthLayout.tsx";
-import { MfaStep } from "./MfaStep.tsx";
+import { MfaStep, mfaSubtitle } from "./MfaStep.tsx";
 
 export type SignedIn = Extract<SignInResult, { status: "signed_in" }>;
-type Challenge = { methods: MfaMethod[]; hints: { email?: string; sms?: string } };
 
 /** What single sign-on left in the address (an error, or "your second step is waiting"); then it's cleared. */
 function takeSsoParams(): { error: string | null; mfa: boolean } {
@@ -37,14 +36,14 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState<"password" | "passkey" | null>(null);
-	const [challenge, setChallenge] = useState<Challenge | null>(null);
+	const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
 	const [forgot, setForgot] = useState(false);
 	// In the phone app, passkeys and single sign-on happen in the system browser (they don't work in app views).
 	const passkeys = passkeysSupported(status.passkeysAvailable);
 
 	const handle = useCallback(
 		(result: SignInResult) => {
-			if (result.status === "mfa") setChallenge({ methods: result.methods, hints: result.hints });
+			if (result.status === "mfa") setChallenge(result);
 			else onSignedIn(result);
 		},
 		[onSignedIn],
@@ -106,10 +105,9 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 
 	if (challenge) {
 		return (
-			<AuthLayout title="One more step" subtitle="Your account has two-factor sign-in.">
+			<AuthLayout title="One more step" subtitle={mfaSubtitle(challenge)}>
 				<MfaStep
-					methods={challenge.methods}
-					hints={challenge.hints}
+					challenge={challenge}
 					onSignedIn={onSignedIn}
 					onBack={() => {
 						setChallenge(null);
@@ -127,15 +125,20 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 	return (
 		<AuthLayout
 			title="Welcome back"
-			subtitle="Sign in to Sekai to pick up where your bots left off."
+			subtitle="Sign in to pick up where your bots left off."
 			footer={
 				status.passwordReset ? undefined : (
 					<>
-						Forgot your password? Ask an admin to reset it. Admins can run{" "}
-						<code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-foreground">
-							bun run reset-password
-						</code>{" "}
-						on the server.
+						Forgot your password? Ask an admin to reset it.
+						<Fold title="Learn more" variant="link" className="mt-2 items-center">
+							<p className="mt-1 text-pretty">
+								An admin can run{" "}
+								<code className="rounded-sm bg-surface-2 px-1.5 py-0.5 font-mono text-caption text-fg">
+									bun run reset-password
+								</code>{" "}
+								on the server.
+							</p>
+						</Fold>
 					</>
 				)
 			}
@@ -163,7 +166,7 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 								onClick={() => void withPasskey()}
 								disabled={busy !== null}
 							>
-								{busy === "passkey" ? <Spinner className="text-primary-foreground" /> : <Fingerprint />}
+								{busy === "passkey" ? <Spinner /> : <Fingerprint />}
 								Sign in with a passkey
 							</Button>
 						)}
@@ -217,7 +220,7 @@ export function SignInPage({ status, onSignedIn }: { status: AuthStatus; onSigne
 						status.passwordReset ? (
 							<button
 								type="button"
-								className="text-xs font-medium text-brand-ink hover:underline coarse:py-1"
+								className="text-small font-medium text-brand-ink hover:underline coarse:py-1"
 								onClick={() => setForgot(true)}
 							>
 								Forgot it?
@@ -278,7 +281,7 @@ function ForgotPassword({ onBack }: { onBack: () => void }) {
 			{sent ? (
 				<div className="flex flex-col items-center gap-3 text-center">
 					<MailCheck className="size-8 text-brand-ink" />
-					<p className="text-sm text-fg-muted">
+					<p className="text-body text-fg-muted">
 						If there's an account with that email, a link is on its way. It works once, for an hour.
 					</p>
 					<Button variant="secondary" className="w-full" onClick={onBack}>
@@ -308,7 +311,7 @@ function ForgotPassword({ onBack }: { onBack: () => void }) {
 						</Callout>
 					)}
 					<Button type="submit" variant="primary" size="lg" disabled={!email.includes("@") || busy}>
-						{busy && <Spinner className="text-primary-foreground" />}
+						{busy && <Spinner />}
 						Send the link
 					</Button>
 					<Button variant="ghost" onClick={onBack}>

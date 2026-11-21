@@ -9,16 +9,19 @@ import {
 	formatTokens,
 	Markdown,
 	shortTime,
+	useAccess,
 	useReadAloud,
 } from "@sekai/client";
-import { type Agent, type AudioPart, channelTitle, type Message, messageText } from "@sekai/shared";
+import { type Agent, type AudioPart, channelTitle, type Message, messageText, type ToolPart } from "@sekai/shared";
 import {
+	Confirm,
 	DropdownContent,
-	DropdownItem,
+	DropdownEntries,
 	DropdownMenu,
-	DropdownSeparator,
 	DropdownTrigger,
+	Fold,
 	IconButton,
+	type MenuEntry,
 	Spinner,
 } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
@@ -34,6 +37,7 @@ import {
 	FlaskConical,
 	ListChecks,
 	MessageCircleQuestion,
+	MoreHorizontal,
 	Reply,
 	RotateCcw,
 	Square,
@@ -49,12 +53,27 @@ import { AdvisorBlock, NoticeLine, ReasoningBlock, ToolCard } from "./Parts.tsx"
 import { RetryButton, VersionSwitcher } from "./RetryControls.tsx";
 import { VoiceNote } from "./VoiceNote.tsx";
 
+function isQuietTool(part: Message["parts"][number] | undefined): part is ToolPart {
+	return part?.type === "tool" && part.status !== "awaiting_approval";
+}
+
+function imageSource(source?: string) {
+	try {
+		const url = new URL(source ?? "");
+		return url.protocol === "https:" || url.protocol === "http:" ? url : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function Attachments({ message, align }: { message: Message; align: "start" | "end" }) {
 	if (message.attachments.length === 0) return null;
 	const images = message.attachments.filter((a) => a.kind === "image");
 	const files = message.attachments.filter((a) => a.kind !== "image");
 	return (
-		<div className={cn("mb-1.5 flex flex-col gap-1.5", align === "end" ? "items-end" : "items-start")}>
+		<div
+			className={cn("mb-2 flex min-w-0 max-w-full flex-col gap-2", align === "end" ? "items-end" : "items-start")}
+		>
 			{images.length > 0 && (
 				<div className={cn("flex flex-wrap gap-1.5", align === "end" && "justify-end")}>
 					{images.map((a) => (
@@ -62,7 +81,7 @@ function Attachments({ message, align }: { message: Message; align: "start" | "e
 							<img
 								src={assetUrl(a.url)}
 								alt={a.name}
-								className="max-h-60 max-w-[min(70vw,280px)] rounded-2xl border border-border object-cover"
+								className="max-h-72 max-w-full rounded-lg border border-border object-contain"
 								loading="lazy"
 							/>
 						</a>
@@ -75,12 +94,12 @@ function Attachments({ message, align }: { message: Message; align: "start" | "e
 					href={assetUrl(a.url)}
 					target="_blank"
 					rel="noreferrer"
-					className="flex max-w-full items-center gap-2.5 rounded-2xl border border-border bg-surface px-3 py-2 text-sm hover:bg-surface-2"
+					className="flex max-w-full items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 text-body hover:bg-surface-2"
 				>
 					<FileText className="size-5 shrink-0 text-fg-subtle" />
 					<span className="min-w-0">
 						<span className="block truncate font-medium">{a.name}</span>
-						<span className="block text-xs text-fg-subtle">{formatBytes(a.size)}</span>
+						<span className="block text-small text-fg-subtle">{formatBytes(a.size)}</span>
 					</span>
 				</a>
 			))}
@@ -90,7 +109,7 @@ function Attachments({ message, align }: { message: Message; align: "start" | "e
 
 function TriggerBadge({ message, agents }: { message: Message; agents: Map<string, Agent> }) {
 	const t = message.meta.trigger;
-	const base = "inline-flex items-center gap-1 text-[11px] font-medium text-fg-subtle [&_svg]:size-3";
+	const base = "inline-flex items-center gap-1 text-caption font-medium text-fg-subtle [&_svg]:size-4";
 	if (message.meta.call?.kind === "speech")
 		return (
 			<span className={base}>
@@ -150,6 +169,7 @@ function CopyButton({ text }: { text: string }) {
 		<IconButton
 			label={done ? "Copied" : "Copy"}
 			size="icon-sm"
+			className="coarse:size-11"
 			onClick={async () => {
 				await copyText(text);
 				setDone(true);
@@ -161,15 +181,15 @@ function CopyButton({ text }: { text: string }) {
 	);
 }
 
-/** Plays the reply in its bot's voice (Admin → Voice, or the bot's own). */
+/** Plays the reply in its bot's voice (Settings → Voice, or the bot's own). */
 function ReadAloudButton({ messageId }: { messageId: string }) {
-	const { state, toggle } = useReadAloud(messageId, (message) => toast.error(`Couldn't read it out: ${message}`));
+	const { state, toggle } = useReadAloud(messageId, () => toast.error("Couldn't read this aloud. Try again."));
 	return (
 		<IconButton
 			label={state === "idle" ? "Read aloud" : "Stop reading"}
 			size="icon-sm"
 			onClick={toggle}
-			className={cn(state !== "idle" && "text-brand-ink")}
+			className={cn("coarse:size-11", state !== "idle" && "text-brand-ink")}
 		>
 			{state === "loading" ? (
 				<Spinner />
@@ -190,7 +210,6 @@ export const MessageItem = memo(function MessageItem({
 	isLastAgentMessage,
 	onReply,
 	replyTarget,
-	tint,
 }: {
 	message: Message;
 	agents: Map<string, Agent>;
@@ -199,52 +218,61 @@ export const MessageItem = memo(function MessageItem({
 	isLastAgentMessage: boolean;
 	onReply?: (m: Message) => void;
 	replyTarget?: Message | null;
-	/** Your messages take the bot's color. */
-	tint?: string;
 }) {
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [confirm, setConfirm] = useState<"delete" | "retry" | null>(null);
+	const canVoice = useAccess().can("voice");
 	const longPress = useLongPress(() => setMenuOpen(true));
 	const text = messageText(message);
 	const del = useMutation({ mutationFn: () => api.messages.delete(message.id) });
 	const retry = useMutation({ mutationFn: (wipe: boolean) => api.messages.retry(message.id, { wipe }) });
 	const streaming = message.status === "streaming";
-
+	const entries: MenuEntry[] = [
+		Boolean(text) && { label: "Copy text", icon: <Copy />, onSelect: () => void copyText(text) },
+		isGroup &&
+			onReply &&
+			message.sender === "agent" && { label: "Reply", icon: <Reply />, onSelect: () => onReply(message) },
+		message.sender === "agent" &&
+			!streaming && { label: "Try again", icon: <RotateCcw />, onSelect: () => retry.mutate(false) },
+		message.sender === "agent" &&
+			!streaming && {
+				label: "Erase and try again",
+				icon: <Eraser />,
+				danger: true,
+				onSelect: () => setConfirm("retry"),
+			},
+		{ label: "Delete message", icon: <Trash2 />, danger: true, onSelect: () => setConfirm("delete") },
+	];
 	const menu = (
-		<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-			<DropdownTrigger asChild>
-				<span className="sr-only" />
-			</DropdownTrigger>
-			<DropdownContent align={message.sender === "user" ? "end" : "start"}>
-				{text && (
-					<DropdownItem icon={<Copy />} onSelect={() => void copyText(text)}>
-						Copy text
-					</DropdownItem>
-				)}
-				{isGroup && onReply && message.sender === "agent" && (
-					<DropdownItem icon={<Reply />} onSelect={() => onReply(message)}>
-						Reply
-					</DropdownItem>
-				)}
-				{message.sender === "agent" && !streaming && (
-					<>
-						<DropdownItem icon={<RotateCcw />} onSelect={() => retry.mutate(false)}>
-							Try again
-						</DropdownItem>
-						<DropdownItem icon={<Eraser />} onSelect={() => retry.mutate(true)}>
-							Erase and try again
-						</DropdownItem>
-					</>
-				)}
-				<DropdownSeparator />
-				<DropdownItem danger icon={<Trash2 />} onSelect={() => del.mutate()}>
-					Delete
-				</DropdownItem>
-			</DropdownContent>
-		</DropdownMenu>
+		<>
+			<DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+				<DropdownTrigger asChild>
+					<IconButton label="Message actions" size="icon-sm" className="coarse:size-11">
+						<MoreHorizontal />
+					</IconButton>
+				</DropdownTrigger>
+				<DropdownContent title="Message actions" align={message.sender === "user" ? "end" : "start"}>
+					<DropdownEntries entries={entries} />
+				</DropdownContent>
+			</DropdownMenu>
+			<Confirm
+				open={Boolean(confirm)}
+				onOpenChange={(open) => !open && setConfirm(null)}
+				title={confirm === "retry" ? "Erase this answer?" : "Delete this message?"}
+				description={
+					confirm === "retry"
+						? "This answer will be removed before the bot tries again."
+						: "This message will be removed from the chat and cannot be restored."
+				}
+				confirmLabel={confirm === "retry" ? "Erase and retry" : "Delete"}
+				danger
+				onConfirm={() => (confirm === "retry" ? retry.mutate(true) : del.mutate())}
+			/>
+		</>
 	);
 
 	const replyQuote = replyTarget ? (
-		<div className="mb-1 max-w-full truncate border-l-2 border-border-strong pl-2 text-xs text-fg-subtle">
+		<div className="mb-1 max-w-full truncate border-l-2 border-border-strong pl-2 text-small text-fg-subtle">
 			{replyTarget.agentId ? `${agents.get(replyTarget.agentId)?.name ?? "Bot"}: ` : ""}
 			{messageText(replyTarget).slice(0, 140)}
 		</div>
@@ -256,46 +284,35 @@ export const MessageItem = memo(function MessageItem({
 			? `via ${channelTitle(message.meta.channel.type)}${message.meta.channel.isGroup ? ` · ${message.meta.channel.chatName ?? "group"}` : ""}`
 			: null;
 		return (
-			<div className="group flex flex-col items-end px-4 pt-6 pb-3 md:px-6" {...longPress}>
+			<div className="group flex flex-col items-end px-4 pt-4 pb-1 md:px-6" {...longPress}>
 				{replyQuote}
 				<Attachments message={message} align="end" />
-				{voice && <VoiceNote part={voice} tint={tint} className="mb-1 bg-surface-2" />}
+				{voice && <VoiceNote part={voice} className="mb-1 bg-surface-2" />}
 				{text && voice ? (
-					<p className="max-w-[min(85%,520px)] px-2 text-right text-[13px] leading-5 text-fg-subtle">
-						{text}
-					</p>
+					<p className="max-w-[min(85%,520px)] px-2 text-right text-small text-fg-subtle">{text}</p>
 				) : null}
 				{text && !voice && (
-					<div className="flex max-w-full items-center justify-end gap-1">
-						<div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 coarse:hidden">
-							<span className="px-1 text-[11px] whitespace-nowrap text-fg-subtle">
-								{shortTime(message.createdAt)}
-								{via ? ` · ${via}` : ""}
-								{message.meta.call
-									? message.meta.call.kind === "task"
-										? " · asked on a call"
-										: " · said on a call"
-									: ""}
-							</span>
-							<CopyButton text={text} />
-							<IconButton label="Delete" size="icon-sm" onClick={() => del.mutate()}>
-								<Trash2 />
-							</IconButton>
-						</div>
+					<div className="flex max-w-[min(90%,40rem)] items-center justify-end gap-2">
 						{message.meta.call && (
 							<AudioLines className="size-4 shrink-0 text-fg-subtle" aria-label="On a call" />
 						)}
-						<div
-							className="max-w-[min(85%,640px)] rounded-3xl bg-surface-2 px-4 py-2.5 text-[15px] leading-7 whitespace-pre-wrap break-words"
-							style={
-								tint ? { background: `color-mix(in oklab, ${tint} 26%, var(--surface-2))` } : undefined
-							}
-						>
+						<div className="min-w-0 rounded-xl bg-surface-2 px-4 py-2.5 text-message whitespace-pre-wrap [overflow-wrap:anywhere]">
 							{text}
 						</div>
 					</div>
 				)}
-				{menu}
+				<div className="flex items-center gap-1 text-fg-subtle fine:opacity-0 fine:group-hover:opacity-100 fine:focus-within:opacity-100">
+					<span className="text-caption">
+						{shortTime(message.createdAt)}
+						{via ? ` · ${via}` : ""}
+						{message.meta.call
+							? message.meta.call.kind === "task"
+								? " · asked on a call"
+								: " · said on a call"
+							: ""}
+					</span>
+					{menu}
+				</div>
 			</div>
 		);
 	}
@@ -315,7 +332,7 @@ export const MessageItem = memo(function MessageItem({
 
 	return (
 		<div
-			className={cn("group relative flex gap-3 px-4 md:px-6", showHeader ? "pt-4 pb-1" : "py-0.5")}
+			className={cn("group relative flex gap-2 px-4 md:gap-3 md:px-6", showHeader ? "pt-3 pb-1" : "py-0.5")}
 			{...longPress}
 		>
 			<div className="w-8 shrink-0 pt-0.5">
@@ -327,29 +344,13 @@ export const MessageItem = memo(function MessageItem({
 						<AgentAvatar avatar={agent.avatar} size={32} />
 					))}
 			</div>
-			{showActions && !isLastAgentMessage && (
-				<div className="absolute -top-3 right-4 z-10 flex items-center gap-0.5 rounded-xl border border-border bg-surface p-0.5 opacity-0 shadow-soft transition-opacity group-hover:opacity-100 focus-within:opacity-100 md:right-6 coarse:hidden">
-					<VersionSwitcher message={message} />
-					{text && <CopyButton text={text} />}
-					<RetryButton message={message} />
-					{isGroup && onReply && (
-						<IconButton label="Reply" size="icon-sm" onClick={() => onReply(message)}>
-							<Reply />
-						</IconButton>
-					)}
-					<IconButton label="Delete" size="icon-sm" onClick={() => del.mutate()}>
-						<Trash2 />
-					</IconButton>
-					<span className="truncate px-1.5 text-[11px] text-fg-subtle">{meta}</span>
-				</div>
-			)}
 			<div className="min-w-0 flex-1">
 				{(showHeader && (isGroup || message.meta.trigger === "handoff")) ||
 				message.meta.trigger ||
 				message.meta.call?.kind === "speech" ? (
 					<div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
 						{showHeader && (isGroup || message.meta.trigger === "handoff") && (
-							<span className="text-sm font-semibold">{name}</span>
+							<span className="text-body font-semibold">{name}</span>
 						)}
 						<TriggerBadge message={message} agents={agents} />
 					</div>
@@ -363,16 +364,58 @@ export const MessageItem = memo(function MessageItem({
 						<span className="typing-dot size-1.5 rounded-full bg-fg-subtle" />
 					</div>
 				)}
-				{message.parts.map((part, i) => {
+				{message.parts.map((part, i, parts) => {
 					// Parts are append-only, so their index is a stable identity.
 					switch (part.type) {
 						case "text":
-							// biome-ignore lint/suspicious/noArrayIndexKey: parts are append-only
-							return part.text ? <Markdown key={i} text={part.text} /> : null;
+							return part.text ? (
+								<Markdown
+									// biome-ignore lint/suspicious/noArrayIndexKey: parts are append-only
+									key={i}
+									text={part.text}
+									className="[overflow-wrap:anywhere] [&_pre]:[overflow-wrap:normal] [&_table]:my-0 [&_table]:min-w-min [&_table_:is(th,td)]:max-md:px-2"
+								/>
+							) : null;
 						case "reasoning":
 							// biome-ignore lint/suspicious/noArrayIndexKey: parts are append-only
 							return part.text ? <ReasoningBlock key={i} part={part} streaming={streaming} /> : null;
-						case "tool":
+						case "tool": {
+							if (isQuietTool(part)) {
+								if (isQuietTool(parts[i - 1])) return null;
+								const tools = [part];
+								for (let index = i + 1; isQuietTool(parts[index]); index++) {
+									const next = parts[index];
+									if (isQuietTool(next)) tools.push(next);
+								}
+								if (tools.length > 1) {
+									const live = tools.some(
+										(tool) => tool.status === "pending" || tool.status === "running",
+									);
+									const blocked = tools.filter(
+										(tool) => tool.status === "denied" || tool.status === "error",
+									).length;
+									return (
+										<Fold
+											key={part.id}
+											title={
+												live
+													? `Working · ${tools.length} actions`
+													: `${tools.length} actions${blocked ? ` · ${blocked} didn't finish` : ""}`
+											}
+											variant="link"
+										>
+											{tools.map((tool) => (
+												<ToolCard
+													key={tool.id}
+													part={tool}
+													conversationId={message.conversationId}
+													agentId={message.agentId}
+												/>
+											))}
+										</Fold>
+									);
+								}
+							}
 							return (
 								<ToolCard
 									key={part.id}
@@ -381,6 +424,7 @@ export const MessageItem = memo(function MessageItem({
 									agentId={message.agentId}
 								/>
 							);
+						}
 						case "advisor":
 							// biome-ignore lint/suspicious/noArrayIndexKey: parts are append-only
 							return <AdvisorBlock key={i} part={part} />;
@@ -390,58 +434,51 @@ export const MessageItem = memo(function MessageItem({
 						case "audio":
 							// biome-ignore lint/suspicious/noArrayIndexKey: parts are append-only
 							return <VoiceNote key={i} part={part} className="my-1.5 bg-surface-2" />;
-						case "image":
+						case "image": {
+							const source = imageSource(part.source);
 							return (
 								// biome-ignore lint/suspicious/noArrayIndexKey: parts are append-only
 								<figure key={i} className="my-2">
 									<ChatImage src={part.url} alt={part.alt || part.name || "Image"} className="my-0" />
-									{(part.alt || part.source) && (
-										<figcaption className="mt-1.5 max-w-xl truncate text-xs text-fg-subtle">
+									{(part.alt || source) && (
+										<figcaption className="mt-1.5 max-w-xl text-small text-fg-subtle [overflow-wrap:anywhere]">
 											{part.alt}
-											{part.alt && part.source ? " · " : ""}
-											{part.source && (
+											{part.alt && source ? " · " : ""}
+											{source && (
 												<a
-													href={part.source}
+													href={source.href}
 													target="_blank"
 													rel="noreferrer noopener"
 													className="hover:text-fg hover:underline"
 												>
-													{new URL(part.source).hostname}
+													{source.hostname}
 												</a>
 											)}
 										</figcaption>
 									)}
 								</figure>
 							);
+						}
 					}
 					return null;
 				})}
-				{message.status === "cancelled" && <div className="mt-1 text-[13px] text-fg-subtle">Stopped</div>}
-				{showActions && isLastAgentMessage && (
-					<div className="mt-1 -ml-1.5 flex h-7 items-center gap-0.5 text-fg-subtle">
-						<VersionSwitcher message={message} />
-						{text && <CopyButton text={text} />}
-						{text && message.status !== "streaming" && <ReadAloudButton messageId={message.id} />}
-						<RetryButton message={message} />
-						{isGroup && onReply && (
-							<IconButton label="Reply" size="icon-sm" onClick={() => onReply(message)}>
-								<Reply />
-							</IconButton>
+				{message.status === "cancelled" && <div className="mt-1 text-small text-fg-subtle">Stopped</div>}
+				{showActions && (
+					<div
+						className={cn(
+							"mt-1 -ml-1.5 flex min-w-0 flex-wrap items-center gap-0.5 text-fg-subtle",
+							!isLastAgentMessage &&
+								"fine:opacity-0 fine:group-hover:opacity-100 fine:focus-within:opacity-100",
 						)}
-						<IconButton
-							label="Delete"
-							size="icon-sm"
-							onClick={() => del.mutate()}
-							className="opacity-0 transition-opacity group-hover:opacity-100 coarse:hidden"
-						>
-							<Trash2 />
-						</IconButton>
-						<span className="ml-1.5 truncate text-[11px] opacity-0 transition-opacity group-hover:opacity-100 coarse:hidden">
-							{meta}
-						</span>
+					>
+						{text && <CopyButton text={text} />}
+						{text && canVoice && message.sender === "agent" && <ReadAloudButton messageId={message.id} />}
+						{message.sender === "agent" && <RetryButton message={message} />}
+						{menu}
+						<VersionSwitcher message={message} />
+						<span className="ml-1.5 min-w-0 truncate text-caption max-md:hidden">{meta}</span>
 					</div>
 				)}
-				{menu}
 			</div>
 		</div>
 	);
@@ -464,7 +501,7 @@ export function TypingRow({ agent, label }: { agent: Agent; label: string }) {
 	return (
 		<div className="flex items-center gap-3 px-4 py-2 md:px-6">
 			<AgentAvatar avatar={agent.avatar} size={32} state="thinking" />
-			<div className="flex items-center gap-2 text-[13px] text-fg-subtle">
+			<div className="flex items-center gap-2 text-small text-fg-subtle">
 				<span className="flex items-center gap-1">
 					<span className="typing-dot size-1.5 rounded-full bg-fg-subtle" />
 					<span className="typing-dot size-1.5 rounded-full bg-fg-subtle" />

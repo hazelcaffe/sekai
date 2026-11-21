@@ -24,6 +24,7 @@ import { conversationRoutes, messageRoutes } from "./routes/conversations.ts";
 import { desktopRoutes } from "./routes/desktop.ts";
 import { digestRoutes } from "./routes/digest.ts";
 import { documentRoutes } from "./routes/documents.ts";
+import { downloadRoutes } from "./routes/downloads.ts";
 import { extensionRoutes } from "./routes/extension.ts";
 import { hookRoutes } from "./routes/hooks.ts";
 import { hostRoutes } from "./routes/hosts.ts";
@@ -190,6 +191,7 @@ export function createApp(): Hono {
 		.route("/hosts", hostRoutes)
 		.route("/tailscale", tailscaleRoutes)
 		.route("/desktop", desktopRoutes)
+		.route("/apps", downloadRoutes)
 		.route("/push", pushRoutes)
 		.route("/hooks", hookRoutes)
 		.route("/backups", backupRoutes)
@@ -224,19 +226,19 @@ export function createApp(): Hono {
 	return app;
 }
 
-/** Serves the built web app (and the admin app under /admin) with SPA fallbacks, when they've been built. */
+/**
+ * Serves the built web app with an SPA fallback, once it's been built. Old /admin/… addresses get the app's page
+ * too: its router sends them to their Settings section.
+ */
 async function serveWeb(path: string): Promise<Response> {
-	const admin = path === "/admin" || path.startsWith("/admin/");
-	const root = admin ? config.adminDir : config.webDir;
+	const root = config.webDir;
 	if (!existsSync(join(root, "index.html"))) {
-		const app = admin ? "admin" : "web";
 		return new Response(
-			`Sekai API is running. Build the ${app} app (bun run build:${app}) or use the dev server (bun run dev).`,
+			"Sekai API is running. Build the web app (bun run build:web) or use the dev server (bun run dev).",
 			{ status: 404, headers: { "content-type": "text/plain" } },
 		);
 	}
-	const rel = admin ? path.slice("/admin".length) || "/" : path;
-	const safe = normalize(decodeURIComponent(rel)).replace(/^(\.\.[/\\])+/, "");
+	const safe = normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, "");
 	const file = Bun.file(join(root, safe));
 	if (safe !== "/" && !safe.endsWith(".html") && (await file.exists())) {
 		const immutable = safe.startsWith("/assets/");

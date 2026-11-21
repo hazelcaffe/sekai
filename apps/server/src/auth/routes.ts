@@ -6,6 +6,7 @@ import {
 	LoginInput,
 	MfaSend,
 	MfaVerify,
+	PasskeyRequirement,
 	PasswordChange,
 	Reauth,
 	SetupInput,
@@ -43,9 +44,11 @@ import {
 	mfaStatus,
 	newRecoveryCodes,
 	owesMfa,
+	owesPasskey,
 	removeFactor,
 	sendChallengeCode,
 	sendReauthCode,
+	setPasskeyRequired,
 	startChallenge,
 	startCodeFactor,
 	startTotp,
@@ -56,11 +59,13 @@ import {
 	deletePasskey,
 	finishLogin,
 	finishRegistration,
+	finishStep,
 	hasPasskeys,
 	listPasskeys,
 	loginOptions,
 	registrationOptions,
 	renamePasskey,
+	stepOptions,
 } from "./passkeys.ts";
 import {
 	clearLegacySessionCookie,
@@ -205,29 +210,51 @@ function mfaCookie(c: Context, token: string, maxAge: number): string {
 	return parts.join("; ");
 }
 
+type SignInMethod = "password" | "passkey" | "setup" | "sso" | "invite";
 /**
- * The end of every way in: a turned-off account stops here; one with two-factor sign-in gets its second step;
- * everyone else gets a session (owing a step first when they have a temporary password or must set up 2FA).
+ * The second step a sign-in already did. verified: a passkey that checked your face, fingerprint or PIN signed you
+ * in (both steps at once); passkey: a passkey as the second step; code: an authenticator app, email or text code;
+ * recovery: a recovery code.
+ */
+type StepDone = "verified" | "passkey" | "code" | "recovery";
+
+/**
+ * The end of every way in: a turned-off account stops here; one with two-factor sign-in, or that requires a passkey
+ * and didn't use one, gets its second step; everyone else gets a session (owing a step first when they have a
+ * temporary password or must set up 2FA).
  */
 async function completeSignIn(
 	c: Context,
 	user: UserRow,
-	method: "password" | "passkey" | "setup" | "sso" | "invite",
-	opts: { secondFactorDone?: boolean } = {},
+	method: SignInMethod,
+	opts: { done?: StepDone } = {},
 ): Promise<SignInResult> {
 	if (user.disabledAt) throw new HttpError(403, "This account is turned off. Ask an admin.");
-	if (!opts.secondFactorDone && (await hasMfa(user.id))) {
+	const passkeyOwed = owesPasskey(user, method);
+	// Only a passkey (or a recovery code) answers for a required passkey, whatever route got here.
+	if (passkeyOwed && opts.done === "code") throw passkeyNeeded();
+	if (!opts.done && (passkeyOwed || (await hasMfa(user.id)))) {
 		const token = await startChallenge(user.id, { method });
 		c.header("set-cookie", mfaCookie(c, token, 600), { append: true });
-		return { status: "mfa", ...(await challengeFor(user.id)) };
+		return { status: "mfa", ...(await challengeFor(user.id, { method, origin: requestOrigin(c.req.raw) })) };
 	}
 	const restriction = user.mustChangePassword ? "password" : (await owesMfa(user.id)) ? "mfa" : null;
 	const s = await createSession(user.id, method, meta(c), restriction);
 	c.header("set-cookie", sessionCookie(c.req.raw, s.secret, s.maxAgeSeconds), { append: true });
 	c.header("set-cookie", mfaCookie(c, "", 0), { append: true });
 	await touchLogin(user.id);
-	log.info(`signed in: ${user.username} (${method}${opts.secondFactorDone ? " + 2FA" : ""}) from ${ipOf(c)}`);
+	log.info(`signed in: ${user.username} (${method}${opts.done ? ` + ${opts.done}` : ""}) from ${ipOf(c)}`);
 	return { status: "signed_in", user: toUser(user), restriction };
+}
+
+function passkeyNeeded(): HttpError {
+	return new HttpError(400, "Your account needs your passkey to sign in. Use it, or a recovery code.");
+}
+
+/** How the waiting sign-in started (kept on its ticket). */
+function methodOf(ticket: { data: unknown }): SignInMethod {
+	const m = (ticket.data as { method?: string } | null)?.method;
+	return m === "passkey" || m === "setup" || m === "sso" || m === "invite" ? m : "password";
 }
 
 /** Passkey ceremonies are bound to the page's origin, which must be this server. */
@@ -268,6 +295,10 @@ const LoginVerify = z.object({
 	response: z.custom<AuthenticationResponseJSON>((v) => typeof v === "object" && v !== null),
 	/** Proving it's you again (signed in already), not signing in. */
 	reauth: z.boolean().optional(),
+});
+const StepVerify = z.object({
+	challengeId: z.string(),
+	response: z.custom<AuthenticationResponseJSON>((v) => typeof v === "object" && v !== null),
 });
 
 function requireSameOrigin(c: Context, what: string): void {
@@ -365,19 +396,21 @@ const publicRoutes = new Hono()
 			const user = await getUserRow(userId);
 			if (!user) throw new HttpError(401, "Account not found");
 			// A passkey that checked your face, fingerprint or PIN is both steps at once.
-			return c.json(await completeSignIn(c, user, "passkey", { secondFactorDone: userVerified }));
+			return c.json(await completeSignIn(c, user, "passkey", userVerified ? { done: "verified" } : {}));
 		} catch (err) {
 			recordFailure(ip);
 			throw err;
 		}
 	})
 
-	// The second step: a code from an authenticator app, email or text, or a recovery code.
+	// The second step: a passkey, a code from an authenticator app, email or text, or a recovery code.
 	.get("/mfa/challenge", async (c) => {
 		// After single sign-on, the page learns what the waiting sign-in can use.
 		const ticket = await findChallenge(readCookie(c.req.raw, MFA_COOKIE));
 		if (!ticket?.userId) throw new HttpError(401, "That sign-in expired. Start again.");
-		return c.json(await challengeFor(ticket.userId));
+		return c.json(
+			await challengeFor(ticket.userId, { method: methodOf(ticket), origin: requestOrigin(c.req.raw) }),
+		);
 	})
 	.post("/mfa/send", async (c) => {
 		requireSameOrigin(c, "Sign in");
@@ -393,6 +426,10 @@ const publicRoutes = new Hono()
 		const ticket = await findChallenge(token);
 		if (!ticket?.userId) throw new HttpError(401, "That sign-in expired. Start again.");
 		checkRate(ip, ticket.userId);
+		const waiting = await getUserRow(ticket.userId);
+		if (!waiting) throw new HttpError(401, "That sign-in expired. Start again.");
+		// A required passkey: authenticator, email and text codes don't count (and aren't even checked).
+		if (input.method !== "recovery" && owesPasskey(waiting, methodOf(ticket))) throw passkeyNeeded();
 		if (!(await verifyFactor(ticket.userId, input.method, input.code, ticket))) {
 			recordFailure(ip, ticket.userId);
 			const left = await failTicket(ticket);
@@ -409,9 +446,43 @@ const publicRoutes = new Hono()
 		}
 		const done = await takeChallenge(token);
 		const user = done?.userId ? await getUserRow(done.userId) : null;
-		if (!user) throw new HttpError(401, "That sign-in expired. Start again.");
-		const method = ((done?.data as { method?: string })?.method ?? "password") as "password" | "passkey" | "sso";
-		return c.json(await completeSignIn(c, user, method, { secondFactorDone: true }));
+		if (!done || !user) throw new HttpError(401, "That sign-in expired. Start again.");
+		return c.json(
+			await completeSignIn(c, user, methodOf(done), { done: input.method === "recovery" ? "recovery" : "code" }),
+		);
+	})
+	// The second step with a passkey: only the waiting account's passkeys for this address.
+	.post("/mfa/passkey/options", async (c) => {
+		const origin = pageOrigin(c);
+		const ticket = await findChallenge(readCookie(c.req.raw, MFA_COOKIE));
+		if (!ticket?.userId) throw new HttpError(401, "That sign-in expired. Start again.");
+		if (methodOf(ticket) === "passkey") throw new HttpError(400, "Use a code for this step.");
+		return c.json(await stepOptions(ticket.userId, ticket.id, origin));
+	})
+	.post("/mfa/passkey/verify", async (c) => {
+		requireSameOrigin(c, "Sign in");
+		const ip = ipOf(c);
+		const input = await body(c, StepVerify);
+		const token = readCookie(c.req.raw, MFA_COOKIE);
+		const ticket = await findChallenge(token);
+		if (!ticket?.userId) throw new HttpError(401, "That sign-in expired. Start again.");
+		checkRate(ip, ticket.userId);
+		if (methodOf(ticket) === "passkey") throw new HttpError(400, "Use a code for this step.");
+		try {
+			await finishStep(ticket.userId, ticket.id, input.challengeId, input.response);
+		} catch (err) {
+			// Same limits as codes: five tries for the waiting sign-in, and the per-address and per-account ones.
+			recordFailure(ip, ticket.userId);
+			if ((await failTicket(ticket)) === "used_up") {
+				c.header("set-cookie", mfaCookie(c, "", 0), { append: true });
+				throw new HttpError(401, "Too many tries. Sign in again.");
+			}
+			throw err;
+		}
+		const done = await takeChallenge(token);
+		const user = done?.userId ? await getUserRow(done.userId) : null;
+		if (!done || !user) throw new HttpError(401, "That sign-in expired. Start again.");
+		return c.json(await completeSignIn(c, user, methodOf(done), { done: "passkey" }));
 	})
 
 	// Single sign-on: off to the provider and back.
@@ -664,6 +735,16 @@ const accountRoutes = new Hono()
 		await deletePasskey(await userOf(c), c.req.param("id"));
 		return c.json(ok);
 	})
+	// "Require a passkey to sign in": from Sekai's own page, after confirming it's you, either way.
+	.put("/passkeys/required", async (c) => {
+		const p = c.get("principal");
+		if (p.kind !== "session") throw new HttpError(403, "Change this from Sekai's own page, signed in.");
+		requireRecentAuth(c);
+		const input = await body(c, PasskeyRequirement);
+		const out = await setPasskeyRequired(p.userId, input.required);
+		log.info(`passkey ${input.required ? "required" : "no longer required"} to sign in: ${p.userId}`);
+		return c.json(out);
+	})
 
 	// Two-factor sign-in
 	.get("/mfa", async (c) => c.json(await mfaStatus(await userOf(c))))
@@ -697,7 +778,7 @@ const accountRoutes = new Hono()
 		if (status.required && left <= 1 && (await listPasskeys(userId)).length === 0) {
 			throw new HttpError(
 				400,
-				"Your role requires two-factor sign-in: set up another method before removing this one.",
+				"Your role requires two-step sign-in: set up another way before removing this one.",
 			);
 		}
 		await removeFactor(userId, k);
@@ -706,7 +787,10 @@ const accountRoutes = new Hono()
 	.post("/mfa/recovery-codes", async (c) => {
 		requireRecentAuth(c);
 		const userId = await userOf(c);
-		if (!(await hasMfa(userId))) throw new HttpError(400, "Set up two-factor sign-in first");
+		const user = await getUserRow(userId);
+		if (!user?.requirePasskey && !(await hasMfa(userId))) {
+			throw new HttpError(400, "Set up two-step sign-in first");
+		}
 		return c.json({ codes: await newRecoveryCodes(userId) });
 	})
 

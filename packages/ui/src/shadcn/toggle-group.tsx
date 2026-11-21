@@ -23,7 +23,8 @@ function ToggleGroup({
 			data-size={size}
 			className={cn(
 				"group/toggle-group flex w-fit flex-row flex-wrap items-center gap-1",
-				variant === "segmented" && "rounded-xl bg-muted p-1",
+				variant === "segmented" &&
+					"rounded-lg bg-surface-2 p-1 android:gap-0 android:overflow-hidden android:rounded-full android:border android:border-border-strong android:bg-transparent android:p-0",
 				className,
 			)}
 			{...props}
@@ -48,7 +49,11 @@ function ToggleGroupItem({
 			data-slot="toggle-group-item"
 			data-variant={v}
 			data-size={s}
-			className={cn("shrink-0 focus-visible:z-10", toggleVariants({ variant: v, size: s }), className)}
+			className={cn(
+				"hit-area-y relative shrink-0 focus-visible:z-10",
+				toggleVariants({ variant: v, size: s }),
+				className,
+			)}
 			{...props}
 		>
 			{children}

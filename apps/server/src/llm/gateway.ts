@@ -25,7 +25,7 @@ export async function gatewayEndpoint(): Promise<GatewayEndpoint> {
 /** The gateway to call, or a plain-words error when none is set up yet. */
 async function requireGateway(): Promise<GatewayEndpoint> {
 	const ep = await gatewayEndpoint();
-	if (!ep.url) throw new Error("No model gateway is set up yet. An admin adds one in Admin → Models.");
+	if (!ep.url) throw new Error("No model gateway is set up yet. An admin adds one in Settings → Models.");
 	return ep;
 }
 

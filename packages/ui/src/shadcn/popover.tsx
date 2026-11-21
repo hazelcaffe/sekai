@@ -4,7 +4,7 @@ import { cn } from "../lib/utils.ts";
 
 /** Shared motion for floating surfaces: a quick fade and a small spring from the side they open from. */
 export const floatingMotion =
-	"origin-(--radix-popper-transform-origin) duration-200 ease-spring data-[side=bottom]:slide-in-from-top-1.5 data-[side=left]:slide-in-from-right-1.5 data-[side=right]:slide-in-from-left-1.5 data-[side=top]:slide-in-from-bottom-1.5 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-100";
+	"origin-(--radix-popper-transform-origin) duration-panel ease-out-soft data-[side=bottom]:slide-in-from-top-1.5 data-[side=left]:slide-in-from-right-1.5 data-[side=right]:slide-in-from-left-1.5 data-[side=top]:slide-in-from-bottom-1.5 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-100";
 
 function Popover(props: React.ComponentProps<typeof PopoverPrimitive.Root>) {
 	return <PopoverPrimitive.Root data-slot="popover" {...props} />;
@@ -29,7 +29,7 @@ function PopoverContent({
 				sideOffset={sideOffset}
 				collisionPadding={collisionPadding}
 				className={cn(
-					"z-[65] max-h-(--radix-popover-content-available-height) w-72 overflow-y-auto rounded-2xl border border-border bg-popover p-1.5 text-sm text-popover-foreground shadow-pop outline-none scrollbar-thin",
+					"z-menu max-h-(--radix-popover-content-available-height) w-72 overflow-y-auto rounded-lg border border-border bg-surface-raised p-1.5 text-body text-fg shadow-pop outline-none scrollbar-thin",
 					floatingMotion,
 					className,
 				)}

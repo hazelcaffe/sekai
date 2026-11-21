@@ -121,7 +121,7 @@ async function ownAgentIds(): Promise<Set<string> | null> {
 export async function requireOwnChannel(id: string): Promise<Channel> {
 	const channel = await getChannel(id);
 	const own = await ownAgentIds();
-	if (!channel || (own && !own.has(channel.agentId))) throw notFound("Channel");
+	if (!channel || (own && !own.has(channel.agentId))) throw notFound("Account");
 	return channel;
 }
 
@@ -376,7 +376,7 @@ export async function stopChannel(id: string, opts: { keepStatus?: boolean } = {
 
 export async function restartChannel(id: string): Promise<ChannelWithStatus> {
 	const channel = await getChannel(id);
-	if (!channel) throw notFound("Channel");
+	if (!channel) throw notFound("Account");
 	const entry = running.get(id);
 	if (entry) entry.attempts = 0;
 	await startChannel(id);
@@ -454,10 +454,12 @@ async function pairingText(channel: Channel, who: ChatRef): Promise<string> {
 			body: `${who.senderName} wants to talk to your bot. Code ${pending.code}.`,
 			agentId: channel.agentId,
 			conversationId: null,
+			// Pairing requests wait in Needs you.
+			url: "/inbox",
 		});
 	}
 	const agent = await getAgent(channel.agentId);
-	return `Hi! I'm ${agent?.name ?? "a Sekai bot"}, and I only talk to my owner.\n\nPairing code: **${pending.code}**\n\nIf that's you, approve this code in Sekai (Needs you, or the bot's Channels tab), then message me again. The code expires in an hour.`;
+	return `Hi! I'm ${agent?.name ?? "a Sekai bot"}, and I only talk to my owner.\n\nPairing code: **${pending.code}**\n\nIf that's you, approve this code in Sekai (in Needs you), then message me again. The code expires in an hour.`;
 }
 
 /** Whether this person may use the bot here; DMs from strangers start pairing. */
@@ -1094,7 +1096,7 @@ async function handleCommand(channelId: string, cmd: CommandInvocation): Promise
 	}
 	if (!GUEST_COMMANDS.has(cmd.name) && !isOwner(channel, cmd)) return { text: OWNER_ONLY };
 	const agent = await getAgent(channel.agentId);
-	if (!agent) return { text: "My agent was deleted." };
+	if (!agent) return { text: "This bot was deleted." };
 	const env = await commandEnv(channel, entry, agent, cmd, cmd.targetMessageId);
 	return runCommand(env, cmd.name, cmd.sub, cmd.options);
 }
@@ -1119,7 +1121,7 @@ async function handleAction(channelId: string, action: ActionInvocation): Promis
 		return { update: { text: `${post?.text ?? ""}\n**${result}**`.trim() } };
 	}
 	const agent = await getAgent(channel.agentId);
-	if (!agent) return { whisper: "My agent was deleted." };
+	if (!agent) return { whisper: "This bot was deleted." };
 	const env = await commandEnv(channel, entry, agent, action, null);
 	const update = await runAction(env, action.id, action.values);
 	return update ? { update } : {};

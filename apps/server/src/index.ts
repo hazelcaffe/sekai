@@ -89,7 +89,7 @@ async function main(): Promise<void> {
 	log.info(
 		config.gateway.url
 			? `gateway ${config.gateway.url}${config.gateway.apiKey ? "" : " (no API key)"}`
-			: "no model gateway set yet: add one in Admin → Models (or GATEWAY_URL)",
+			: "no model gateway set yet: add one in Settings → Models (or GATEWAY_URL)",
 	);
 	const shownHost = ["0.0.0.0", "::"].includes(server.hostname ?? "") ? "localhost" : server.hostname;
 	await ensureSetupCode(`http://${shownHost}:${server.port}`);

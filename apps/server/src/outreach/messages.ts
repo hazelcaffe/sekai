@@ -53,7 +53,7 @@ export async function messageUser(
 			conversationId = dm.conversationId;
 		} else if (via === "discord" || via === "slack") {
 			throw new Error(
-				`You have no connected ${via === "slack" ? "Slack" : "Discord"} bot with an owner to DM (set one up in your panel: Tools → Accounts).`,
+				`You have no connected ${via === "slack" ? "Slack" : "Discord"} bot with an owner to DM (set one up in the bot's Accounts section).`,
 			);
 		}
 	}

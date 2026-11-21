@@ -46,7 +46,7 @@ export function PasswordInput({ id, className, ...props }: Omit<ComponentProps<"
 				onClick={() => setVisible((v) => !v)}
 				aria-label={visible ? "Hide password" : "Show password"}
 				aria-pressed={visible}
-				className="absolute inset-y-0 right-1 my-auto flex size-8 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-muted hover:text-foreground coarse:size-10 [&_svg]:size-4"
+				className="hit-area absolute inset-y-0 right-1 my-auto flex size-8 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-surface-hover hover:text-fg coarse:size-10 [&_svg]:size-4"
 			>
 				{visible ? <EyeOff /> : <Eye />}
 			</button>
@@ -93,38 +93,41 @@ export function CodeInput({
 	);
 }
 
-export function Field({
-	label,
-	hint,
-	error,
-	children,
-	className,
-	action,
-}: {
+export interface FieldProps {
+	/** Above the control. Placeholders are examples, never labels. */
 	label: ReactNode;
+	/** One line under the control. */
 	hint?: ReactNode;
+	/** Shown instead of the hint, in danger ink; marks the control invalid. */
 	error?: string | null;
+	/** Says "Optional" in the hint (before it, if there's one). */
+	optional?: boolean;
 	children: ReactNode;
 	className?: string;
+	/** A small action beside the label (for example "Generate"). */
 	action?: ReactNode;
-}) {
+}
+
+/** Label above, the control, a one-line hint below, an error below that. Wires them to the control for screen readers. */
+export function Field({ label, hint, error, optional, children, className, action }: FieldProps) {
 	const id = useId();
-	const hintId = error || hint ? `${id}-hint` : undefined;
+	const note = optional ? hint ? <>Optional. {hint}</> : "Optional" : hint;
+	const hintId = error || note ? `${id}-hint` : undefined;
 	return (
 		<FieldContext.Provider value={{ id, hintId, invalid: Boolean(error) }}>
-			<div data-slot="field" className={cn("flex flex-col gap-1.5", className)}>
+			<div data-slot="field" className={cn("flex min-w-0 flex-col gap-1.5", className)}>
 				<div className="flex items-center justify-between gap-2">
 					<Label htmlFor={id}>{label}</Label>
 					{action}
 				</div>
 				{children}
 				{error ? (
-					<p id={hintId} className="text-xs text-destructive">
+					<p id={hintId} className="text-small text-danger-ink">
 						{error}
 					</p>
-				) : hint ? (
-					<p id={hintId} className="text-xs leading-5 text-fg-subtle">
-						{hint}
+				) : note ? (
+					<p id={hintId} className="text-small text-fg-subtle">
+						{note}
 					</p>
 				) : null}
 			</div>
@@ -139,13 +142,16 @@ export function Switch({
 	label,
 	id,
 	size,
+	className,
 }: {
 	checked: boolean;
 	onCheckedChange: (v: boolean) => void;
 	disabled?: boolean;
+	/** Its accessible name, when nothing else labels it. */
 	label?: string;
 	id?: string;
 	size?: "sm" | "default";
+	className?: string;
 }) {
 	return (
 		<SwitchPrimitive
@@ -155,57 +161,8 @@ export function Switch({
 			onCheckedChange={onCheckedChange}
 			disabled={disabled}
 			aria-label={label}
+			className={className}
 		/>
-	);
-}
-
-/** A labelled row with a switch, used throughout settings. An optional icon sits in a small tile on the left. */
-export function ToggleRow({
-	title,
-	description,
-	checked,
-	onCheckedChange,
-	disabled,
-	icon,
-	className,
-}: {
-	title: ReactNode;
-	description?: ReactNode;
-	checked: boolean;
-	onCheckedChange: (v: boolean) => void;
-	disabled?: boolean;
-	icon?: ReactNode;
-	className?: string;
-}) {
-	const id = useId();
-	return (
-		<label
-			htmlFor={id}
-			className={cn(
-				"flex cursor-pointer items-start justify-between gap-4 py-1",
-				disabled && "cursor-default",
-				className,
-			)}
-		>
-			<div className="flex min-w-0 items-start gap-3">
-				{icon && (
-					<span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-muted text-muted-foreground [&_svg]:size-4">
-						{icon}
-					</span>
-				)}
-				<div className="min-w-0">
-					<div className="text-sm font-medium">{title}</div>
-					{description && <div className="mt-0.5 text-xs leading-5 text-fg-subtle">{description}</div>}
-				</div>
-			</div>
-			<SwitchPrimitive
-				id={id}
-				checked={checked}
-				onCheckedChange={onCheckedChange}
-				disabled={disabled}
-				className="mt-0.5"
-			/>
-		</label>
 	);
 }
 
@@ -245,8 +202,8 @@ export function Checkbox({
 				className="mt-px"
 			/>
 			<div className="min-w-0">
-				<div className="text-sm leading-5 font-medium">{label}</div>
-				{description && <div className="mt-0.5 text-xs leading-5 text-fg-subtle">{description}</div>}
+				<div className="text-body font-medium">{label}</div>
+				{description && <div className="mt-0.5 text-small text-fg-subtle">{description}</div>}
 			</div>
 		</label>
 	);
@@ -267,6 +224,9 @@ export function Select({
 	className,
 	disabled,
 	size = "md",
+	variant = "filled",
+	label,
+	align,
 }: {
 	value: string;
 	onValueChange: (v: string) => void;
@@ -275,6 +235,11 @@ export function Select({
 	className?: string;
 	disabled?: boolean;
 	size?: "sm" | "md";
+	/** "plain": just the value and a chevron, for the end of a row (SelectRow). */
+	variant?: "filled" | "plain";
+	/** Its accessible name, when no Field labels it. */
+	label?: string;
+	align?: "start" | "end";
 }) {
 	const field = useField();
 	return (
@@ -283,12 +248,17 @@ export function Select({
 				id={field.id}
 				aria-describedby={field["aria-describedby"]}
 				aria-invalid={field["aria-invalid"]}
+				aria-label={label}
 				size={size === "sm" ? "sm" : "default"}
-				className={className}
+				className={cn(
+					variant === "plain" &&
+						"w-auto max-w-56 gap-1 border-b-transparent bg-transparent px-2 text-fg-muted hover:bg-surface-2 hover:text-fg focus-visible:bg-surface-2 data-open:bg-surface-2 data-open:ring-0",
+					className,
+				)}
 			>
 				<SelectValue placeholder={placeholder} />
 			</SelectTrigger>
-			<SelectContent>
+			<SelectContent align={align ?? (variant === "plain" ? "end" : "start")}>
 				{options.map((o) => (
 					<SelectItem key={o.value} value={o.value} disabled={o.disabled} description={o.description}>
 						{o.label}
@@ -299,19 +269,25 @@ export function Select({
 	);
 }
 
-/** iOS-style segmented control. Wraps on narrow screens. */
+/**
+ * A choice of a value (Light / Dark / System): iOS's segmented control, Material 3's segmented buttons on Android.
+ * Not for switching views (that's Tabs). Wraps on narrow screens.
+ */
 export function Segmented<T extends string>({
 	value,
 	onValueChange,
 	options,
 	className,
 	size,
+	label,
 }: {
 	value: T;
 	onValueChange: (v: T) => void;
 	options: { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean }[];
 	className?: string;
 	size?: "sm" | "default";
+	/** Its accessible name, when nothing else labels it. */
+	label?: string;
 }) {
 	return (
 		<ToggleGroup
@@ -319,6 +295,7 @@ export function Segmented<T extends string>({
 			variant="segmented"
 			size={size}
 			value={value}
+			aria-label={label}
 			onValueChange={(v) => {
 				if (v) onValueChange(v as T);
 			}}

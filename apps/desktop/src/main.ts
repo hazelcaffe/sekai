@@ -15,6 +15,7 @@ import {
 	shell,
 	Tray,
 } from "electron";
+import { isBundledUrl } from "./bundled.ts";
 import { loadConfig, normalizeServerUrl, saveConfig, saveServerToken, serverToken } from "./config.ts";
 import { computerName, LocalComputer, type LocalStatus } from "./local/index.ts";
 import { destroyActivity, hideActivity, showActivity } from "./local/overlay.ts";
@@ -34,12 +35,36 @@ const SCREENSHOT = process.env.SEKAI_DESKTOP_SCREENSHOT;
 const PROTOCOL = "sekai";
 // The bundler bakes __dirname in at build time, so find the files from the app's own folder (or its asar).
 const assets = (name: string) => join(app.getAppPath(), "dist", name);
+/** Only the app's own screens get their powers, not any file:// page (see bundled.ts). */
+const isBundled = (url: string | undefined) => isBundledUrl(url, join(app.getAppPath(), "dist"));
 
 let win: BrowserWindow | null = null;
+let aboutWin: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 let connected = false;
 let pendingPath: string | null = null;
+let badgeCount = 0;
+
+interface ConnectContext {
+	mode: "first-run" | "unreachable" | "change";
+	serverUrl: string;
+	error: string | null;
+	canReturn: boolean;
+	version: string;
+}
+
+let connectContext: ConnectContext = {
+	mode: "first-run",
+	serverUrl: "",
+	error: null,
+	canReturn: false,
+	version: app.getVersion(),
+};
+
+function windowBackground(): string {
+	return nativeTheme.shouldUseDarkColors ? __SEKAI_BG_DARK__ : __SEKAI_BG_LIGHT__;
+}
 
 // ---------------------------------------------------------------- single instance + deep links
 
@@ -95,10 +120,31 @@ app.on("open-url", (e, url) => {
 async function reachable(origin: string): Promise<{ ok: boolean; error?: string }> {
 	try {
 		const res = await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(4000) });
-		return res.ok ? { ok: true } : { ok: false, error: `Server answered ${res.status}` };
-	} catch (err) {
-		return { ok: false, error: `Can't reach ${origin}: ${err instanceof Error ? err.message : String(err)}` };
+		return res.ok
+			? { ok: true }
+			: {
+					ok: false,
+					error: `This server answered with an error (${res.status}). Check the address and try again.`,
+				};
+	} catch {
+		return {
+			ok: false,
+			error: `Couldn't reach ${origin}. Check that Sekai is running and try again.`,
+		};
 	}
+}
+
+async function showConnectScreen(mode: ConnectContext["mode"], error: string | null, canReturn = false): Promise<void> {
+	if (!win || win.isDestroyed()) return;
+	connectContext = {
+		mode,
+		serverUrl: loadConfig().serverUrl,
+		error,
+		canReturn,
+		version: app.getVersion(),
+	};
+	connected = false;
+	await win.loadFile(assets("connect.html"));
 }
 
 async function loadApp(): Promise<void> {
@@ -106,8 +152,7 @@ async function loadApp(): Promise<void> {
 	const { serverUrl } = loadConfig();
 	const check = await reachable(serverUrl);
 	if (!check.ok) {
-		connected = false;
-		await win.loadFile(assets("connect.html"));
+		await showConnectScreen("unreachable", check.error ?? null, false);
 		return;
 	}
 	connected = true;
@@ -132,7 +177,7 @@ function createWindow(): BrowserWindow {
 		show: false,
 		title: "Sekai",
 		icon: assets("icon.png"),
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0a10" : "#ffffff",
+		backgroundColor: windowBackground(),
 		titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
 		autoHideMenuBar: true,
 		webPreferences: {
@@ -170,7 +215,7 @@ function createWindow(): BrowserWindow {
 	});
 	w.webContents.on("will-navigate", (e, url) => {
 		// Same origin exactly (a prefix would let https://sekai.example.com.evil.net through).
-		if (sameOrigin(url, loadConfig().serverUrl) || url.startsWith("file://")) return;
+		if (sameOrigin(url, loadConfig().serverUrl) || isBundled(url)) return;
 		e.preventDefault();
 		if (/^https?:\/\//.test(url)) void shell.openExternal(url);
 	});
@@ -189,8 +234,11 @@ function createWindow(): BrowserWindow {
 	w.webContents.on("did-fail-load", (_e, code, desc, url) => {
 		if (code === -3 || url.startsWith("file://")) return;
 		console.warn(`load failed (${code} ${desc}); showing connect screen`);
-		connected = false;
-		void w.loadFile(assets("connect.html"));
+		void showConnectScreen(
+			"unreachable",
+			"Couldn't load Sekai from this server. Check your connection and try again.",
+			false,
+		);
 	});
 	return w;
 }
@@ -252,14 +300,22 @@ function unregisterStopShortcut(): void {
 	stopShortcut = null;
 }
 
+function refreshTrayTooltip(): void {
+	if (!tray) return;
+	const active = local?.current.activeAgent;
+	if (active) tray.setToolTip(`Sekai — ${active} is using this computer`);
+	else if (badgeCount > 0) tray.setToolTip(`Sekai — ${badgeCount} waiting for you`);
+	else tray.setToolTip("Sekai");
+}
+
 function stopBots(): void {
 	if (!local) return;
 	local.stopBots();
 	hideActivity();
 	if (Notification.isSupported()) {
 		new Notification({
-			title: "Stopped",
-			body: "The bots stopped what they were doing on this computer.",
+			title: "Bots stopped",
+			body: "Bots stopped working on this computer.",
 			icon: assets("icon.png"),
 		}).show();
 	}
@@ -278,19 +334,21 @@ function localInfo() {
 }
 
 function onLocalStatus(status: LocalStatus): void {
-	if (win && !win.isDestroyed()) win.webContents.send("sekai:local-status", localInfo());
+	for (const w of [win, aboutWin]) if (w && !w.isDestroyed()) w.webContents.send("sekai:local-status", localInfo());
 	if (!status.activeAgent) hideActivity();
-	tray?.setToolTip(status.activeAgent ? `Sekai: ${status.activeAgent} is using this computer` : "Sekai");
+	refreshTrayTooltip();
 	refreshTrayMenu();
 }
 
 function onLocalActivity(agent: string): void {
-	showActivity(agent, stopShortcut ?? "The Sekai tray menu");
+	showActivity(agent, stopShortcut ?? "Sekai tray");
 	if (!greeted.has(agent) && Notification.isSupported()) {
 		greeted.add(agent);
 		new Notification({
 			title: `${agent} is using this computer`,
-			body: `Press ${stopShortcut ?? "Stop in the Sekai tray menu"} to stop it at any time.`,
+			body: stopShortcut
+				? `Press ${stopShortcut} at any time to stop.`
+				: "Choose Stop bots now in the Sekai tray menu at any time.",
 			icon: assets("icon.png"),
 		}).show();
 	}
@@ -342,9 +400,9 @@ async function confirmWider(
 		defaultId: 1,
 		cancelId: 1,
 		noLink: true,
-		title: "Lend this computer to bots",
+		title: "Lend this computer",
 		message: picked.length ? `Let ${who} use ${computerName()}?` : `Lend ${computerName()} to bots?`,
-		detail: `${who.charAt(0).toUpperCase()}${who.slice(1)} will be able to see your screen, use the mouse and keyboard, open apps, use a browser with its own profile, run commands and read and write files as ${process.env.USER ?? process.env.USERNAME ?? "you"}.${next.askEachAction ? " You'll approve each action in Sekai." : " Actions follow the bot's approval mode."}\n\nA badge shows while a bot works here; ${stopShortcut ?? (process.platform === "darwin" ? "⌘⇧Esc" : "Ctrl+Alt+Esc")} stops it at any time.`,
+		detail: `${who.charAt(0).toUpperCase()}${who.slice(1)} will be able to see your screen, use the mouse and keyboard, open apps, browse in a separate profile, run commands, and read and write files as ${process.env.USER ?? process.env.USERNAME ?? "you"}.${next.askEachAction ? " You'll approve each action in Sekai." : " Actions follow the bot's approvals rule."}\n\nA badge shows while a bot is working here. Press ${stopShortcut ?? (process.platform === "darwin" ? "⌘⇧Esc" : "Ctrl+Alt+Esc")} at any time to stop.`,
 	};
 	const r = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
 	return r.response === 0;
@@ -369,24 +427,25 @@ function refreshTrayMenu(): void {
 			...(() => {
 				const u = updateState();
 				if (u.state === "ready") return [{ label: `Restart to update (${u.version})`, click: installNow }];
-				if (u.state === "downloading") return [{ label: `Downloading update… ${u.percent}%`, enabled: false }];
+				if (u.state === "downloading")
+					return [{ label: `Downloading update (${u.percent}%)…`, enabled: false }];
 				return [];
 			})(),
 			{ label: "Needs you", click: () => navigate("/inbox") },
 			{ label: "Activity", click: () => navigate("/activity") },
 			{ type: "separator" },
 			{
-				label: "Lend this computer to bots…",
-				click: () => navigate("/settings#this-computer"),
+				label: "This computer…",
+				click: () => navigate("/settings/this-computer"),
 			},
 			...(cfg.localComputer.enabled
 				? [
 						{
-							label: `Stop bots on this computer${stopShortcut ? ` (${stopShortcut})` : ""}`,
+							label: `Stop bots now${stopShortcut ? ` (${stopShortcut})` : ""}`,
 							click: stopBots,
 						},
 						{
-							label: "Stop lending this computer",
+							label: "Turn off lending",
 							click: () => {
 								saveConfig({ localComputer: { ...loadConfig().localComputer, enabled: false } });
 								void applyLocal();
@@ -397,7 +456,7 @@ function refreshTrayMenu(): void {
 			{ type: "separator" },
 			{ label: "Change server…", click: openConnect },
 			{
-				label: "Keep running in the tray",
+				label: "Keep running in tray",
 				type: "checkbox",
 				checked: cfg.keepInTray,
 				click: (item) => saveConfig({ keepInTray: item.checked }),
@@ -412,6 +471,7 @@ function refreshTrayMenu(): void {
 				},
 			},
 			{ type: "separator" },
+			{ label: "About Sekai", click: openAbout },
 			{
 				label: "Quit Sekai",
 				click: () => {
@@ -425,7 +485,27 @@ function refreshTrayMenu(): void {
 
 function buildAppMenu(): void {
 	const template: MenuItemConstructorOptions[] = [
-		...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+		...(process.platform === "darwin"
+			? [
+					{
+						label: app.name,
+						submenu: [
+							{ label: "About Sekai", click: openAbout },
+							{ type: "separator" as const },
+							{ label: "Change server…", click: openConnect },
+							{ label: "Check for updates", click: () => checkNow(() => loadConfig().serverUrl) },
+							{ type: "separator" as const },
+							{ role: "services" as const },
+							{ type: "separator" as const },
+							{ role: "hide" as const },
+							{ role: "hideOthers" as const },
+							{ role: "unhide" as const },
+							{ type: "separator" as const },
+							{ role: "quit" as const },
+						],
+					},
+				]
+			: []),
 		{ role: "fileMenu" },
 		{ role: "editMenu" },
 		{
@@ -443,21 +523,68 @@ function buildAppMenu(): void {
 			],
 		},
 		{ role: "windowMenu" },
-		{
-			role: "help",
-			submenu: [
-				{ label: "Check for updates", click: () => checkNow(() => loadConfig().serverUrl) },
-				{ label: `Version ${app.getVersion()}`, enabled: false },
-			],
-		},
+		// On macOS these live in the app menu above.
+		...(process.platform === "darwin"
+			? []
+			: [
+					{
+						role: "help" as const,
+						submenu: [
+							{ label: "Check for updates", click: () => checkNow(() => loadConfig().serverUrl) },
+							{ label: "Change server…", click: openConnect },
+							{ type: "separator" as const },
+							{ label: "About Sekai", click: openAbout },
+						],
+					},
+				]),
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function openConnect(): void {
+	const wasConnected = connected;
 	showWindow();
-	connected = false;
-	void win?.loadFile(assets("connect.html"));
+	void showConnectScreen("change", null, wasConnected);
+}
+
+function openAbout(): void {
+	if (aboutWin && !aboutWin.isDestroyed()) {
+		aboutWin.show();
+		aboutWin.focus();
+		return;
+	}
+	// A hidden parent (the app kept in the tray) would hide its child too on some systems.
+	const parent = win && !win.isDestroyed() && win.isVisible() ? win : undefined;
+	aboutWin = new BrowserWindow({
+		width: 380,
+		height: 430,
+		// The page's size, not counting a title bar, which would otherwise squeeze it on Windows and Linux.
+		useContentSize: true,
+		resizable: false,
+		minimizable: false,
+		maximizable: false,
+		parent,
+		show: false,
+		title: "About Sekai",
+		icon: assets("icon.png"),
+		backgroundColor: windowBackground(),
+		autoHideMenuBar: true,
+		webPreferences: {
+			preload: assets("preload.cjs"),
+			contextIsolation: true,
+			sandbox: true,
+			nodeIntegration: false,
+		},
+	});
+	aboutWin.removeMenu();
+	// It shows one bundled page and never goes anywhere else.
+	aboutWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+	aboutWin.webContents.on("will-navigate", (e) => e.preventDefault());
+	aboutWin.once("ready-to-show", () => aboutWin?.show());
+	aboutWin.on("closed", () => {
+		aboutWin = null;
+	});
+	void aboutWin.loadFile(assets("about.html"));
 }
 
 // ---------------------------------------------------------------- IPC
@@ -482,8 +609,9 @@ ipcMain.on("sekai:notify", (_e, msg: { title: string; body: string; conversation
 });
 
 ipcMain.on("sekai:badge", (_e, count: number) => {
-	app.setBadgeCount(Math.max(0, Math.floor(count)));
-	tray?.setToolTip(count > 0 ? `Sekai: ${count} waiting for you` : "Sekai");
+	badgeCount = Math.max(0, Math.floor(count));
+	app.setBadgeCount(badgeCount);
+	refreshTrayTooltip();
 });
 
 ipcMain.on("sekai:open-connect", openConnect);
@@ -501,11 +629,25 @@ ipcMain.handle("sekai:local-set", async (_e, patch: unknown, token: unknown, nam
 	return localInfo();
 });
 
+const isBundledPage = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) => isBundled(e.senderFrame?.url);
+
+ipcMain.handle("sekai:connect-context", (e) => {
+	if (!isBundledPage(e)) return null;
+	return connectContext;
+});
+
+ipcMain.on("sekai:connect-cancel", (e) => {
+	if (!isBundledPage(e) || !connectContext.canReturn) return;
+	const { serverUrl } = loadConfig();
+	connected = true;
+	void win?.loadURL(serverUrl);
+});
+
 ipcMain.handle("sekai:connect", async (e, input: string) => {
 	// Only from the bundled connect screen.
-	if (!e.senderFrame?.url.startsWith("file://")) return { ok: false, error: "Not allowed" };
+	if (!isBundledPage(e)) return { ok: false, error: "This action isn't allowed from here." };
 	const origin = normalizeServerUrl(input);
-	if (!origin) return { ok: false, error: "Enter a valid http(s) URL" };
+	if (!origin) return { ok: false, error: "Enter a valid server address, like https://sekai.example.com." };
 	const check = await reachable(origin);
 	if (!check.ok) return check;
 	const before = loadConfig().serverUrl;
@@ -522,6 +664,44 @@ ipcMain.handle("sekai:connect", async (e, input: string) => {
 	await win?.loadURL(origin);
 	if (local) void applyLocal();
 	return { ok: true };
+});
+
+ipcMain.handle("sekai:about-info", (e) => {
+	if (!isBundledPage(e)) return null;
+	return {
+		version: app.getVersion(),
+		serverUrl: loadConfig().serverUrl,
+		packaged: app.isPackaged,
+		update: updateState(),
+		local: localInfo(),
+	};
+});
+
+ipcMain.handle("sekai:about-check-updates", (e) => {
+	if (!isBundledPage(e)) return;
+	checkNow(() => loadConfig().serverUrl);
+});
+
+ipcMain.on("sekai:about-install-update", (e) => {
+	if (!isBundledPage(e)) return;
+	installNow();
+});
+
+ipcMain.on("sekai:about-change-server", (e) => {
+	if (!isBundledPage(e)) return;
+	aboutWin?.close();
+	openConnect();
+});
+
+ipcMain.on("sekai:about-open-local", (e) => {
+	if (!isBundledPage(e)) return;
+	aboutWin?.close();
+	navigate("/settings/this-computer");
+});
+
+ipcMain.on("sekai:about-close", (e) => {
+	if (!isBundledPage(e)) return;
+	aboutWin?.close();
 });
 
 // ---------------------------------------------------------------- lifecycle
@@ -555,7 +735,15 @@ app.whenReady().then(async () => {
 	await applyLocal();
 	await startUpdates(() => loadConfig().serverUrl);
 	// Only the menu changes (download progress fires many times a second; a new Tray each time would stack icons).
-	onUpdateState(() => refreshTrayMenu());
+	onUpdateState((state) => {
+		refreshTrayMenu();
+		if (aboutWin && !aboutWin.isDestroyed()) aboutWin.webContents.send("sekai:update-state", state);
+	});
+	nativeTheme.on("updated", () => {
+		const bg = windowBackground();
+		if (win && !win.isDestroyed()) win.setBackgroundColor(bg);
+		if (aboutWin && !aboutWin.isDestroyed()) aboutWin.setBackgroundColor(bg);
+	});
 
 	// Test hook: SEKAI_DESKTOP_SCREENSHOT=out.png captures the window once loaded, then quits.
 	if (SCREENSHOT && win) {

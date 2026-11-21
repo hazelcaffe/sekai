@@ -13,7 +13,7 @@ import { readKey, writeKey } from "../services/kv.ts";
 const KEY = "voice";
 let cache: VoiceSettingsT | null = null;
 
-/** Voice defaults for every bot (Admin → Voice). */
+/** Voice defaults for every bot (Settings → Voice). */
 export async function voiceSettings(): Promise<VoiceSettingsT> {
 	if (cache) return cache;
 	// Settings saved by older versions may carry fields and models that are gone: parsing drops them.

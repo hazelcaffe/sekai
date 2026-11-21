@@ -1,7 +1,7 @@
 import { api, passkeysSupported, registerPasskey } from "@sekai/client";
 import { type AuthStatus, PASSWORD_MIN, USERNAME_PATTERN } from "@sekai/shared";
-import { Button, Callout, CodeInput, Field, Input, PasswordInput, Spinner } from "@sekai/ui";
-import { CircleAlert, Fingerprint, ShieldCheck } from "lucide-react";
+import { Button, Callout, CodeInput, Field, Fold, Input, PasswordInput, Spinner } from "@sekai/ui";
+import { CircleAlert, Fingerprint } from "lucide-react";
 import { useState } from "react";
 import { AuthLayout } from "./AuthLayout.tsx";
 import type { SignedIn } from "./SignInPage.tsx";
@@ -57,10 +57,7 @@ export function SetupPage({ status, onDone }: { status: AuthStatus; onDone: (res
 	if (created) return <PasskeyOffer name={created.user.name} onDone={() => onDone(created)} />;
 
 	return (
-		<AuthLayout
-			title="Welcome to Sekai"
-			subtitle="Create the first account. You'll be its admin: you add the other people who use it."
-		>
+		<AuthLayout title="Welcome to Sekai" subtitle="Create the first account. You'll add everyone else.">
 			<form
 				className="flex flex-col gap-4"
 				onSubmit={(e) => {
@@ -69,12 +66,20 @@ export function SetupPage({ status, onDone }: { status: AuthStatus; onDone: (res
 				}}
 			>
 				{status.setupCodeRequired && (
-					<Field
-						label="Setup code"
-						hint="It's in the server's log when Sekai starts (docker compose logs app, or the terminal running it). It proves you're the one who runs this server."
-					>
-						<CodeInput value={code} onChange={setCode} autoFocus />
-					</Field>
+					<div className="flex flex-col gap-1.5">
+						<Field
+							label="Setup code"
+							hint="It's in the server's log when Sekai starts. It proves you run this server."
+						>
+							<CodeInput value={code} onChange={setCode} autoFocus />
+						</Field>
+						<Fold title="Learn more" variant="link">
+							<p className="text-pretty">
+								Look in the terminal running Sekai, or run{" "}
+								<code className="font-mono text-caption">docker compose logs app</code>.
+							</p>
+						</Fold>
+					</div>
 				)}
 				<Field label="Your name" hint="What your bots call you.">
 					<Input
@@ -122,7 +127,7 @@ export function SetupPage({ status, onDone }: { status: AuthStatus; onDone: (res
 					</Callout>
 				)}
 				<Button type="submit" variant="primary" size="lg" className="mt-1 w-full" disabled={!ready || busy}>
-					{busy && <Spinner className="text-primary-foreground" />}
+					{busy && <Spinner />}
 					Create account
 				</Button>
 			</form>
@@ -148,26 +153,20 @@ function PasskeyOffer({ name, onDone }: { name: string; onDone: () => void }) {
 	return (
 		<AuthLayout
 			title={`You're in, ${name.split(" ")[0]}`}
-			subtitle="Add a passkey to sign in with Face ID, Touch ID, Windows Hello or your password manager. No password to type."
+			subtitle="Add a passkey to sign in with your face, fingerprint or device. Your password keeps working too."
 		>
 			<div className="flex flex-col gap-3">
-				<div className="mb-2 flex items-start gap-3 rounded-2xl bg-brand/8 px-4 py-3 text-[13px] leading-5">
-					<ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand-ink" />
-					<span className="text-muted-foreground">
-						Passkeys can't be phished or reused. Your password keeps working too.
-					</span>
-				</div>
 				{error && (
 					<Callout tone="danger" icon={<CircleAlert />}>
 						{error}
 					</Callout>
 				)}
 				<Button variant="primary" size="lg" className="w-full" onClick={() => void add()} disabled={busy}>
-					{busy ? <Spinner className="text-primary-foreground" /> : <Fingerprint />}
+					{busy ? <Spinner /> : <Fingerprint />}
 					Add a passkey
 				</Button>
 				<Button variant="ghost" size="lg" className="w-full" onClick={onDone} disabled={busy}>
-					Not now
+					Maybe later
 				</Button>
 			</div>
 		</AuthLayout>

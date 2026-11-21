@@ -30,7 +30,7 @@ export const hostRoutes = new Hono()
 			c,
 			z.object({ agentId: z.string().min(1), target: z.string().min(1), account: z.string().optional() }),
 		);
-		return c.json(await grantAccess(b.agentId, b.target, "user", "Given in Admin", b.account), 201);
+		return c.json(await grantAccess(b.agentId, b.target, "user", "Given in Settings", b.account), 201);
 	})
 	.delete("/grants/:id", async (c) => {
 		await revokeGrant(c.req.param("id"));

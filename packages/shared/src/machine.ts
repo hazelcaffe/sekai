@@ -201,7 +201,7 @@ export interface SharedBrowser {
 	updatedAt: number;
 }
 
-/** How to get in: shown to you in the Computer tab and given to the bot. */
+/** How to get in: shown to you in the Computer section and given to the bot. */
 export interface MachineAccess {
 	machineId: string;
 	username: string;

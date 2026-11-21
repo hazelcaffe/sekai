@@ -10,13 +10,24 @@ import {
 	type McpSetup,
 	type McpTransportInput,
 } from "@sekai/shared";
-import { Badge, Button, Confirm, Dialog, Field, Input, Segmented, Spinner, Switch, ToggleRow } from "@sekai/ui";
+import {
+	Badge,
+	Button,
+	Confirm,
+	CopyField,
+	Dialog,
+	Field,
+	Input,
+	Segmented,
+	Spinner,
+	Switch,
+	ToggleRow,
+} from "@sekai/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowLeft,
 	Check,
 	CircleAlert,
-	Copy,
 	ExternalLink,
 	KeyRound,
 	LogIn,
@@ -29,14 +40,14 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.ts";
-import { useAgents, useMcpServers } from "../data.ts";
+import { useAccess, useAgents, useMcpServers } from "../data.ts";
 import { qk } from "../query.ts";
 import { cn } from "../utils.ts";
 import { AgentAvatar } from "./AgentAvatar.tsx";
 
 // ---------------------------------------------------------------- icons
 
-const TINTS = ["#0ea5e9", "#6366f1", "#14b8a6", "#f59e0b", "#ec4899", "#8b5cf6", "#22c55e", "#ef4444"];
+const TINTS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`);
 
 /** An app's icon (its site's favicon, through the server), or a monogram. */
 export function AppIcon({
@@ -56,7 +67,7 @@ export function AppIcon({
 		return (
 			<span
 				className={cn(
-					"flex shrink-0 items-center justify-center overflow-hidden bg-white ring-1 ring-border",
+					"flex shrink-0 items-center justify-center overflow-hidden bg-paper ring-1 ring-border",
 					className,
 				)}
 				style={{ width: size, height: size, borderRadius: radius }}
@@ -75,7 +86,7 @@ export function AppIcon({
 	return (
 		<span
 			aria-hidden
-			className={cn("flex shrink-0 items-center justify-center font-semibold text-white", className)}
+			className={cn("flex shrink-0 items-center justify-center font-semibold text-paper", className)}
 			style={{ width: size, height: size, borderRadius: radius, background: tint, fontSize: size * 0.42 }}
 		>
 			{name.trim()[0]?.toUpperCase() ?? "?"}
@@ -162,25 +173,25 @@ function AccessPicker({ value, onChange, agents }: { value: Access; onChange: (a
 									})
 								}
 								className={cn(
-									"flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-[13px] font-medium transition-colors",
+									"flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-body font-medium transition-colors",
 									on
-										? "border-brand/50 bg-brand/8 text-fg"
-										: "border-border text-fg-muted hover:bg-muted/60",
+										? "border-brand/50 bg-brand-soft text-fg"
+										: "border-border text-fg-muted hover:bg-surface-2/60",
 								)}
 							>
 								<AgentAvatar avatar={a.avatar} size={26} />
 								{a.name}
-								{on && <Check className="size-3.5 text-brand-ink" />}
+								{on && <Check className="size-4 text-brand-ink" />}
 							</button>
 						);
 					})}
 				</div>
 			)}
-			<p className="text-xs leading-5 text-fg-subtle">
+			<p className="text-small text-fg-subtle">
 				{value.scope === "all"
-					? "Every bot, including new ones, gets its tools. You can still switch it off for a bot in its Tools tab."
+					? "Every bot, including new ones, gets its tools. You can still switch it off for a bot in its Tools & access."
 					: value.agentIds.length
-						? "Only these bots get its tools. Turn it on for more from each bot's Tools tab."
+						? "Only these bots get its tools. Turn it on for more from each bot's Tools & access."
 						: "Pick the bots that should have it."}
 			</p>
 		</div>
@@ -188,27 +199,6 @@ function AccessPicker({ value, onChange, agents }: { value: Access; onChange: (a
 }
 
 // ---------------------------------------------------------------- sign-in
-
-function CopyBox({ value }: { value: string }) {
-	const [done, setDone] = useState(false);
-	return (
-		<div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-1.5">
-			<code className="min-w-0 flex-1 truncate font-mono text-xs">{value}</code>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				aria-label="Copy"
-				onClick={() => {
-					void navigator.clipboard.writeText(value);
-					setDone(true);
-					setTimeout(() => setDone(false), 1200);
-				}}
-			>
-				{done ? <Check /> : <Copy />}
-			</Button>
-		</div>
-	);
-}
 
 const isLocalOrigin = () => ["localhost", "127.0.0.1"].includes(location.hostname);
 
@@ -266,7 +256,7 @@ function SignIn({
 
 	if (connected) {
 		return (
-			<div className="flex items-center gap-2 rounded-2xl bg-success/10 px-4 py-3 text-sm font-medium text-success">
+			<div className="flex items-center gap-2 rounded-lg bg-success-soft px-4 py-3 text-body font-medium text-success-ink">
 				<Check className="size-4" /> Signed in. {live.status.tools.length} tools ready.
 			</div>
 		);
@@ -284,12 +274,12 @@ function SignIn({
 					start.mutate();
 				}}
 			>
-				{start.isPending ? <Spinner className="text-primary-foreground" /> : <LogIn />}
+				{start.isPending ? <Spinner /> : <LogIn />}
 				{flow ? `Open ${name}'s sign-in again` : `Sign in to ${name}`}
 			</Button>
-			{start.error && <p className="text-[13px] text-destructive">{(start.error as Error).message}</p>}
+			{start.error && <p className="text-body text-danger-ink">{(start.error as Error).message}</p>}
 			{flow?.url && !flow.pasteBack && (
-				<p className="flex items-center gap-2 text-[13px] text-fg-subtle">
+				<p className="flex items-center gap-2 text-small text-fg-subtle">
 					<Spinner /> Waiting for you to approve Sekai in the other tab…{" "}
 					<a
 						href={flow.url}
@@ -302,8 +292,8 @@ function SignIn({
 				</p>
 			)}
 			{flow?.pasteBack && (
-				<div className="flex flex-col gap-2 rounded-2xl border border-border p-3">
-					<p className="text-[13px] leading-5 text-fg-muted">
+				<div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+					<p className="text-small text-fg-muted">
 						{name} sends you back to a <code className="font-mono">localhost</code> address, which won't
 						open from this device. That's fine: after approving, copy the whole address from the browser's
 						address bar and paste it here.
@@ -313,7 +303,7 @@ function SignIn({
 							value={pasted}
 							onChange={(e) => setPasted(e.target.value)}
 							placeholder="http://localhost:7420/api/mcp/oauth/callback?code=…"
-							className="font-mono text-xs"
+							className="font-mono text-small"
 						/>
 						<Button
 							variant="secondary"
@@ -323,7 +313,7 @@ function SignIn({
 							{finish.isPending ? <Spinner /> : "Finish"}
 						</Button>
 					</div>
-					{finish.error && <p className="text-[13px] text-destructive">{(finish.error as Error).message}</p>}
+					{finish.error && <p className="text-body text-danger-ink">{(finish.error as Error).message}</p>}
 				</div>
 			)}
 		</div>
@@ -463,7 +453,7 @@ function Setup({
 			<button
 				type="button"
 				onClick={onBack}
-				className="flex items-center gap-1 self-start text-[13px] font-medium text-fg-muted hover:text-fg"
+				className="flex items-center gap-1 self-start text-body font-medium text-fg-muted hover:text-fg"
 			>
 				<ArrowLeft className="size-4" /> All apps
 			</button>
@@ -471,21 +461,21 @@ function Setup({
 				<AppIcon domain={entry.domain} name={entry.name} size={64} />
 				<div className="min-w-0 flex-1">
 					<div className="flex flex-wrap items-center gap-2">
-						<h3 className="text-lg font-semibold tracking-tight">{entry.name}</h3>
+						<h3 className="text-heading font-semibold tracking-tight">{entry.name}</h3>
 						{entry.badge && <Badge tone="info">{entry.badge}</Badge>}
 						{entry.community && <Badge>Community</Badge>}
 					</div>
-					<div className="text-[13px] text-fg-subtle">{entry.publisher}</div>
-					<p className="mt-1.5 text-sm leading-6 text-fg-muted">{entry.description}</p>
+					<div className="text-small text-fg-subtle">{entry.publisher}</div>
+					<p className="mt-1.5 text-body text-fg-muted">{entry.description}</p>
 				</div>
 			</div>
 			<div className="flex flex-wrap gap-1.5">
 				{entry.does.map((d) => (
 					<span
 						key={d}
-						className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-fg-muted"
+						className="flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-small text-fg-muted"
 					>
-						<Check className="size-3 text-success" /> {d}
+						<Check className="size-4 text-success-ink" /> {d}
 					</span>
 				))}
 			</div>
@@ -509,7 +499,7 @@ function Setup({
 						<div className="flex flex-col gap-3">
 							{byo ? (
 								<>
-									<p className="text-[13px] leading-5 text-fg-muted">
+									<p className="text-small text-fg-muted">
 										{entry.name} needs your own OAuth client.{" "}
 										<a
 											href={byo.url}
@@ -517,19 +507,22 @@ function Setup({
 											rel="noreferrer"
 											className="inline-flex items-center gap-0.5 font-medium text-brand-ink hover:underline"
 										>
-											Create one <ExternalLink className="size-3" />
+											Create one <ExternalLink className="size-4" />
 										</a>
 									</p>
-									<p className="text-[13px] leading-5 text-fg-subtle">{byo.help}</p>
+									<p className="text-small text-fg-subtle">{byo.help}</p>
 									<Field label="Redirect address to add">
-										<CopyBox value={redirectAddress(setup.loopbackOnly)} />
+										<CopyField
+											label="redirect address"
+											value={redirectAddress(setup.loopbackOnly)}
+										/>
 									</Field>
 									<div className="grid gap-3 sm:grid-cols-2">
 										<Field label="Client ID">
 											<Input
 												value={values.clientId ?? ""}
 												onChange={(e) => set("clientId", e.target.value)}
-												className="font-mono text-[13px]"
+												className="font-mono text-body"
 											/>
 										</Field>
 										<Field
@@ -540,13 +533,13 @@ function Setup({
 												autoComplete="off"
 												value={values.clientSecret ?? ""}
 												onChange={(e) => set("clientSecret", e.target.value)}
-												className="font-mono text-[13px]"
+												className="font-mono text-body"
 											/>
 										</Field>
 									</div>
 								</>
 							) : (
-								<p className="text-[13px] leading-5 text-fg-muted">
+								<p className="text-small text-fg-muted">
 									You'll sign in on {entry.name}'s own page and choose what Sekai can access. Nothing
 									to copy.
 								</p>
@@ -563,9 +556,9 @@ function Setup({
 										href={setup.keyUrl}
 										target="_blank"
 										rel="noreferrer"
-										className="flex items-center gap-1 text-xs font-medium text-brand-ink hover:underline"
+										className="flex items-center gap-1 text-small font-medium text-brand-ink hover:underline"
 									>
-										Get one <ExternalLink className="size-3" />
+										Get one <ExternalLink className="size-4" />
 									</a>
 								)
 							}
@@ -575,16 +568,16 @@ function Setup({
 								autoComplete="off"
 								value={values.key ?? ""}
 								onChange={(e) => set("key", e.target.value)}
-								className="font-mono text-[13px]"
+								className="font-mono text-body"
 							/>
 						</Field>
 					)}
 					{setup?.kind === "none" && (
-						<p className="text-[13px] leading-5 text-fg-muted">Free to use: no account or key needed.</p>
+						<p className="text-small text-fg-muted">Free to use: no account or key needed.</p>
 					)}
 					{setup?.kind === "command" && (
 						<div className="flex flex-col gap-3">
-							<p className="flex items-start gap-2 text-[13px] leading-5 text-fg-muted">
+							<p className="flex items-start gap-2 text-small text-fg-muted">
 								<Terminal className="mt-0.5 size-4 shrink-0" />
 								<span>
 									Runs on your Sekai server with <code className="font-mono">{setup.command}</code>.{" "}
@@ -597,7 +590,7 @@ function Setup({
 										value={values[p.token] ?? ""}
 										onChange={(e) => set(p.token, e.target.value)}
 										placeholder={p.placeholder}
-										className="font-mono text-[13px]"
+										className="font-mono text-body"
 									/>
 								</Field>
 							))}
@@ -611,9 +604,9 @@ function Setup({
 												href={e.url}
 												target="_blank"
 												rel="noreferrer"
-												className="flex items-center gap-1 text-xs font-medium text-brand-ink hover:underline"
+												className="flex items-center gap-1 text-small font-medium text-brand-ink hover:underline"
 											>
-												Get one <ExternalLink className="size-3" />
+												Get one <ExternalLink className="size-4" />
 											</a>
 										)
 									}
@@ -623,7 +616,7 @@ function Setup({
 										autoComplete="off"
 										value={values[e.name] ?? ""}
 										onChange={(ev) => set(e.name, ev.target.value)}
-										className="font-mono text-[13px]"
+										className="font-mono text-body"
 									/>
 								</Field>
 							))}
@@ -631,13 +624,13 @@ function Setup({
 					)}
 					{setup?.kind === "self-hosted" && (
 						<div className="flex flex-col gap-3">
-							<p className="text-[13px] leading-5 text-fg-subtle">{setup.help}</p>
+							<p className="text-small text-fg-subtle">{setup.help}</p>
 							<Field label={setup.hostLabel}>
 								<Input
 									value={values.host ?? ""}
 									onChange={(e) => set("host", e.target.value)}
 									placeholder={setup.hostPlaceholder}
-									className="font-mono text-[13px]"
+									className="font-mono text-body"
 								/>
 							</Field>
 							<Field label={setup.label}>
@@ -646,7 +639,7 @@ function Setup({
 									autoComplete="off"
 									value={values.key ?? ""}
 									onChange={(e) => set("key", e.target.value)}
-									className="font-mono text-[13px]"
+									className="font-mono text-body"
 								/>
 							</Field>
 						</div>
@@ -661,9 +654,9 @@ function Setup({
 						checked={ask}
 						onCheckedChange={setAsk}
 					/>
-					{add.error && <p className="text-[13px] text-destructive">{(add.error as Error).message}</p>}
+					{add.error && <p className="text-body text-danger-ink">{(add.error as Error).message}</p>}
 					<Button variant="primary" disabled={!ready || add.isPending} onClick={() => add.mutate()}>
-						{add.isPending && <Spinner className="text-primary-foreground" />}
+						{add.isPending && <Spinner />}
 						{setup?.kind === "oauth" ? `Add and sign in` : `Add ${entry.name}`}
 					</Button>
 				</>
@@ -679,24 +672,26 @@ function StoreCard({ entry, added, onOpen }: { entry: McpCatalogEntry; added: nu
 		<button
 			type="button"
 			onClick={onOpen}
-			className="group flex min-w-0 items-start gap-3 rounded-2xl border border-border bg-card p-3.5 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-sm"
+			className="group flex min-w-0 items-start gap-3 rounded-lg border border-border bg-surface p-3.5 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-soft"
 		>
 			<AppIcon domain={entry.domain} name={entry.name} size={44} />
 			<span className="min-w-0 flex-1">
 				<span className="flex items-center gap-1.5">
-					<span className="truncate text-sm font-semibold">{entry.name}</span>
-					{added > 0 && <Check className="size-3.5 shrink-0 text-success" aria-label="Added" />}
+					<span className="truncate text-body font-semibold">{entry.name}</span>
+					{added > 0 && <Check className="size-4 shrink-0 text-success-ink" aria-label="Added" />}
 				</span>
-				<span className="block truncate text-xs text-fg-subtle">{entry.publisher}</span>
-				<span className="mt-1 line-clamp-2 text-[13px] leading-5 text-fg-muted">{entry.description}</span>
+				<span className="block truncate text-small text-fg-subtle">{entry.publisher}</span>
+				<span className="mt-1 line-clamp-2 text-small text-fg-muted">{entry.description}</span>
 			</span>
 		</button>
 	);
 }
 
-/** Popular MCP apps to add in a few clicks. From a bot's panel, new apps go to that bot. */
+/** Popular apps (MCP servers) to add in a few clicks. From a bot's panel, new apps go to that bot. */
 export function AppStore({ agent, onAdded, onCustom }: { agent?: Agent; onAdded?: () => void; onCustom?: () => void }) {
 	const { data: servers = [] } = useMcpServers();
+	// Only admins may run an app as a command on the server (the custom app form offers it to them alone).
+	const { admin } = useAccess();
 	const [q, setQ] = useState("");
 	const [category, setCategory] = useState<McpCategory | "all">("all");
 	const [open, setOpen] = useState<McpCatalogEntry | null>(null);
@@ -734,7 +729,7 @@ export function AppStore({ agent, onAdded, onCustom }: { agent?: Agent; onAdded?
 					value={q}
 					onChange={(e) => setQ(e.target.value)}
 					placeholder="Search apps"
-					className="h-11 rounded-2xl pl-10"
+					className="h-11 rounded-lg pl-10"
 				/>
 			</div>
 			<div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-none">
@@ -744,8 +739,8 @@ export function AppStore({ agent, onAdded, onCustom }: { agent?: Agent; onAdded?
 						type="button"
 						onClick={() => setCategory(c)}
 						className={cn(
-							"h-8 shrink-0 rounded-full px-3 text-[13px] font-medium transition-colors",
-							category === c ? "bg-foreground text-background" : "bg-muted text-fg-muted hover:text-fg",
+							"h-8 shrink-0 rounded-full px-3 text-small font-medium transition-colors",
+							category === c ? "bg-fg text-bg" : "bg-surface-2 text-fg-muted hover:text-fg",
 						)}
 					>
 						{c === "all" ? "All" : MCP_CATEGORIES[c]}
@@ -754,7 +749,7 @@ export function AppStore({ agent, onAdded, onCustom }: { agent?: Agent; onAdded?
 			</div>
 			{browsing && (
 				<section>
-					<h4 className="mb-2 text-sm font-semibold">Popular</h4>
+					<h4 className="mb-2 text-body font-semibold">Popular</h4>
 					<div className="grid grid-cols-1 gap-2 @[34rem]:grid-cols-2 @[52rem]:grid-cols-3">
 						{featured.map((e) => (
 							<StoreCard key={e.id} entry={e} added={added(e.id)} onOpen={() => setOpen(e)} />
@@ -763,10 +758,10 @@ export function AppStore({ agent, onAdded, onCustom }: { agent?: Agent; onAdded?
 				</section>
 			)}
 			<section>
-				{browsing && <h4 className="mb-2 text-sm font-semibold">All apps</h4>}
+				{browsing && <h4 className="mb-2 text-body font-semibold">All apps</h4>}
 				{list.length === 0 ? (
-					<p className="py-6 text-center text-sm text-fg-subtle">
-						No apps match. You can add any MCP server as a custom one.
+					<p className="py-6 text-center text-body text-fg-subtle">
+						No apps match. You can add any other app as a custom one.
 					</p>
 				) : (
 					<div className="grid grid-cols-1 gap-2 @[34rem]:grid-cols-2 @[52rem]:grid-cols-3">
@@ -780,14 +775,16 @@ export function AppStore({ agent, onAdded, onCustom }: { agent?: Agent; onAdded?
 				<button
 					type="button"
 					onClick={onCustom}
-					className="flex items-center gap-3 rounded-2xl border border-dashed border-border-strong p-3.5 text-left text-sm text-fg-muted hover:bg-muted/50"
+					className="flex items-center gap-3 rounded-lg border border-dashed border-border-strong p-3.5 text-left text-body text-fg-muted hover:bg-surface-2/50"
 				>
-					<span className="flex size-11 items-center justify-center rounded-xl bg-muted">
+					<span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-surface-2">
 						<Plug className="size-5" />
 					</span>
 					<span>
-						<span className="block font-medium text-fg">Custom server</span>
-						Any MCP server: a URL, or a command that runs on the Sekai server.
+						<span className="block font-medium text-fg">Custom app</span>
+						{admin
+							? "Any other app, by its web address or a command on the Sekai server."
+							: "Any other app, by its web address."}
 					</span>
 				</button>
 			)}
@@ -820,20 +817,20 @@ export function InstalledApps({ onManage, empty }: { onManage: (s: McpServerWith
 							key={s.id}
 							type="button"
 							onClick={() => onManage(s)}
-							className="flex min-w-0 items-center gap-3 rounded-2xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/40"
+							className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:bg-surface-2/40"
 						>
 							<span className="relative">
 								<AppIcon domain={domain} name={s.title} size={40} />
 								<span
 									className={cn(
-										"absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card",
+										"absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-surface",
 										DOT[st.tone],
 									)}
 								/>
 							</span>
 							<span className="min-w-0 flex-1">
-								<span className="block truncate text-sm font-semibold">{s.title}</span>
-								<span className="block truncate text-xs text-fg-subtle">
+								<span className="block truncate text-body font-semibold">{s.title}</span>
+								<span className="block truncate text-small text-fg-subtle">
 									{st.tone === "success" ? accessSummary(s, agents) : st.label}
 									{st.tone === "success" ? ` · ${st.label}` : ""}
 								</span>
@@ -854,7 +851,7 @@ export function ManageApp({
 }: {
 	server: McpServerWithStatus | null;
 	onOpenChange: (o: boolean) => void;
-	/** Edit the raw settings (custom servers, in Admin). */
+	/** Edit the raw settings (custom servers, in Settings → Apps & skills). */
 	onEdit?: (s: McpServerWithStatus) => void;
 }) {
 	const qc = useQueryClient();
@@ -909,7 +906,7 @@ export function ManageApp({
 			<div className="flex flex-col gap-5">
 				<div className="flex flex-wrap items-center gap-2">
 					<span className={cn("size-2.5 rounded-full", DOT[st.tone])} />
-					<span className="text-sm font-medium">
+					<span className="text-body font-medium">
 						{s.status.state === "connected"
 							? `Connected · ${s.status.tools.length} tools`
 							: needsSignIn
@@ -917,7 +914,7 @@ export function ManageApp({
 								: st.label}
 					</span>
 					<div className="ml-auto flex items-center gap-2">
-						<span className="text-[13px] text-fg-subtle">On</span>
+						<span className="text-small text-fg-subtle">On</span>
 						<Switch
 							checked={s.enabled}
 							onCheckedChange={(enabled) => update.mutate({ enabled })}
@@ -926,7 +923,7 @@ export function ManageApp({
 					</div>
 				</div>
 				{s.status.state === "error" && s.status.error && (
-					<div className="flex items-start gap-2 rounded-2xl bg-danger/8 p-3 text-[13px] text-danger">
+					<div className="flex items-start gap-2 rounded-lg bg-danger-soft p-3 text-body text-danger-ink">
 						<CircleAlert className="mt-0.5 size-4 shrink-0" />
 						<pre className="min-w-0 flex-1 overflow-auto font-sans whitespace-pre-wrap">
 							{s.status.error}
@@ -956,15 +953,15 @@ export function ManageApp({
 											aria-pressed={on}
 											onClick={() => bind.mutate({ agent: a, on: !on })}
 											className={cn(
-												"flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-[13px] font-medium transition-colors",
+												"flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-body font-medium transition-colors",
 												on
-													? "border-brand/50 bg-brand/8 text-fg"
-													: "border-border text-fg-muted hover:bg-muted/60",
+													? "border-brand/50 bg-brand-soft text-fg"
+													: "border-border text-fg-muted hover:bg-surface-2/60",
 											)}
 										>
 											<AgentAvatar avatar={a.avatar} size={26} />
 											{a.name}
-											{on && <Check className="size-3.5 text-brand-ink" />}
+											{on && <Check className="size-4 text-brand-ink" />}
 										</button>
 									);
 								})}
@@ -979,14 +976,14 @@ export function ManageApp({
 					onCheckedChange={(requireApproval) => update.mutate({ requireApproval })}
 				/>
 				{s.status.tools.length > 0 && (
-					<details className="rounded-2xl border border-border">
-						<summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium select-none">
+					<details className="rounded-lg border border-border">
+						<summary className="cursor-pointer list-none px-4 py-3 text-body font-medium select-none">
 							What it can do{" "}
 							<span className="ml-1 font-normal text-fg-subtle">{s.status.tools.length} tools</span>
 						</summary>
 						<div className="flex max-h-72 flex-col gap-2 overflow-y-auto border-t border-border p-4 scrollbar-thin">
 							{s.status.tools.map((t) => (
-								<div key={t.name} className="text-[13px]">
+								<div key={t.name} className="text-body">
 									<span className="font-medium">{t.annotations.title ?? t.name}</span>
 									{t.annotations.readOnlyHint && <Badge className="ml-1.5">read-only</Badge>}
 									{t.annotations.destructiveHint && (
@@ -994,7 +991,7 @@ export function ManageApp({
 											changes things
 										</Badge>
 									)}
-									<p className="line-clamp-2 text-xs text-fg-subtle">{t.description}</p>
+									<p className="line-clamp-2 text-small text-fg-subtle">{t.description}</p>
 								</div>
 							))}
 						</div>

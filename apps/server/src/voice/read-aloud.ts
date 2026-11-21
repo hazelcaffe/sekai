@@ -32,7 +32,7 @@ export async function speechStream(opts: {
 	const v = await voiceFor(opts.agentId);
 	const model = v.ttsModel;
 	const voice = v.ttsVoice;
-	if (!model) throw badRequest("No speaking voice picked yet (Admin → Voice, or the bot's Voice tab)");
+	if (!model) throw badRequest("No speaking voice picked yet (Settings → Voice, or the bot's Model & voice)");
 	const key = createHash("sha256").update(`${model}|${voice}|${v.language}|${text}`).digest("hex").slice(0, 32);
 	const file = join(DIR, `${key}.pcm`);
 	if (existsSync(file)) {

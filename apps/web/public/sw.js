@@ -26,12 +26,10 @@ self.addEventListener("activate", (event) => {
 
 // ---------------------------------------------------------------- offline
 
-/** Only the app's own files: the API, the admin app and other sites always go straight to the network. */
+/** Only the app's own files: the API and other sites always go straight to the network. */
 function handled(url, request) {
 	if (request.method !== "GET" || url.origin !== self.location.origin) return false;
-	if (url.pathname.startsWith("/api/") || url.pathname === "/admin" || url.pathname.startsWith("/admin/"))
-		return false;
-	return true;
+	return !url.pathname.startsWith("/api/");
 }
 
 self.addEventListener("fetch", (event) => {
@@ -184,7 +182,7 @@ self.addEventListener("notificationclick", (event) => {
 	event.waitUntil(
 		(async () => {
 			const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-			const app = windows.find((w) => !new URL(w.url).pathname.startsWith("/admin"));
+			const app = windows[0];
 			if (app) {
 				app.postMessage({ type: "navigate", path });
 				return app.focus();

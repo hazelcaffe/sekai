@@ -45,7 +45,7 @@ function parseScanOutput<T>(stdout: Uint8Array | string, stderr: string): T {
 		out = JSON.parse(text) as T & { error?: string };
 	} catch {
 		if (/python3: (command )?not found|No such file or directory.*python3/i.test(stderr)) {
-			throw new Error("Indexing code here needs python3 on the machine");
+			throw new Error("Indexing code here needs python3 on the computer");
 		}
 		throw new Error(stderr.trim().slice(0, 300) || "Couldn't read the folder");
 	}

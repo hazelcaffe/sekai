@@ -471,7 +471,7 @@ export const channelMessages = pgTable(
 	],
 );
 
-/** Agent CLIs you've signed in to yourself (BYOS): Codex, Claude Code, Grok, Gemini, Devin… */
+/** Agent CLIs you've signed in to yourself (BYOS): Codex, Claude Code, OpenCode, Pi… */
 export const providers = pgTable("providers", {
 	id: text().primaryKey(),
 	preset: text().$type<ProviderPresetId>().notNull(),
@@ -674,6 +674,8 @@ export const users = pgTable(
 		passwordChangedAt: ms().notNull(),
 		/** A temporary password an admin set: they choose their own at the next sign-in. */
 		mustChangePassword: boolean().notNull().default(false),
+		/** Every sign-in that didn't use a passkey ends with one (or a recovery code) as its second step. */
+		requirePasskey: boolean().notNull().default(false),
 		disabledAt: ms(),
 		lastLoginAt: ms(),
 		...timestamps,
@@ -1029,7 +1031,7 @@ export const accessGrants = pgTable(
 			.references(() => agents.id, { onDelete: "cascade" }),
 		/** On a host: the account the bot's key is in (null: the host's own account). */
 		account: text(),
-		/** Who said yes: you, the reviewer, the primary bot, or YOLO mode. */
+		/** Who said yes, in words: you, the reviewer, the primary bot, or the Don't ask rule. */
 		grantedBy: text().notNull(),
 		reason: text().notNull().default(""),
 		createdAt: ms().notNull(),

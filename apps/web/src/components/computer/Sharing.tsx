@@ -1,6 +1,7 @@
 import {
 	AgentAvatar,
 	api,
+	useAccess,
 	useAgents,
 	useMachineMembers,
 	useMachines,
@@ -14,25 +15,32 @@ import {
 	Checkbox,
 	Confirm,
 	Dialog,
+	EmptyState,
 	Field,
+	FormGroup,
 	IconButton,
 	Input,
+	List,
+	Row,
+	SaveState,
 	Section,
 	Segmented,
 	Select,
+	SkeletonRows,
 	Spinner,
 	ToggleRow,
 } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, Globe, Maximize2, Pencil, Plus, RotateCw, Trash2, Users } from "lucide-react";
+import { AlertTriangle, Globe, Pencil, Plus, RotateCw, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Access, MemberBadge, ScreenPreview } from "./MachineParts.tsx";
-import { VncView } from "./VncView.tsx";
+import { LoadProblem } from "./LoadProblem.tsx";
+import { Access, MemberBadge } from "./MachineParts.tsx";
+import { useComputerSave } from "./useComputerSave.ts";
 
 /** Sharing: other bots on a bot's computer or devbox (each in its own seat), and browsers several bots use. */
 
-const fail = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e));
+const fail = () => toast.error("Couldn’t update sharing. Check the connection and try again.");
 
 const VIEWERS_HINT =
 	"Your own bots here may use it when people you've shared them with chat with them. Bots others shared with you never do.";
@@ -46,9 +54,9 @@ function BotLine({ agent, name, sharedBy }: { agent?: Agent; name: string; share
 				<span className="size-7 shrink-0 rounded-full bg-surface-2" />
 			)}
 			<span className="min-w-0">
-				<span className="block truncate text-[13px] font-medium">{name}</span>
+				<span className="block truncate text-body font-medium">{name}</span>
 				{sharedBy && (
-					<span className="block truncate text-xs text-fg-subtle">Shared with you by {sharedBy}</span>
+					<span className="block truncate text-small text-fg-subtle">Shared with you by {sharedBy}</span>
 				)}
 			</span>
 		</span>
@@ -68,8 +76,11 @@ function botOptions(agents: Agent[], exclude: Set<string>) {
 
 /** "Share with other bots" on the owner's machine card: who's on it, adding and removing them, the viewers switch. */
 export function ShareMachine({ machine }: { machine: Machine }) {
-	const { data: members = [] } = useMachineMembers(machine.id);
-	const { data: agents = [] } = useAgents();
+	const membership = useMachineMembers(machine.id);
+	const bots = useAgents();
+	const members = membership.data ?? [];
+	const agents = bots.data ?? [];
+	const { can } = useAccess();
 	const [pick, setPick] = useState("");
 	const [removing, setRemoving] = useState<MachineMember | null>(null);
 	const add = useMutation({
@@ -85,22 +96,29 @@ export function ShareMachine({ machine }: { machine: Machine }) {
 		mutationFn: (id: string) => api.machines.members.retry(machine.id, id),
 		onError: fail,
 	});
-	const viewers = useMutation({
-		mutationFn: (on: boolean) => api.machines.update(machine.id, { shareWithViewers: on }),
-		onError: fail,
-	});
+	const viewers = useComputerSave((on: boolean) => api.machines.update(machine.id, { shareWithViewers: on }));
 	const computer = machine.kind === "computer";
 	const running = machine.status === "running";
 	const options = botOptions(agents, new Set([machine.agentId, ...members.map((m) => m.agentId)]));
 	const byId = new Map(agents.map((a) => [a.id, a]));
+	if (membership.isError || bots.isError)
+		return (
+			<LoadProblem
+				what="sharing"
+				retry={() => {
+					void bots.refetch();
+					void membership.refetch();
+				}}
+			/>
+		);
+	if (!membership.data || !bots.data) return <SkeletonRows />;
 
 	return (
-		<div className="flex flex-col gap-3 rounded-2xl border border-border p-3">
+		<div className="flex flex-col gap-3">
 			<div className="flex items-start gap-2.5">
 				<Users className="mt-0.5 size-4 shrink-0 text-fg-subtle" />
 				<span className="min-w-0 flex-1">
-					<span className="block text-[13px] font-medium">Share with other bots</span>
-					<span className="block text-xs leading-5 text-fg-subtle">
+					<span className="block text-small text-fg-subtle">
 						Each gets its own account{computer ? ", screen and Chrome" : ""} here, and works on it in your
 						chats.
 					</span>
@@ -134,21 +152,26 @@ export function ShareMachine({ machine }: { machine: Machine }) {
 									<Trash2 />
 								</IconButton>
 							</div>
-							<span className="flex items-center gap-1.5 pl-[38px] text-xs text-fg-subtle">
-								{(m.status === "adding" || m.status === "removing") && <Spinner className="size-3" />}
+							<span className="flex items-center gap-1.5 pl-[38px] text-small text-fg-subtle">
+								{(m.status === "adding" || m.status === "removing") && <Spinner />}
 								<span className="min-w-0 break-words">
 									{m.status === "ready"
 										? `Account ${m.username}${m.display !== null ? ` · screen :${m.display}` : ""}`
-										: (m.statusDetail ?? "…")}
+										: m.status === "error"
+											? "Couldn’t set up this account. Try again when the computer is running."
+											: m.status === "adding"
+												? "Adding the account…"
+												: "Removing the account…"}
 								</span>
 							</span>
 						</div>
 					))}
 				</div>
 			)}
-			{options.length > 0 && (
+			{can("computers") && options.length > 0 && (
 				<div className="flex gap-2">
 					<Select
+						label="Bot to add"
 						value={pick}
 						onValueChange={setPick}
 						options={options}
@@ -168,18 +191,22 @@ export function ShareMachine({ machine }: { machine: Machine }) {
 				</div>
 			)}
 			{!running && (
-				<p className="text-xs text-fg-subtle">Turn it on to add bots: their accounts are made on it.</p>
+				<p className="text-small text-fg-subtle">Turn it on to add bots: their accounts are made on it.</p>
+			)}
+			{!can("computers") && (
+				<p className="text-small text-fg-muted">Your role doesn’t allow adding bots to a computer.</p>
 			)}
 			<ToggleRow
 				title="Also for people these bots are shared with"
 				description={VIEWERS_HINT}
 				checked={machine.shareWithViewers}
-				onCheckedChange={(v) => viewers.mutate(v)}
-				disabled={viewers.isPending}
+				onCheckedChange={viewers.save}
+				disabled={viewers.status === "saving"}
 			/>
+			<SaveState state={viewers} />
 			{members.length > 0 && (
-				<p className="flex items-start gap-1.5 text-xs leading-5 text-fg-subtle">
-					<AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+				<p className="flex items-start gap-1.5 text-small text-fg-subtle">
+					<AlertTriangle className="mt-0.5 size-4 shrink-0" />
 					Turning it off, resizing it or going back to a checkpoint affects every bot on it.
 				</p>
 			)}
@@ -199,7 +226,6 @@ export function ShareMachine({ machine }: { machine: Machine }) {
 /** A bot's own seat on one of your machines: its screen, takeover and passwords there. */
 function SeatCard({ seat }: { seat: MachineSeat }) {
 	const { machine: m, member } = seat;
-	const [takeover, setTakeover] = useState(false);
 	const [removing, setRemoving] = useState(false);
 	const remove = useMutation({ mutationFn: () => api.machines.members.remove(m.id, member.id), onError: fail });
 	const retry = useMutation({ mutationFn: () => api.machines.members.retry(m.id, member.id), onError: fail });
@@ -207,17 +233,14 @@ function SeatCard({ seat }: { seat: MachineSeat }) {
 	const running = m.status === "running";
 	const ready = running && member.status === "ready";
 	return (
-		<div className="flex flex-col gap-3 rounded-2xl border border-border p-3">
-			{computer && ready && (
-				<ScreenPreview machine={m} agentId={member.agentId} onTakeover={() => setTakeover(true)} />
-			)}
+		<div className="flex flex-col gap-3 rounded-lg border border-border p-3">
 			<div className="flex items-center gap-2">
 				<span className="min-w-0 flex-1">
 					<span className="flex items-center gap-2">
-						<span className="truncate text-sm font-medium">{m.name}</span>
+						<span className="truncate text-body font-medium">{m.name}</span>
 						{running ? <MemberBadge member={member} /> : <Badge>Off</Badge>}
 					</span>
-					<span className="block truncate text-xs text-fg-subtle">
+					<span className="block truncate text-small text-fg-subtle">
 						{m.name.includes(seat.ownerBot)
 							? ""
 							: `${seat.ownerBot}'s ${computer ? "computer" : "devbox"} · `}
@@ -227,29 +250,26 @@ function SeatCard({ seat }: { seat: MachineSeat }) {
 				</span>
 			</div>
 			{(member.status === "adding" || member.status === "removing") && (
-				<div className="flex items-center gap-3 rounded-2xl bg-surface-2/60 px-3.5 py-3 text-[13px]">
+				<div className="flex items-center gap-3 rounded-lg bg-surface-2/60 px-3.5 py-3 text-body">
 					<Spinner />
-					<span className="min-w-0 flex-1 text-xs text-fg-subtle">{member.statusDetail ?? "…"}</span>
+					<span className="min-w-0 flex-1 text-small text-fg-subtle">{member.statusDetail ?? "…"}</span>
 				</div>
 			)}
 			{member.status === "error" && (
-				<div className="flex gap-2.5 rounded-2xl border border-danger/30 bg-danger/[0.06] px-3.5 py-3 text-[13px]">
-					<AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />
-					<span className="min-w-0 flex-1 break-words">{member.statusDetail}</span>
+				<div className="flex gap-2.5 rounded-lg border border-danger/30 bg-danger/[0.06] px-3.5 py-3 text-body">
+					<AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger-ink" />
+					<span className="min-w-0 flex-1">
+						Couldn’t set up this account. Turn on the computer and try again.
+					</span>
 				</div>
 			)}
 			{!member.available && (
-				<p className="text-xs text-fg-subtle">
+				<p className="text-small text-fg-subtle">
 					Its owner stopped sharing it with you, so it can't use {m.name} until they share it again.
 				</p>
 			)}
 			{ready && <Access machine={m} seat={member} />}
 			<div className="flex flex-wrap gap-1.5">
-				{computer && ready && (
-					<Button variant="secondary" size="sm" onClick={() => setTakeover(true)}>
-						<Maximize2 /> Take over
-					</Button>
-				)}
 				{member.status === "error" && running && (
 					<Button variant="secondary" size="sm" onClick={() => retry.mutate()} disabled={retry.isPending}>
 						<RotateCw /> Try again
@@ -264,10 +284,9 @@ function SeatCard({ seat }: { seat: MachineSeat }) {
 					<Trash2 /> Remove from {m.name}
 				</Button>
 			</div>
-			<p className="text-xs leading-5 text-fg-subtle">
-				Turning it on and off, its size and checkpoints are on {seat.ownerBot}'s Computer tab.
+			<p className="text-small text-fg-subtle">
+				Turning it on and off, its size and checkpoints are in {seat.ownerBot}'s Computer section.
 			</p>
-			{computer && <VncView machine={m} agentId={member.agentId} open={takeover} onOpenChange={setTakeover} />}
 			<Confirm
 				open={removing}
 				onOpenChange={setRemoving}
@@ -283,8 +302,18 @@ function SeatCard({ seat }: { seat: MachineSeat }) {
 
 /** Your computers and devboxes this bot has a seat on. */
 export function Seats({ agent }: { agent: Agent }) {
-	const { data: seats = [] } = useSeats(agent.id);
-	if (seats.length === 0) return null;
+	const { data: seats, isError, refetch } = useSeats(agent.id);
+	if (isError) return <LoadProblem what="shared computers" retry={refetch} />;
+	if (!seats) return <SkeletonRows />;
+	if (!seats.length)
+		return (
+			<EmptyState
+				size="sm"
+				icon={<Users />}
+				title="No shared computers"
+				description={`Choose Share with bots on another computer to give ${agent.name} an account.`}
+			/>
+		);
 	return (
 		<Section
 			title="Shared with it"
@@ -344,26 +373,24 @@ function BrowserDialog({
 			onOpenChange={onOpenChange}
 			title={browser ? `Change ${browser.name}` : "New shared browser"}
 			description="One browser several bots use, each in its own tabs."
-			footer={
-				<>
-					<Button variant="secondary" onClick={() => onOpenChange(false)}>
-						Cancel
-					</Button>
-					<Button
-						variant="primary"
-						disabled={!name.trim() || bots.length === 0 || save.isPending}
-						onClick={() => save.mutate()}
-					>
-						{save.isPending && <Spinner />} {browser ? "Save" : "Create"}
-					</Button>
-				</>
-			}
 		>
-			<form
-				className="flex flex-col gap-4"
-				onSubmit={(e) => {
-					e.preventDefault();
-					if (name.trim() && bots.length) save.mutate();
+			<FormGroup
+				dirty={
+					name !== (browser?.name ?? "") ||
+					where !== (browser?.machineId ?? "server") ||
+					signIns !== (browser?.signIns ?? "shared") ||
+					viewers !== (browser?.shareWithViewers ?? false) ||
+					JSON.stringify(bots) !== JSON.stringify(browser?.members.map((m) => m.agentId) ?? [agent.id])
+				}
+				onCancel={() => onOpenChange(false)}
+				disabled={!name.trim() || !bots.length}
+				submitLabel={browser ? "Save" : "Create browser"}
+				onSubmit={async () => {
+					try {
+						await save.mutateAsync();
+					} catch {
+						throw new Error("Couldn’t save this browser. Check the name and try again.");
+					}
 				}}
 			>
 				<Field label="Name" hint="Bots pick it by this name.">
@@ -412,7 +439,7 @@ function BrowserDialog({
 					/>
 				</Field>
 				<Field label="Bots">
-					<div className="flex max-h-56 flex-col overflow-y-auto rounded-xl border border-border px-3 py-1.5 scrollbar-thin">
+					<div className="flex max-h-56 flex-col overflow-y-auto rounded-lg border border-border px-3 py-1.5 scrollbar-thin">
 						{choices.map((a) => (
 							<Checkbox
 								key={a.id}
@@ -432,53 +459,61 @@ function BrowserDialog({
 					checked={viewers}
 					onCheckedChange={setViewers}
 				/>
-			</form>
+			</FormGroup>
 		</Dialog>
 	);
 }
 
 /** Shared browsers this bot is in, and making new ones. */
 export function SharedBrowsers({ agent }: { agent: Agent }) {
-	const { data: browsers = [] } = useSharedBrowsers(agent.id);
+	const { data: browsers, isError, refetch } = useSharedBrowsers(agent.id);
+	const { can } = useAccess();
 	const [editing, setEditing] = useState<SharedBrowser | "new" | null>(null);
 	const [deleting, setDeleting] = useState<SharedBrowser | null>(null);
 	const remove = useMutation({ mutationFn: (id: string) => api.sharedBrowsers.delete(id), onError: fail });
+	if (isError) return <LoadProblem what="shared browsers" retry={refetch} />;
+	if (!browsers) return <SkeletonRows />;
 	return (
 		<Section
-			title="Browsers"
-			description={`Browsers ${agent.name} shares with other bots, with shared or separate sign-ins.`}
+			title="Available browsers"
 			action={
-				<Button variant="secondary" size="xs" onClick={() => setEditing("new")}>
-					<Plus /> New
-				</Button>
+				can("browser") && (
+					<Button variant="secondary" size="sm" onClick={() => setEditing("new")}>
+						<Plus /> New browser
+					</Button>
+				)
 			}
 		>
 			{browsers.length === 0 && (
-				<p className="text-[13px] text-fg-subtle">
-					None yet. A shared browser lets several bots work signed in to the same sites.
+				<p className="text-small text-fg-subtle">
+					{can("browser") ? "No shared browsers yet." : "Your role doesn’t allow creating shared browsers."}
 				</p>
 			)}
-			{browsers.map((b) => (
-				<div key={b.id} className="flex items-center gap-3 rounded-2xl border border-border px-3 py-2.5">
-					<Globe className="size-4 shrink-0 text-fg-subtle" />
-					<span className="min-w-0 flex-1">
-						<span className="block truncate text-[13px] font-medium">{b.name}</span>
-						<span className="block truncate text-xs text-fg-subtle">{browserLine(b)}</span>
-						<span className="block truncate text-xs text-fg-subtle">
-							{b.members
-								.map((m) => `${m.agentName}${m.available ? "" : " (no longer shared)"}`)
-								.join(", ")}
-							{b.shareWithViewers ? " · also for people they're shared with" : ""}
-						</span>
-					</span>
-					<IconButton size="icon-sm" label={`Change ${b.name}`} onClick={() => setEditing(b)}>
-						<Pencil />
-					</IconButton>
-					<IconButton size="icon-sm" label={`Delete ${b.name}`} onClick={() => setDeleting(b)}>
-						<Trash2 />
-					</IconButton>
-				</div>
-			))}
+			{browsers.length > 0 && (
+				<List>
+					{browsers.map((b) => (
+						<Row
+							key={b.id}
+							icon={<Globe />}
+							title={b.name}
+							onClick={() => setEditing(b)}
+							subtitle={browserLine(b)}
+							menuLabel={`Options for ${b.name}`}
+							menu={[
+								{ label: "Edit browser", icon: <Pencil />, onSelect: () => setEditing(b) },
+								{ label: "Delete browser", danger: true, onSelect: () => setDeleting(b) },
+							]}
+						>
+							<p className="text-small text-fg-subtle">
+								{b.members
+									.map((m) => `${m.agentName}${m.available ? "" : " (no longer shared)"}`)
+									.join(", ")}
+								{b.shareWithViewers && " · shared chats too"}
+							</p>
+						</Row>
+					))}
+				</List>
+			)}
 			{editing && (
 				<BrowserDialog
 					key={editing === "new" ? "new" : editing.id}

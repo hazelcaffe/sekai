@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import type { Provider } from "@sekai/shared";
 import { config } from "../config.ts";
 
 /** Sekai's own secrets never reach a third-party agent process. */
@@ -16,6 +17,22 @@ export function agentEnv(extra: Record<string, string>): Record<string, string> 
 		else env[k] = v;
 	}
 	return env;
+}
+
+/** pi-acp doesn't ask before running Pi's native tools. Force a chat-only Pi underneath it. */
+export function acpEnv(provider: Provider): Record<string, string> {
+	const env = agentEnv(provider.env);
+	if (provider.preset !== "pi") return env;
+	if (process.platform === "win32") throw new Error("The Pi preset needs a Linux or macOS server (or Docker).");
+	const launcher = join(import.meta.dir, "pi-chat.sh");
+	const command = env.PI_ACP_PI_COMMAND || "pi";
+	const pi = Bun.which(command, { PATH: env.PATH });
+	if (!pi || pi === launcher) {
+		throw new Error(
+			"Install Pi on the server and put it on the server's PATH, or set PI_ACP_PI_COMMAND to its full path.",
+		);
+	}
+	return { ...env, PI_ACP_PI_COMMAND: launcher, SEKAI_PI_EXECUTABLE: pi };
 }
 
 /** Each agent gets its own folder for the external agent's files, shell commands and attachments. */

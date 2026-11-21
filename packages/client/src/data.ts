@@ -13,6 +13,9 @@ import { api } from "./api.ts";
 import { qk } from "./query.ts";
 
 export const useInfo = () => useQuery({ queryKey: qk.info, queryFn: api.info, staleTime: 60_000 });
+/** The desktop, phone and browser apps of this server's release, from GitHub (the server keeps them for an hour). */
+export const useAppDownloads = (enabled = true) =>
+	useQuery({ queryKey: qk.appDownloads, queryFn: api.apps.downloads, enabled, staleTime: 10 * 60_000, retry: 1 });
 export const useModels = () =>
 	useQuery({ queryKey: qk.models, queryFn: () => api.models(), staleTime: 5 * 60_000, retry: 1 });
 export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: api.settings.get });

@@ -22,9 +22,11 @@ import type {
 	EmailConfig,
 	LinkedIdentity,
 	LoginInput,
+	MfaChallenge,
 	MfaMethod,
 	MfaStatus,
 	PasskeyInfo,
+	PasskeyRequirementResult,
 	PasswordChange,
 	SessionInfo,
 	SetupInput,
@@ -50,6 +52,7 @@ import type { CodeIndex, CodeSearchHit } from "./code-index.ts";
 import type { CompareEvent, CompareRequest } from "./compare.ts";
 import type { Conversation, ConversationCreate, ConversationUpdate, MessageSearchHit } from "./conversation.ts";
 import type { DigestConfigUpdate, DigestStatus } from "./digest.ts";
+import type { AppDownloads } from "./downloads.ts";
 import type { CallRing } from "./events.ts";
 import type {
 	ExtensionChat,
@@ -123,7 +126,7 @@ import type {
 	SchedulePreviewRequest,
 } from "./routine.ts";
 import type { ApprovalDecision, PendingApproval, Run } from "./run.ts";
-import type { ModelPrice, ServerInfo, Settings, SettingsUpdate, UsageReport, UsageScope } from "./settings.ts";
+import type { ModelPrice, PublicSettings, ServerInfo, SettingsUpdate, UsageReport, UsageScope } from "./settings.ts";
 import type { Skill, SkillCreate, SkillUpdate } from "./skill.ts";
 import type { SkillDraft, TeachContext, TeachDraftInput, TeachSave } from "./teach.ts";
 import type { TtAccount, TtConnect, TtUpdate } from "./tiktok.ts";
@@ -263,6 +266,11 @@ export function createApiClient(options: ApiClientOptions) {
 
 		info: () => get<ServerInfo>("/info"),
 
+		apps: {
+			/** The desktop, phone and browser apps of this server's release, with where to download them. */
+			downloads: () => get<AppDownloads>("/apps/downloads"),
+		},
+
 		extension: {
 			createToken: (name: string) => post<CreatedApiToken>("/extension/token", { name }),
 			agents: () => get<Pick<Agent, "id" | "name">[]>("/extension/agents"),
@@ -357,7 +365,7 @@ export function createApiClient(options: ApiClientOptions) {
 			delete: (id: string) => del(`/code/${id}`),
 		},
 
-		/** Web reading: Firecrawl Local, run here by Sekai or reached somewhere else (Admin → Web reading). */
+		/** Web reading: Firecrawl Local, run here by Sekai or reached somewhere else (Settings → Bots → Web reading). */
 		web: {
 			status: () => get<WebEngineStatus>("/web"),
 			save: (body: WebEngineSettingsUpdate) => patch<WebEngineStatus>("/web/settings", body),
@@ -454,10 +462,14 @@ export function createApiClient(options: ApiClientOptions) {
 			setup: (body: SetupInput) => post<SignInResult>("/auth/setup", body),
 			login: (body: LoginInput) => post<SignInResult>("/auth/login", body),
 			/** The second step: send a code by email or text, then check a code (or a recovery code). */
-			mfaChallenge: () =>
-				get<{ methods: MfaMethod[]; hints: { email?: string; sms?: string } }>("/auth/mfa/challenge"),
+			mfaChallenge: () => get<MfaChallenge>("/auth/mfa/challenge"),
 			mfaSend: (method: "email" | "sms") => post<{ ok: true }>("/auth/mfa/send", { method }),
 			mfaVerify: (method: MfaMethod, code: string) => post<SignInResult>("/auth/mfa/verify", { method, code }),
+			/** The second step with a passkey of the account that's signing in. */
+			mfaPasskeyOptions: () =>
+				post<{ challengeId: string; options: Record<string, unknown> }>("/auth/mfa/passkey/options"),
+			mfaPasskeyVerify: (body: { challengeId: string; response: unknown }) =>
+				post<SignInResult>("/auth/mfa/passkey/verify", body),
 			/** Where the browser goes to sign in with a provider (or, signed in, link it). */
 			ssoStartUrl: (providerId: string, opts: { redirect?: string; link?: boolean } = {}) =>
 				`${base}/api/auth/sso/${encodeURIComponent(providerId)}/start${qs({ redirect: opts.redirect, link: opts.link ? 1 : undefined })}`,
@@ -496,6 +508,9 @@ export function createApiClient(options: ApiClientOptions) {
 				post<PasskeyInfo>("/auth/passkeys/register/verify", body),
 			renamePasskey: (id: string, name: string) => patch<{ ok: true }>(`/auth/passkeys/${id}`, { name }),
 			deletePasskey: (id: string) => del(`/auth/passkeys/${id}`),
+			/** "Require a passkey to sign in": on needs a passkey; both ways need you to confirm it's you. */
+			requirePasskey: (required: boolean) =>
+				request<PasskeyRequirementResult>("PUT", "/auth/passkeys/required", { required }),
 			passkeyLoginOptions: () =>
 				post<{ challengeId: string; options: Record<string, unknown> }>("/auth/passkeys/login/options"),
 			passkeyLoginVerify: (body: { challengeId: string; response: unknown; reauth?: boolean }) =>
@@ -607,8 +622,8 @@ export function createApiClient(options: ApiClientOptions) {
 		models: (refresh = false) => get<ModelInfo[]>("/models", { refresh: refresh || undefined }),
 
 		settings: {
-			get: () => get<Settings>("/settings"),
-			update: (body: SettingsUpdate) => patch<Settings>("/settings", body),
+			get: () => get<PublicSettings>("/settings"),
+			update: (body: SettingsUpdate) => patch<PublicSettings>("/settings", body),
 			testGateway: (body: { gatewayUrl?: string; gatewayApiKey?: string }) =>
 				post<{ ok: boolean; error: string | null; models: number }>("/settings/test-gateway", body),
 		},
@@ -649,6 +664,8 @@ export function createApiClient(options: ApiClientOptions) {
 			resetPassword: (id: string, how: "temporary" | "link") =>
 				post<UserCredentials>(`/admin/users/${id}/reset-password`, { how }),
 			resetMfa: (id: string) => post<ManagedUser>(`/admin/users/${id}/reset-mfa`),
+			/** Turns off "Require a passkey to sign in" for someone who lost their passkeys. */
+			stopRequiringPasskey: (id: string) => post<ManagedUser>(`/admin/users/${id}/passkey-requirement-off`),
 			signOutUser: (id: string) => post<{ ok: true }>(`/admin/users/${id}/sign-out`),
 			deleteUser: (id: string) => del(`/admin/users/${id}`),
 			roles: () => get<Role[]>("/admin/roles"),

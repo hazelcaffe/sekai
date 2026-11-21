@@ -6,7 +6,8 @@
  *   SEKAI_NEW_PASSWORD=… bun run reset-password [username]
  *
  * With Docker: docker compose exec app bun run reset-password
- * Also turns the account back on if it was off, and, with --no-2fa, removes its two-factor sign-in (a lost phone).
+ * Also turns the account back on if it was off, and, with --no-2fa, removes its two-factor sign-in (a lost phone)
+ * and stops requiring a passkey to sign in (lost passkeys).
  */
 import { PASSWORD_MIN } from "@sekai/shared";
 import { asc, eq } from "drizzle-orm";
@@ -58,9 +59,10 @@ await db
 if (no2fa) {
 	await db.delete(schema.mfaFactors).where(eq(schema.mfaFactors.userId, account.id));
 	await db.delete(schema.recoveryCodes).where(eq(schema.recoveryCodes.userId, account.id));
+	await db.update(schema.users).set({ requirePasskey: false }).where(eq(schema.users.id, account.id));
 }
 await revokeEverything(account.id, { tokens: false });
 console.log(
-	`Done. Sign in as ${account.username} with the new password${no2fa ? " (two-factor sign-in removed)" : ""}; every device was signed out.`,
+	`Done. Sign in as ${account.username} with the new password${no2fa ? " (two-factor sign-in and any required passkey removed)" : ""}; every device was signed out.`,
 );
 await closeDb();

@@ -102,7 +102,7 @@ export function ReauthHost() {
 						Cancel
 					</Button>
 					<Button variant="primary" disabled={!ready || busy} onClick={() => void confirm()}>
-						{busy && <Spinner className="text-primary-foreground" />}
+						{busy && <Spinner />}
 						Confirm
 					</Button>
 				</>
@@ -158,7 +158,7 @@ export function ReauthHost() {
 					</Field>
 				)}
 				{way === "passkey" && (
-					<p className="flex items-center gap-2 text-sm text-fg-muted">
+					<p className="flex items-center gap-2 text-body text-fg-muted">
 						<Fingerprint className="size-4 shrink-0" />
 						Your device asks for your face, fingerprint or PIN.
 					</p>

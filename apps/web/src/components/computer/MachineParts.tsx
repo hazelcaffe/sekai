@@ -1,9 +1,10 @@
 import { api } from "@sekai/client";
 import type { Machine, MachineAccess, MachineMember } from "@sekai/shared";
-import { Badge, Button, IconButton } from "@sekai/ui";
+import { Badge, Button, CopyField, Skeleton } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Copy, Download, Eye, Maximize2, X } from "lucide-react";
+import { Download, Eye, MonitorOff, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 /** Pieces of a machine's card, shared by a bot's own machine and its seat on another bot's. */
 
@@ -41,74 +42,49 @@ export function MemberBadge({ member }: { member: MachineMember }) {
 	return <Badge tone={tone}>{label}</Badge>;
 }
 
-export function CopyRow({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
-	const [done, setDone] = useState(false);
-	return (
-		<div className="flex items-center gap-2 py-1 text-[13px]">
-			<span className="w-20 shrink-0 truncate text-fg-subtle">{label}</span>
-			<code className="min-w-0 flex-1 truncate font-mono text-[12px]">{secret ? "••••••••••" : value}</code>
-			<IconButton
-				label={done ? "Copied" : "Copy"}
-				size="icon-sm"
-				onClick={async () => {
-					await navigator.clipboard.writeText(value);
-					setDone(true);
-					setTimeout(() => setDone(false), 1200);
-				}}
-			>
-				{done ? <Check /> : <Copy />}
-			</IconButton>
-		</div>
-	);
-}
-
 /**
  * The live screen: a fresh screenshot every couple of seconds while the panel is open. agentId: a bot with a
  * seat on the computer (its own screen there).
  */
-export function ScreenPreview({
-	machine,
-	agentId,
-	onTakeover,
-}: {
-	machine: Machine;
-	agentId?: string;
-	onTakeover: () => void;
-}) {
+export function ScreenPreview({ machine, agentId }: { machine: Machine; agentId?: string }) {
 	const [src, setSrc] = useState(() => api.machines.screenUrl(machine.id, agentId));
-	const [failed, setFailed] = useState(false);
+	const [state, setState] = useState<"loading" | "failed" | "ready">("loading");
 	useEffect(() => {
-		setSrc(api.machines.screenUrl(machine.id, agentId));
+		if (state !== "ready") return;
 		const t = setInterval(() => {
 			if (document.visibilityState === "visible") setSrc(api.machines.screenUrl(machine.id, agentId));
 		}, 2500);
 		return () => clearInterval(t);
-	}, [machine.id, agentId]);
+	}, [machine.id, agentId, state]);
 	return (
-		<button
-			type="button"
-			onClick={onTakeover}
-			className="group relative block aspect-[16/10] w-full overflow-hidden rounded-2xl border border-border bg-black"
-			aria-label="Take over"
-		>
-			{!failed && (
+		<div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-2">
+			{state !== "failed" && (
 				<img
 					src={src}
 					alt={`${machine.name}'s screen`}
-					className="size-full object-contain"
-					onError={() => setFailed(true)}
-					onLoad={() => setFailed(false)}
+					className="size-full bg-screen object-contain"
+					onError={() => setState("failed")}
+					onLoad={() => setState("ready")}
 				/>
 			)}
-			{failed && (
-				<span className="absolute inset-0 flex items-center justify-center text-xs text-neutral-400">
-					The screen isn't available right now
-				</span>
+			{state === "loading" && <Skeleton className="absolute inset-0" />}
+			{state === "failed" && (
+				<div className="flex flex-col items-center gap-2 text-small text-fg-muted">
+					<MonitorOff className="size-6" />
+					Couldn’t reach the screen.
+					<Button
+						size="sm"
+						variant="secondary"
+						onClick={() => {
+							setSrc(api.machines.screenUrl(machine.id, agentId));
+							setState("loading");
+						}}
+					>
+						Try again
+					</Button>
+				</div>
 			)}
-			<span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 coarse:opacity-100">
-				<Maximize2 className="size-3.5" /> Take over
-			</span>
-		</button>
+		</div>
 	);
 }
 
@@ -118,6 +94,7 @@ export function Access({ machine, seat }: { machine: Machine; seat?: MachineMemb
 	const reveal = useMutation({
 		mutationFn: () => api.machines.access(machine.id, seat?.agentId),
 		onSuccess: setAccess,
+		onError: () => toast.error("Couldn’t show the sign-in details. Confirm it’s you and try again."),
 	});
 	const host = machine.addresses.tailscale ?? machine.addresses.lan;
 	const username = seat?.username ?? machine.username;
@@ -133,26 +110,27 @@ export function Access({ machine, seat }: { machine: Machine; seat?: MachineMemb
 		setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 	};
 	return (
-		<div className="flex flex-col">
+		<div className="flex flex-col gap-1.5">
 			{host && (
-				<CopyRow
+				<CopyField
+					showLabel
 					label="SSH"
 					value={`ssh ${username}@${host}${machine.ports.ssh !== 22 ? ` -p ${machine.ports.ssh}` : ""}`}
 				/>
 			)}
-			{host && vnc && <CopyRow label="VNC" value={`${host}:${vnc}`} />}
-			{host && machine.ports.rdp && <CopyRow label="RDP" value={`${host}:${machine.ports.rdp}`} />}
+			{host && vnc && <CopyField showLabel label="VNC" value={`${host}:${vnc}`} />}
+			{host && machine.ports.rdp && <CopyField showLabel label="RDP" value={`${host}:${machine.ports.rdp}`} />}
 			{machine.addresses.tailscale && machine.addresses.lan && (
-				<CopyRow label="LAN" value={machine.addresses.lan} />
+				<CopyField showLabel label="LAN" value={machine.addresses.lan} />
 			)}
 			{access ? (
 				<>
-					{access.userPassword && <CopyRow label={access.username} value={access.userPassword} />}
-					{access.rootPassword && <CopyRow label="root" value={access.rootPassword} />}
-					{access.vncPassword && <CopyRow label="VNC pass" value={access.vncPassword} />}
+					{access.userPassword && <CopyField showLabel label={access.username} value={access.userPassword} />}
+					{access.rootPassword && <CopyField showLabel label="root" value={access.rootPassword} />}
+					{access.vncPassword && <CopyField showLabel label="VNC pass" value={access.vncPassword} />}
 					<div className="mt-1 flex gap-2">
 						<Button variant="ghost" size="sm" onClick={download}>
-							<Download /> SSH key
+							<Download /> Download SSH key
 						</Button>
 						<Button variant="ghost" size="sm" onClick={() => setAccess(null)}>
 							<X /> Hide
@@ -167,7 +145,7 @@ export function Access({ machine, seat }: { machine: Machine; seat?: MachineMemb
 					onClick={() => reveal.mutate()}
 					disabled={reveal.isPending}
 				>
-					<Eye /> Passwords and key
+					<Eye /> Show passwords and key
 				</Button>
 			)}
 		</div>

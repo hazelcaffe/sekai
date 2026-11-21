@@ -2,7 +2,7 @@ import { createContext, type ReactNode, useContext } from "react";
 
 /**
  * How settings pages are laid out: "compact" (the app's settings and panels) or "page" (full pages with a large
- * title and roomier sections, as in Admin).
+ * title and roomier sections, as Settings uses them).
  */
 export type PageStyle = "compact" | "page";
 

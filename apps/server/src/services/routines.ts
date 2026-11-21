@@ -90,7 +90,7 @@ export async function createRoutine(input: RoutineCreateInput, createdBy: Routin
 		.from(schema.routines)
 		.where(and(eq(schema.routines.agentId, data.agentId), eq(schema.routines.userId, userId)));
 	if ((row?.n ?? 0) >= MAX_ROUTINES_PER_AGENT) {
-		throw badRequest(`An agent can own at most ${MAX_ROUTINES_PER_AGENT} routines`);
+		throw badRequest(`A bot can have at most ${MAX_ROUTINES_PER_AGENT} routines`);
 	}
 	const tz = await effectiveTimezone(data.timezone);
 	const error = validateSchedule(data.schedule, tz);

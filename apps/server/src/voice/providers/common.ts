@@ -1,6 +1,6 @@
 import { parseWav, pcm16ToRate, RATE, wavToPcm } from "../pcm.ts";
 
-/** Where a voice API lives and how to sign in to it (an API provider from Admin). */
+/** Where a voice API lives and how to sign in to it (a voice service from Settings → Bots → Voice). */
 export interface VoiceEndpoint {
 	/** Base URL, no trailing slash. */
 	url: string;

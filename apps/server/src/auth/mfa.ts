@@ -1,12 +1,13 @@
-import type { MfaMethod, MfaStatus, TotpSetup } from "@sekai/shared";
-import { and, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
+import type { MfaChallenge, MfaMethod, MfaStatus, TotpSetup } from "@sekai/shared";
+import { and, count, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import QRCode from "qrcode";
 import { db, schema } from "../db/index.ts";
 import { badRequest, HttpError } from "../lib/errors.ts";
 import { newId, randomChars } from "../lib/ids.ts";
 import { seal, unseal } from "../lib/secrets.ts";
 import { emailReady, maskEmail, maskPhone, sendEmail, sendSms, smsReady } from "../services/messaging.ts";
-import { safeEqual, sha256 } from "./request.ts";
+import { passkeyHostsOf } from "./passkeys.ts";
+import { passkeysAvailableFor, safeEqual, sha256 } from "./request.ts";
 import {
 	checkTicketCode,
 	consumeTicket,
@@ -46,6 +47,14 @@ export async function hasMfa(userId: string): Promise<boolean> {
 	return (await factors(userId)).length > 0;
 }
 
+/**
+ * Whether a sign-in owes a passkey as its second step: the account requires one, and the sign-in didn't use one
+ * (password, single sign-on, an invite or reset link, setup).
+ */
+export function owesPasskey(u: { requirePasskey: boolean }, method: string): boolean {
+	return u.requirePasskey && method !== "passkey";
+}
+
 /** Whether their role requires two-factor sign-in and they haven't set it up (passkeys count). */
 export async function owesMfa(userId: string): Promise<boolean> {
 	const u = await user(userId);
@@ -74,6 +83,7 @@ export async function mfaStatus(userId: string): Promise<MfaStatus> {
 		sms: sms?.target ? maskPhone(sms.target) : null,
 		recoveryCodesLeft: codes.length,
 		required: await roleRequiresMfa(u.roleId),
+		passkeyRequired: u.requirePasskey,
 		emailAvailable: await emailReady(),
 		smsAvailable: await smsReady(),
 	};
@@ -235,7 +245,7 @@ export async function startCodeFactor(userId: string, kind: "email" | "sms"): Pr
 	await deleteUserTickets(userId, "code");
 	const t = await createTicket("code", { userId, data: { kind, target, purpose: "setup" } });
 	const code = await setTicketCode(t.id, { kind, target, purpose: "setup" });
-	await deliver(kind, target, code, "setting up two-factor sign-in");
+	await deliver(kind, target, code, "setting up two-step sign-in");
 	return { hint: kind === "email" ? maskEmail(target) : maskPhone(target) };
 }
 
@@ -277,32 +287,89 @@ export async function removeFactor(userId: string, kind: "totp" | "email" | "sms
 	await db
 		.delete(schema.mfaFactors)
 		.where(and(eq(schema.mfaFactors.userId, userId), eq(schema.mfaFactors.kind, kind)));
-	// No methods left: the recovery codes go too.
-	if (!(await hasMfa(userId))) await db.delete(schema.recoveryCodes).where(eq(schema.recoveryCodes.userId, userId));
+	await dropUnneededCodes(userId);
+}
+
+/** No second step left (no methods, no required passkey): the recovery codes go too. */
+async function dropUnneededCodes(userId: string): Promise<void> {
+	if ((await user(userId)).requirePasskey || (await hasMfa(userId))) return;
+	await db.delete(schema.recoveryCodes).where(eq(schema.recoveryCodes.userId, userId));
+}
+
+// ---------------------------------------------------------------- requiring a passkey
+
+/**
+ * Turns "Require a passkey to sign in" on or off. On needs a passkey (the account row is locked meanwhile, so
+ * removing the last passkey can't cross it) and makes recovery codes when there are none: they replace the passkey
+ * once each when it's lost. Off drops the codes when nothing else uses them.
+ */
+export async function setPasskeyRequired(
+	userId: string,
+	required: boolean,
+): Promise<{ required: boolean; recoveryCodes?: string[] }> {
+	await db.transaction(async (tx) => {
+		const [u] = await tx
+			.select({ id: schema.users.id })
+			.from(schema.users)
+			.where(eq(schema.users.id, userId))
+			.for("update");
+		if (!u) throw new HttpError(404, "Account not found");
+		if (required) {
+			const [n] = await tx.select({ n: count() }).from(schema.passkeys).where(eq(schema.passkeys.userId, userId));
+			if (!Number(n?.n ?? 0)) throw badRequest("Add a passkey first, then turn this on.");
+		}
+		await tx
+			.update(schema.users)
+			.set({ requirePasskey: required, updatedAt: Date.now() })
+			.where(eq(schema.users.id, userId));
+	});
+	if (!required) {
+		await dropUnneededCodes(userId);
+		return { required };
+	}
+	const [left] = await db
+		.select({ id: schema.recoveryCodes.id })
+		.from(schema.recoveryCodes)
+		.where(and(eq(schema.recoveryCodes.userId, userId), isNull(schema.recoveryCodes.usedAt)))
+		.limit(1);
+	return { required, recoveryCodes: left ? undefined : await newRecoveryCodes(userId) };
 }
 
 // ---------------------------------------------------------------- the second step of signing in
 
-/** What someone can use for their second step, and where codes would go (partly hidden). */
+/**
+ * What someone can use for their second step, and where codes would go (partly hidden). `method` is how the
+ * sign-in started; `origin` is the page's address (passkeys only work on the address they were made on).
+ */
 export async function challengeFor(
 	userId: string,
-): Promise<{ methods: MfaMethod[]; hints: { email?: string; sms?: string } }> {
+	opts: { method: string; origin: string | null },
+): Promise<MfaChallenge> {
+	const u = await user(userId);
 	const list = await factors(userId);
 	const methods: MfaMethod[] = [];
 	const hints: { email?: string; sms?: string } = {};
-	if (list.some((f) => f.kind === "totp")) methods.push("totp");
-	const email = list.find((f) => f.kind === "email" && f.target);
-	const sms = list.find((f) => f.kind === "sms" && f.target);
-	if (email?.target && (await emailReady())) {
-		methods.push("email");
-		hints.email = maskEmail(email.target);
-	}
-	if (sms?.target && (await smsReady())) {
-		methods.push("sms");
-		hints.sms = maskPhone(sms.target);
+	const passkeyRequired = owesPasskey(u, opts.method);
+	// A passkey already started this sign-in: using it again isn't a second step.
+	const hosts = opts.method === "passkey" ? [] : await passkeyHostsOf(userId);
+	const here = opts.origin && passkeysAvailableFor(opts.origin) ? new URL(opts.origin).hostname : null;
+	const passkey = here !== null && hosts.includes(here);
+	// A required passkey can't be swapped for a code: only for a recovery code (once each).
+	if (!passkeyRequired) {
+		if (list.some((f) => f.kind === "totp")) methods.push("totp");
+		const email = list.find((f) => f.kind === "email" && f.target);
+		const sms = list.find((f) => f.kind === "sms" && f.target);
+		if (email?.target && (await emailReady())) {
+			methods.push("email");
+			hints.email = maskEmail(email.target);
+		}
+		if (sms?.target && (await smsReady())) {
+			methods.push("sms");
+			hints.sms = maskPhone(sms.target);
+		}
 	}
 	methods.push("recovery");
-	return { methods, hints };
+	return { methods, hints, passkey, passkeyRequired, passkeyHosts: passkeyRequired && !passkey ? hosts : [] };
 }
 
 /** The pending sign-in (held in a cookie while you enter your code). */
@@ -319,6 +386,9 @@ export const takeChallenge = (token: string | null) => consumeTicket("mfa", toke
 export async function sendChallengeCode(ticketToken: string | null, method: "email" | "sms"): Promise<void> {
 	const t = await findChallenge(ticketToken);
 	if (!t?.userId) throw new HttpError(401, "That sign-in expired. Start again.");
+	if (owesPasskey(await user(t.userId), String((t.data as { method?: string }).method ?? "password"))) {
+		throw badRequest("Your account needs your passkey to sign in (or a recovery code).");
+	}
 	const f = (await factors(t.userId)).find((x) => x.kind === method && x.target);
 	if (!f?.target) throw badRequest("That method isn't set up for this account");
 	checkSendRate(t.userId);

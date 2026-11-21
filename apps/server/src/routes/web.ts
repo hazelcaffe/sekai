@@ -20,7 +20,7 @@ const masked = async () => {
 	return { ...status, settings: publicWebSettings(status.settings) };
 };
 
-/** Admin → Web reading: Firecrawl Local, run here or reached elsewhere, and what may go to Firecrawl's cloud. */
+/** Settings → Web reading: Firecrawl Local, run here or reached elsewhere, and what may go to Firecrawl's cloud. */
 export const webRoutes = new Hono()
 	.get("/", async (c) => c.json(await masked()))
 	.patch("/settings", async (c) => {

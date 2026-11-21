@@ -1,8 +1,13 @@
+import type { UsageScope } from "./settings.ts";
+
 /** One thing a bot did (a tool call), with how it ended and who allowed it. */
 export interface ActivityEntry {
 	id: string;
 	at: number;
+	userId?: string | null;
+	userName?: string | null;
 	agentId: string | null;
+	agentName?: string | null;
 	conversationId: string | null;
 	messageId: string | null;
 	tool: string;
@@ -19,10 +24,17 @@ export interface ActivityEntry {
 	result: string | null;
 	error: string | null;
 	durationMs: number | null;
+	/**
+	 * Someone else's entry (an admin's Everyone or one person): only what happened is sent, never what it carried.
+	 * Its title is the tool's plain name, and args, result, error and note are empty.
+	 */
+	private?: boolean;
 }
 
 export interface ActivityQuery {
 	q?: string;
+	/** Whose activity to show: yours ("me", default), everyone's ("all", admins), or one person's id (admins). */
+	scope?: UsageScope;
 	agentId?: string;
 	status?: ActivityEntry["status"];
 	risk?: NonNullable<ActivityEntry["risk"]>;

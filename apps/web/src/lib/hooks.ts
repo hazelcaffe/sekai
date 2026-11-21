@@ -17,27 +17,63 @@ export function useMediaQuery(query: string): boolean {
 }
 
 /**
- * Layout tiers:
- * - phone: < 640px (phones, folded covers). Drawer sidebar, full-screen sheets.
- * - tablet: 640–1023px (tablets, unfolded foldables, phones in landscape). Icon rail sidebar, overlay panels.
- * - desktop: ≥ 1024px. Full sidebar.
- * - wide: ≥ 1280px. Agent details docked as a third column.
+ * Layout tiers (DESIGN.md: phones below 768px, like @sekai/ui's useIsPhone):
+ * - phone: < 768px (phones, folded covers). The list-first navigation with the tab bar; panels are sheets.
+ * - tablet: 768–1023px (tablets, unfolded foldables). The sidebar starts collapsed to the rail.
+ * - desktop: ≥ 1024px. The full sidebar.
+ * - wide: ≥ 1280px.
  */
 export function useLayout() {
-	const sm = useMediaQuery("(min-width: 640px)");
+	const md = useMediaQuery("(min-width: 48rem)");
 	const lg = useMediaQuery("(min-width: 1024px)");
 	const xl = useMediaQuery("(min-width: 1280px)");
 	const touch = useMediaQuery("(pointer: coarse)");
 	const spanned = useMediaQuery("(horizontal-viewport-segments: 2)");
 	return {
-		phone: !sm && !spanned,
-		tablet: sm && !lg,
+		phone: !md && !spanned,
+		tablet: md && !lg,
 		desktop: lg,
 		wide: xl,
 		touch,
 		/** Dual-screen device spanned across both screens: list on one, chat on the other. */
 		spanned,
 	};
+}
+
+/** An element's width, live (0 until it's on screen): give the element the returned ref. */
+export function useWidth<T extends HTMLElement>(): [(el: T | null) => void, number] {
+	const [el, setEl] = useState<T | null>(null);
+	const [width, setWidth] = useState(0);
+	useLayoutEffect(() => {
+		if (!el) return;
+		setWidth(el.getBoundingClientRect().width);
+		const ro = new ResizeObserver(([entry]) => entry && setWidth(entry.contentRect.width));
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [el]);
+	return [setEl, width];
+}
+
+/**
+ * Raises toasts on phones over what sits at the bottom of the screen (the composer, the tab bar) while the element
+ * is on screen: sets --toast-lift on <html> to its height (its own safe-area padding taken out again, since the
+ * toaster adds the safe area itself). Give the element the returned ref.
+ */
+export function useToastLift<T extends HTMLElement>(enabled = true): (el: T | null) => void {
+	const [el, setEl] = useState<T | null>(null);
+	useLayoutEffect(() => {
+		if (!el || !enabled) return;
+		const root = document.documentElement;
+		const set = () => root.style.setProperty("--toast-lift", `calc(${el.offsetHeight}px - var(--safe-bottom))`);
+		set();
+		const ro = new ResizeObserver(set);
+		ro.observe(el);
+		return () => {
+			ro.disconnect();
+			root.style.removeProperty("--toast-lift");
+		};
+	}, [el, enabled]);
+	return setEl;
 }
 
 export function useHotkey(

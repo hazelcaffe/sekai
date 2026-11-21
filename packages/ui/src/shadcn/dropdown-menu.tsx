@@ -5,9 +5,12 @@ import { cn } from "../lib/utils.ts";
 import { floatingMotion } from "./popover.tsx";
 
 export const menuSurface =
-	"z-[65] max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-pop outline-none scrollbar-thin";
+	"z-menu max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-surface-raised p-1.5 text-fg shadow-pop outline-none scrollbar-thin";
 export const menuItem =
-	"relative flex cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-sm outline-none select-none transition-colors duration-100 data-disabled:pointer-events-none data-disabled:opacity-40 data-highlighted:bg-muted coarse:py-3 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground";
+	"relative flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-body outline-none select-none transition-colors duration-fast data-disabled:pointer-events-none data-disabled:opacity-40 data-highlighted:bg-surface-2 coarse:py-3 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-fg-muted";
+/** A destructive entry: danger ink, a soft danger highlight. */
+export const menuItemDanger =
+	"data-[variant=destructive]:text-danger-ink data-[variant=destructive]:data-highlighted:bg-danger-soft data-[variant=destructive]:[&_svg]:text-danger-ink";
 
 function DropdownMenu(props: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
 	return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
@@ -63,11 +66,7 @@ function DropdownMenuItem({
 			data-slot="dropdown-menu-item"
 			data-inset={inset}
 			data-variant={variant}
-			className={cn(
-				menuItem,
-				"data-inset:pl-9 data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive/10 data-[variant=destructive]:[&_svg]:text-destructive",
-				className,
-			)}
+			className={cn(menuItem, "data-inset:pl-9", menuItemDanger, className)}
 			{...props}
 		/>
 	);
@@ -130,7 +129,7 @@ function DropdownMenuLabel({
 		<DropdownMenuPrimitive.Label
 			data-slot="dropdown-menu-label"
 			data-inset={inset}
-			className={cn("px-2.5 pt-2 pb-1 text-xs font-medium text-fg-subtle data-inset:pl-9", className)}
+			className={cn("px-2.5 pt-2 pb-1 text-caption font-medium text-fg-subtle data-inset:pl-9", className)}
 			{...props}
 		/>
 	);
@@ -150,7 +149,7 @@ function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<"spa
 	return (
 		<span
 			data-slot="dropdown-menu-shortcut"
-			className={cn("ml-auto text-xs tracking-wide text-fg-subtle coarse:hidden", className)}
+			className={cn("ml-auto text-caption tracking-wide text-fg-subtle coarse:hidden", className)}
 			{...props}
 		/>
 	);
@@ -170,7 +169,7 @@ function DropdownMenuSubTrigger({
 		<DropdownMenuPrimitive.SubTrigger
 			data-slot="dropdown-menu-sub-trigger"
 			data-inset={inset}
-			className={cn(menuItem, "data-inset:pl-9 data-open:bg-muted", className)}
+			className={cn(menuItem, "data-inset:pl-9 data-open:bg-surface-2", className)}
 			{...props}
 		>
 			{children}
@@ -191,7 +190,7 @@ function DropdownMenuSubContent({
 				data-slot="dropdown-menu-sub-content"
 				sideOffset={sideOffset}
 				collisionPadding={collisionPadding}
-				className={cn(menuSurface, "z-[66] min-w-52", floatingMotion, className)}
+				className={cn(menuSurface, "min-w-52", floatingMotion, className)}
 				{...props}
 			/>
 		</DropdownMenuPrimitive.Portal>

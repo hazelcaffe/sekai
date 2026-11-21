@@ -6,7 +6,7 @@ import { useOpenAgent } from "../../lib/navigation.ts";
 import { useUi } from "../../stores/ui.ts";
 import { freshLook, NewBotLook } from "../avatar/AvatarEditor.tsx";
 
-/** "Create New Bot": name and look, plus an optional job. Everything else is editable later. */
+/** New bot: a name and a look, plus an optional label and job. Everything else is editable later. */
 export function NewAgentDialog() {
 	const open = useUi((s) => s.newAgentOpen);
 	const setOpen = useUi((s) => s.setNewAgentOpen);
@@ -59,8 +59,8 @@ export function NewAgentDialog() {
 		<Dialog
 			open={open}
 			onOpenChange={setOpen}
-			title="Create a new bot"
-			description="Give it a name and a look. Tell it its job in the first message, or below."
+			title="New bot"
+			description="A name and a look. You can change everything later."
 			footer={
 				<>
 					<Button variant="secondary" onClick={() => setOpen(false)}>
@@ -68,10 +68,11 @@ export function NewAgentDialog() {
 					</Button>
 					<Button
 						variant="primary"
-						disabled={!name.trim() || create.isPending}
+						disabled={!name.trim()}
+						loading={create.isPending}
 						onClick={() => create.mutate()}
 					>
-						Create
+						Create bot
 					</Button>
 				</>
 			}
@@ -80,37 +81,37 @@ export function NewAgentDialog() {
 				className="flex flex-col gap-5"
 				onSubmit={(e) => {
 					e.preventDefault();
-					if (name.trim()) create.mutate();
+					if (name.trim() && !create.isPending) create.mutate();
 				}}
 			>
-				<div className="flex items-center gap-4">
+				<div className="flex items-start gap-4">
 					<AgentAvatar avatar={avatar} size={72} />
-					<div className="flex min-w-0 flex-1 flex-col gap-2">
-						<Input
-							autoFocus
-							placeholder="Name"
-							value={name}
-							maxLength={60}
-							onChange={(e) => setName(e.target.value)}
-						/>
-						<Input
-							placeholder="Label (optional), e.g. Research lead"
-							value={label}
-							maxLength={80}
-							onChange={(e) => setLabel(e.target.value)}
-						/>
+					<div className="flex min-w-0 flex-1 flex-col gap-3">
+						<Field label="Name">
+							<Input
+								autoFocus
+								value={name}
+								maxLength={60}
+								placeholder="e.g. Nori"
+								onChange={(e) => setName(e.target.value)}
+							/>
+						</Field>
+						<Field label="Label" optional>
+							<Input
+								value={label}
+								maxLength={80}
+								placeholder="e.g. Research lead"
+								onChange={(e) => setLabel(e.target.value)}
+							/>
+						</Field>
 					</div>
 				</div>
 				<NewBotLook key={lookKey} value={avatar} onChange={setAvatar} />
-				<Field
-					label="Job (optional)"
-					hint="What it owns and what “done” looks like. You can refine it any time."
-				>
+				<Field label="Job" optional hint="What it owns and what “done” looks like.">
 					<Textarea
 						value={job}
 						onChange={(e) => setJob(e.target.value)}
-						placeholder="Keeps my inbox triaged and drafts replies for anything that needs me."
-						className="min-h-20"
+						placeholder="e.g. Keeps my inbox triaged and drafts replies for anything that needs me."
 					/>
 				</Field>
 				<button type="submit" hidden />

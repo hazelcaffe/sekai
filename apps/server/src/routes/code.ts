@@ -27,7 +27,7 @@ export const codeRoutes = new Hono()
 		);
 		requirePermission("code");
 		const m = await getMachine(b.machineId);
-		if (!m) throw notFound("Machine");
+		if (!m) throw notFound("Computer");
 		if (!b.root.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(b.root)) throw badRequest("Use the folder's full path");
 		return c.json(await indexFolder({ agentId: m.agentId, machine: m, root: b.root, name: b.name }), 201);
 	})
