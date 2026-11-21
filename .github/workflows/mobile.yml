@@ -205,12 +205,25 @@ jobs:
           done
           bash scripts/smoke-test.sh "${{ steps.sim.outputs.udid }}" \
             build/sim/Build/Products/Debug-iphonesimulator/Sekai.app build/screenshots "$server"
-      - name: Unit tests
+      - name: Unit and interface tests
         run: |
           set -o pipefail
+          bash scripts/serve-bridge-fixture.sh > /tmp/sekai-ui-test.log 2>&1 &
+          fixture=$!
+          trap 'kill "$fixture" 2>/dev/null || true' EXIT
           xcodebuild test-without-building -project Sekai.xcodeproj -scheme Sekai -configuration Debug \
             -destination "platform=iOS Simulator,arch=arm64,id=${{ steps.sim.outputs.udid }}" -derivedDataPath build/sim \
+            -parallel-testing-enabled NO -resultBundlePath build/tests.xcresult \
             CODE_SIGNING_ALLOWED=NO | xcbeautify --renderer github-actions
+      - name: Collect interface screenshots
+        if: always() && hashFiles('apps/mobile/ios/build/tests.xcresult/Info.plist') != ''
+        run: |
+          xcrun xcresulttool export attachments --path build/tests.xcresult --output-path build/attachments
+          mkdir -p build/screenshots
+          jq -r '.[] | .attachments[] | select(.exportedFileName | endswith(".png")) | [.exportedFileName,.suggestedHumanReadableName] | @tsv' \
+            build/attachments/manifest.json | while IFS=$'\t' read -r file name; do
+            cp "build/attachments/$file" "build/screenshots/${name##*/}"
+          done
       - name: Collect logs
         if: always()
         run: |

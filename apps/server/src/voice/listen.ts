@@ -29,7 +29,7 @@ export interface Listener {
 	close(): void;
 }
 
-const NO_MODEL = "No speech-to-text model picked yet (Admin → Voice, or the bot's Voice tab)";
+const NO_MODEL = "No speech-to-text model picked yet (Settings → Voice, or the bot's Model & voice)";
 
 /** Speech to text of a finished clip (24 kHz PCM). Live models use their batch twin. */
 export async function transcribe(opts: {

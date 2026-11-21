@@ -15,8 +15,10 @@ import { newId, randomChars } from "../lib/ids.ts";
 import { log } from "../lib/log.ts";
 import { emailReady, sendEmail } from "../services/messaging.ts";
 import { forgetPrefs } from "../services/prefs.ts";
+import { setPasskeyRequired } from "./mfa.ts";
 import { activeAdminsExcept, isAdminRole } from "./roles.ts";
 import { forgetCachedPrincipals, hashPassword, revokeEverything, setPassword, type UserRow } from "./service.ts";
+import { ssoFindsByEmail } from "./sso.ts";
 import { createTicket, deleteUserTickets } from "./tickets.ts";
 
 /** A temporary password: easy to read out or type (no look-alike characters), ~80 bits. */
@@ -57,6 +59,7 @@ async function manage(rows: UserRow[]): Promise<ManagedUser[]> {
 				sms: mine.includes("sms"),
 				passkeys: passkeys.filter((p) => p.userId === u.id).length,
 				recoveryCodes: codes.filter((c) => c.userId === u.id).length,
+				passkeyRequired: u.requirePasskey,
 			},
 			identities: identities
 				.filter((x) => x.i.userId === u.id)
@@ -133,6 +136,19 @@ async function linkFor(
 export async function createUser(input: UserCreateT, publicUrl: string): Promise<UserCredentials> {
 	const data = parse(UserCreate, input);
 	await requireRole(data.roleId);
+	// Single sign-on only: their first sign-in has to find this account by its email, or they can't get in.
+	if (data.password === "none") {
+		if (!data.email) {
+			throw badRequest(
+				"Single sign-on needs their email, so their first sign-in finds this account. Add it, or send an invite link.",
+			);
+		}
+		if (!(await ssoFindsByEmail())) {
+			throw badRequest(
+				"Single sign-on can't find their account yet: turn on a provider that matches verified emails in Settings → People → Sign-in options, or send an invite link.",
+			);
+		}
+	}
 	const now = Date.now();
 	const temp = data.password === "temporary" ? temporaryPassword() : null;
 	const row: UserRow = {
@@ -145,6 +161,7 @@ export async function createUser(input: UserCreateT, publicUrl: string): Promise
 		passwordHash: temp ? await hashPassword(temp) : null,
 		passwordChangedAt: now,
 		mustChangePassword: Boolean(temp),
+		requirePasskey: false,
 		disabledAt: null,
 		lastLoginAt: null,
 		createdAt: now,
@@ -217,12 +234,25 @@ export async function sendResetLink(id: string, publicUrl: string): Promise<void
 	await linkFor(user, "reset", publicUrl);
 }
 
-/** Removes someone's two-factor methods and recovery codes (they lost their phone). They set them up again. */
+/**
+ * Removes someone's two-factor methods and recovery codes (they lost their phone), and stops requiring a passkey
+ * (the codes backed it up). They set them up again. Passkeys stay.
+ */
 export async function resetUserMfa(id: string): Promise<ManagedUser> {
 	await requireUserRow(id);
 	await db.delete(schema.mfaFactors).where(eq(schema.mfaFactors.userId, id));
 	await db.delete(schema.recoveryCodes).where(eq(schema.recoveryCodes.userId, id));
+	await db.update(schema.users).set({ requirePasskey: false, updatedAt: Date.now() }).where(eq(schema.users.id, id));
 	await revokeEverything(id, { tokens: false });
+	return getManagedUser(id);
+}
+
+/** Stops requiring a passkey for someone who lost theirs (and their recovery codes). Their other methods stay. */
+export async function stopRequiringPasskey(id: string): Promise<ManagedUser> {
+	await requireUserRow(id);
+	await setPasskeyRequired(id, false);
+	log.info(`passkey no longer required to sign in (turned off by an admin): ${id}`);
+	bus.emit({ type: "settings.changed" }, { to: [id] });
 	return getManagedUser(id);
 }
 

@@ -11,6 +11,17 @@ struct BridgeError: Error {
 
 /// Checks for values that come from pages and notifications: nothing is trusted as it arrives.
 enum Validate {
+	/// Notification shortcuts are opt-in: missing or malformed approval rules must ask in the chat.
+	static func explicitFalse(_ value: Any?) -> Bool {
+		bool(value) == false
+	}
+
+	/// A JavaScript boolean (not a number, which arrives as an NSNumber too).
+	static func bool(_ value: Any?) -> Bool? {
+		guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
+		return number.boolValue
+	}
+
 	/// Ids like conversation and tool call ids ("call_abc123", "toolu_01…").
 	static func id(_ value: Any?) -> String? {
 		matching(value, "^[A-Za-z0-9_.:-]{1,200}$")

@@ -116,7 +116,7 @@ export async function agentAudience(agentId: string, ownerId: string): Promise<s
 
 export async function requireAgent(id: string): Promise<Agent> {
 	const agent = await getAgent(id);
-	if (!agent) throw notFound("Agent");
+	if (!agent) throw notFound("Bot");
 	return agent;
 }
 
@@ -181,7 +181,7 @@ export async function createAgent(input: AgentCreateInput, opts: { ownerId?: str
 		toAgent(r),
 	);
 	const id = ID.agent();
-	// The defaults from Admin → Models, or models on offer when they aren't (a fresh install).
+	// The defaults from Settings → Models, or models on offer when they aren't (a fresh install).
 	const { defaultModels } = await import("../agent/models.ts");
 	const row: AgentRow = {
 		id,

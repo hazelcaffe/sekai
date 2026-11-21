@@ -58,7 +58,19 @@ internal class PageBridge(private val activity: MainActivity) : WebViewCompat.We
             "setBadge" -> call.reply()
             "openSettings" -> {
                 call.reply()
-                activity.showConnect(problem = null, fromSettings = true)
+                activity.showServer()
+            }
+            "openNotificationSettings" -> {
+                activity.openNotificationSettings()
+                call.reply()
+            }
+            "haptic" -> {
+                call.args.string("kind")?.takeIf { it in Haptics.KINDS }?.let(activity::haptic)
+                call.reply()
+            }
+            "backState" -> {
+                activity.onPageBackState(PageBack(args.bool("overlay") == true, args.bool("canGoBack") == true))
+                call.reply()
             }
             "openExternal" -> {
                 val url = args.string("url")?.toUri()?.takeIf { it.scheme == "http" || it.scheme == "https" }
@@ -109,8 +121,8 @@ internal class PageBridge(private val activity: MainActivity) : WebViewCompat.We
         val conversationId = args.string("conversationId")?.takeIf { CONVERSATION.matches(it) }
         val approval = args.obj("approval")
         val toolCallId = approval?.string("toolCallId")?.takeIf(::isToolCallId)
-        // Requests that always ask are answered in the app, where you can see everything.
-        val buttons = toolCallId != null && approval.bool("alwaysAsk") != true
+        // Requests that always ask are answered in the app, where you can see everything; so are pages that don't say.
+        val buttons = toolCallId != null && approval.bool("alwaysAsk") == false
         val path = conversationId?.let { "/c/$it" } ?: "/"
         Notifications.show(
             activity,

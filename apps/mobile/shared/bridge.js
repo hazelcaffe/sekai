@@ -13,6 +13,19 @@
 	const ios = window.webkit?.messageHandlers?.sekai;
 	const android = window.sekaiNative;
 	if (!ios && !android) return;
+	// Some WebViews run document-start scripts just before the parser creates <html>.
+	function withRoot(fn) {
+		if (document.documentElement) return fn(document.documentElement);
+		const observer = new MutationObserver(() => {
+			if (!document.documentElement) return;
+			observer.disconnect();
+			fn(document.documentElement);
+		});
+		observer.observe(document, { childList: true });
+	}
+	withRoot((root) => {
+		root.dataset.platform = app.platform;
+	});
 
 	let seq = 0;
 	const pending = new Map();
@@ -77,6 +90,9 @@
 		setBadge: (count) => send("setBadge", { count: Math.max(0, Number(count) || 0) }),
 		onNavigate: on("navigate"),
 		openSettings: () => send("openSettings"),
+		openNotificationSettings: () => send("openNotificationSettings"),
+		haptic: (kind) => send("haptic", { kind: String(kind) }),
+		backState: (s) => send("backState", { overlay: !!s?.overlay, canGoBack: !!s?.canGoBack }),
 		openExternal: (url) => send("openExternal", { url: String(url) }),
 		push: {
 			register: (config) => call("push.register", { fcm: config?.fcm ?? null }),
@@ -92,21 +108,33 @@
 
 	// The status bar follows the page's theme (its theme-color and dark class).
 	let lastTheme = "";
+	let meta;
 	function reportTheme() {
-		const meta = document.querySelector('meta[name="theme-color"]');
 		const color = meta?.getAttribute("content") || "";
 		const dark = document.documentElement.classList.contains("dark");
-		const key = `${color}|${dark}`;
+		// Leave the system appearance live for Sekai's Auto theme (including older pages).
+		let system = false;
+		try {
+			const choice = localStorage.getItem("sekai.theme");
+			system = !choice || choice === "auto" || choice === "system";
+		} catch {}
+		const key = `${color}|${dark}|${system}`;
 		if (!color || key === lastTheme) return;
 		lastTheme = key;
-		send("theme", { color, dark });
+		send("theme", { color, dark, system });
 	}
-	new MutationObserver(reportTheme).observe(document.documentElement, {
-		attributes: true,
-		attributeFilter: ["class", "content"],
-		subtree: true,
+	// No observer on the React tree: streaming and changing classes in chat don't change the bars.
+	document.addEventListener("DOMContentLoaded", () => {
+		const observer = new MutationObserver(reportTheme);
+		observer.observe(document.documentElement, { attributeFilter: ["class"] });
+		const watchMeta = () => {
+			meta = document.querySelector('meta[name="theme-color"]');
+			if (meta) observer.observe(meta, { attributeFilter: ["content"] });
+			reportTheme();
+		};
+		if (document.head) new MutationObserver(watchMeta).observe(document.head, { childList: true });
+		watchMeta();
 	});
-	document.addEventListener("DOMContentLoaded", reportTheme);
 
 	// Downloads made in the page (blob: and data: links, and same-site links marked download) go to the app,
 	// which saves or shares them: web views can't save blob: links themselves.

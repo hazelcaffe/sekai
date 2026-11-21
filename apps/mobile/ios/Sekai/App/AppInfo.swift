@@ -3,6 +3,7 @@ import Foundation
 /// Facts about this build that the bridge and the server need.
 enum AppInfo {
 	static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+	static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
 	/// Set in project.yml (SEKAI_APP_ID), the one place the app id lives.
 	static let bundleId = Bundle.main.bundleIdentifier ?? ""
 	/// sekai:// links (registered in Info.plist) and the browser sign-in's way back.

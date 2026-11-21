@@ -342,7 +342,7 @@ export async function renewAuthKey(): Promise<TailscaleOverview> {
 		body: JSON.stringify({
 			capabilities: { devices: { create: { reusable: true, ephemeral: false, preauthorized: true } } },
 			expirySeconds: 90 * 24 * 3600,
-			description: "Sekai bots' machines",
+			description: "Sekai bots' computers",
 		}),
 	});
 	if (!r?.key) throw badRequest("Add a Tailscale API key first");

@@ -32,7 +32,7 @@ export const pushRoutes = new Hono()
 			sent: await pushToMe({
 				title: "Sekai",
 				body: "Push notifications work on this device. 🎉",
-				url: "/settings?tab=notifications",
+				url: "/settings/notifications",
 				tag: "sekai-test",
 				// Shown even while Sekai is open (that's when you press the button).
 				test: true,

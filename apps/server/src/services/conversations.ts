@@ -54,7 +54,7 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 
 export async function requireConversation(id: string): Promise<Conversation> {
 	const c = await getConversation(id);
-	if (!c) throw notFound("Conversation");
+	if (!c) throw notFound("Chat");
 	return c;
 }
 
@@ -73,7 +73,7 @@ export async function createConversation(
 	let row: ConversationRow;
 	if (data.kind === "direct") {
 		const agent = await getAgent(data.agentId);
-		if (!agent) throw notFound("Agent");
+		if (!agent) throw notFound("Bot");
 		row = {
 			id: ID.conversation(),
 			userId: opts.ownerId ?? newOwner(agent.userId),
@@ -94,7 +94,7 @@ export async function createConversation(
 	} else {
 		const all = await listAgents();
 		const members = [...new Set(data.memberIds)].map((id) => all.find((a) => a.id === id));
-		if (members.some((m) => !m)) throw badRequest("Unknown agent in memberIds");
+		if (members.some((m) => !m)) throw badRequest("One of these bots isn't here anymore");
 		const names = members.flatMap((m) => (m ? [m.name] : []));
 		const ownerId = opts.ownerId ?? newOwner(members[0]?.userId);
 		row = {
@@ -138,7 +138,7 @@ export async function getTeamThread(aId: string, bId: string): Promise<Conversat
 			createdByAgentId: aId,
 			maxTurns: 2,
 			purpose:
-				"Agent-to-agent thread: questions and answers between these two agents. The user can read along and join in.",
+				"Bot-to-bot thread: questions and answers between these two bots. The user can read along and join in.",
 		},
 	});
 }
@@ -149,7 +149,7 @@ export async function getTeamThread(aId: string, bId: string): Promise<Conversat
  */
 export async function getDirectConversation(agentId: string, userId?: string): Promise<Conversation> {
 	const agent = await getAgent(agentId);
-	if (!agent) throw notFound("Agent");
+	if (!agent) throw notFound("Bot");
 	const ownerId = userId ?? newOwner(agent.userId);
 	const [latest] = await listConversations({ agentId, kind: "direct", userId: ownerId });
 	if (latest) return latest;
@@ -187,7 +187,7 @@ export async function setConversationSummary(id: string, summary: string | null,
 		.set({ summary, summaryUntil: until, updatedAt: Date.now() })
 		.where(eq(schema.conversations.id, id));
 	const conversation = await loadConversation(id);
-	if (!conversation) throw notFound("Conversation");
+	if (!conversation) throw notFound("Chat");
 	bus.emit({ type: "conversation.updated", conversation });
 	return conversation;
 }

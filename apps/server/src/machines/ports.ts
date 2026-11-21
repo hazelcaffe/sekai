@@ -120,7 +120,7 @@ export function parseServe(json: string): { byApp: Map<number, Served>; taken: S
 export function pickHttpsPort(taken: Set<number>): number {
 	if (!taken.has(443)) return 443;
 	for (let p = 8443; p < 8543; p++) if (!taken.has(p)) return p;
-	throw badRequest("This machine already shares a hundred apps over HTTPS. Stop sharing one first.");
+	throw badRequest("This computer already shares a hundred apps over HTTPS. Stop sharing one first.");
 }
 
 /**
@@ -207,7 +207,7 @@ export async function shareMachinePort(
 	if (https) {
 		if (!view.tailscale?.dnsName)
 			throw badRequest(
-				`${m.name} isn't on your tailnet. Add a Tailscale auth key in Admin → Tailscale before making it, or join it yourself with tailscale up.`,
+				`${m.name} isn't on your tailnet. Add a Tailscale auth key in Settings → Network & devices before making it, or join it yourself with tailscale up.`,
 			);
 		const taken = new Set([...serve.taken, ...listening.map((l) => l.port)]);
 		const httpsPort = pickHttpsPort(taken);

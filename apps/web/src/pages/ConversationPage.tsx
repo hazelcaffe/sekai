@@ -5,52 +5,64 @@ import {
 	dayLabel,
 	GroupAvatar,
 	shortTime,
+	useAccess,
 	useAgentMap,
 	useConversation,
 	useConversations,
 	useMachines,
 	useMessages,
 	useSeats,
-	useSettings,
 } from "@sekai/client";
-import { type Agent, avatarColor, type Conversation, channelTitle, type Message, type ModelRef } from "@sekai/shared";
+import { type Agent, ApiError, type Conversation, channelTitle, type Message, type ModelRef } from "@sekai/shared";
 import {
 	Button,
 	Confirm,
+	Dialog,
 	DropdownContent,
-	DropdownItem,
-	DropdownLabel,
+	DropdownEntries,
 	DropdownMenu,
-	DropdownSeparator,
 	DropdownTrigger,
 	EmptyState,
+	ErrorState,
+	Fold,
+	hasUnsavedChanges,
 	IconButton,
+	LeaveConfirm,
+	List,
+	Row,
 	Sheet,
-	Spinner,
+	SkeletonChat,
+	SkeletonRows,
+	usePlatform,
 } from "@sekai/ui";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowDown,
+	ArrowLeft,
+	ChevronLeft,
 	Eraser,
-	Menu,
+	History,
+	Info,
 	MessageSquarePlus,
 	Monitor,
 	MoreHorizontal,
 	PanelRight,
 	Phone,
+	SlidersHorizontal,
 	Trash2,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
-import { AgentPanel } from "../components/agent/AgentPanel.tsx";
-import { Composer, type PendingFile } from "../components/chat/Composer.tsx";
+import { ChatDetails } from "../components/chat/ChatDetails.tsx";
+import { Composer } from "../components/chat/Composer.tsx";
 import { MessageItem, TypingRow } from "../components/chat/MessageItem.tsx";
 import { ComputerPanel } from "../components/computer/ComputerPanel.tsx";
-import { GroupPanel } from "../components/group/GroupPanel.tsx";
+import { availableScreens, offersSharedAccess } from "../components/computer/screens.ts";
 import { useCallControls } from "../components/voice/CallProvider.tsx";
-import { useLayout, useStickToBottom } from "../lib/hooks.ts";
+import { useBackLayer, useGoBack } from "../lib/back.ts";
+import { useLayout, useStickToBottom, useToastLift, useWidth } from "../lib/hooks.ts";
 import { type MessagingChat, useMessagingChat, useOpenAgent } from "../lib/navigation.ts";
 import { useSeen } from "../stores/seen.ts";
 import { useAgentPresence, useUi, useWorkingAgents } from "../stores/ui.ts";
@@ -62,31 +74,45 @@ const STARTERS = [
 	"Remind me in 30 minutes to take a break",
 ];
 
+/** The side panel's width when it docks beside a chat; it docks only while the chat keeps at least 560px. */
+const PANEL_WIDTH = 400;
+const CHAT_MIN = 560;
+
 function ChatHeader({
 	conversation,
 	agent,
 	members,
-	onOpenPanel,
+	onOpenDetails,
+	onToggleDetails,
 	onOpenComputer,
 }: {
 	conversation: Conversation;
 	agent: Agent | null;
 	members: Agent[];
-	onOpenPanel: () => void;
+	onOpenDetails: () => void;
+	onToggleDetails: () => void;
 	onOpenComputer: () => void;
 }) {
-	const { data: machines = [] } = useMachines(agent?.id);
-	// Its own machines, or a seat on one of yours (another bot's computer shared with it).
+	const { can } = useAccess();
+	const owner = agent && !agent.sharedBy ? agent : null;
+	const { data: machines = [] } = useMachines(owner?.id);
+	// Its own machines, or a seat on one of yours (another bot's computer shared with it). For a bot shared with
+	// you, only the seats you gave it: its owner's computer stays theirs.
 	const { data: seats = [] } = useSeats(agent?.id ?? "", Boolean(agent));
-	const hasMachine = Boolean(agent) && (machines.length > 0 || seats.length > 0);
-	const { phone, wide } = useLayout();
+	const hasMachine = owner
+		? machines.length > 0 || seats.length > 0
+		: Boolean(agent && availableScreens(agent, [], seats).length > 0);
+	const sharedAccess = Boolean(agent && offersSharedAccess(agent, can, seats.length));
+	const { phone } = useLayout();
+	const platform = usePlatform();
 	const navigate = useNavigate();
-	const ui = useUi();
-	const { data: conversations = [] } = useConversations();
+	const goBack = useGoBack();
+	const history = useConversations();
+	const [pastOpen, setPastOpen] = useState(false);
 	const [confirm, setConfirm] = useState<"reset" | "delete" | null>(null);
 	const threads = agent
-		? conversations
-				.filter((c) => c.kind === "direct" && c.agentId === agent.id)
+		? (history.data ?? [])
+				.filter((c) => c.kind === "direct" && c.agentId === agent.id && c.id !== conversation.id)
 				.sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt))
 		: [];
 	const newChat = useMutation({
@@ -97,8 +123,8 @@ function ChatHeader({
 	const del = useMutation({
 		mutationFn: () => api.conversations.delete(conversation.id),
 		onSuccess: () => {
-			const next = threads.find((t) => t.id !== conversation.id);
-			navigate(next ? `/c/${next.id}` : "/");
+			const next = threads[0];
+			navigate(phone || !next ? "/" : `/c/${next.id}`, { replace: true });
 		},
 	});
 	const presence = useAgentPresence(agent?.id, conversation.id);
@@ -125,131 +151,171 @@ function ChatHeader({
 			? `${presence.label ?? "Working"}…`
 			: presence.state === "waiting" || presence.state === "blocked"
 				? presence.label
-				: where || agent?.label || (phone ? "Tap for details" : null);
+				: presence.computer
+					? "Using its computer"
+					: where || agent?.label || null;
 
 	return (
-		<header className="flex h-14 shrink-0 items-center gap-1 px-2 pt-safe md:px-3">
-			{phone && (
-				<IconButton label="Menu" onClick={() => ui.setSidebarOpen(true)}>
-					<Menu />
-				</IconButton>
-			)}
-			<button
-				type="button"
-				onClick={onOpenPanel}
-				className="flex min-w-0 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left hover:bg-surface-2/70"
-			>
-				{isGroup ? (
-					<GroupAvatar avatars={members.map((m) => m.avatar)} size={30} />
-				) : (
-					agent && (
-						<AgentAvatar
-							avatar={agent.avatar}
-							size={30}
-							state={presence.state}
-							alive
-							title={presence.label ?? undefined}
-						/>
-					)
+		// The safe area goes above the bar, not inside its fixed height.
+		<header className="shrink-0 border-b border-border bg-bg pt-safe px-safe">
+			<div className="flex min-h-14 items-center gap-1 px-2 md:px-4">
+				{phone && (
+					<IconButton label="Back to chats" onClick={() => goBack("/")}>
+						{platform === "android" ? <ArrowLeft /> : <ChevronLeft />}
+					</IconButton>
 				)}
-				<span className="min-w-0">
-					<span className="flex items-center gap-1 truncate text-[15px] font-semibold leading-5">
-						{isGroup ? conversation.title : (agent?.name ?? "Bot")}
+				<button
+					type="button"
+					// A bot's name opens the bot; a group's opens its details.
+					onClick={() => (agent && !isGroup ? navigate(`/bots/${agent.id}`) : onOpenDetails())}
+					className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-surface-2/70"
+				>
+					{isGroup ? (
+						<GroupAvatar avatars={members.map((m) => m.avatar)} size={30} />
+					) : (
+						agent && (
+							<AgentAvatar
+								avatar={agent.avatar}
+								size={30}
+								state={presence.state}
+								alive
+								title={presence.label ?? undefined}
+							/>
+						)
+					)}
+					<span className="min-w-0">
+						<span className="block truncate text-heading font-semibold">
+							{isGroup ? conversation.title : (agent?.name ?? "Bot")}
+						</span>
+						{subtitle && (
+							<span
+								className={cn(
+									"block truncate text-small",
+									busy || presence.state === "thinking" || presence.state === "working"
+										? "shimmer-text"
+										: presence.state === "waiting"
+											? "text-warning-ink"
+											: presence.state === "blocked"
+												? "text-danger-ink"
+												: "text-fg-subtle",
+								)}
+							>
+								{subtitle}
+							</span>
+						)}
 					</span>
-					{subtitle && (
-						<span
+				</button>
+				<div className="ml-auto flex items-center gap-0.5">
+					{!isGroup && agent && can("voice") && (
+						<IconButton
+							label={inCall ? `On a call with ${agent.name}` : `Call ${agent.name}`}
+							onClick={() => startCall({ conversationId: conversation.id, agent })}
 							className={cn(
-								"block truncate text-xs leading-4",
-								busy || presence.state === "thinking" || presence.state === "working"
-									? "shimmer-text"
-									: presence.state === "waiting"
-										? "text-warning"
-										: presence.state === "blocked"
-											? "text-danger"
-											: "text-fg-subtle",
+								inCall && "bg-success-soft text-success-ink hover:bg-success/20 hover:text-success-ink",
 							)}
 						>
-							{subtitle}
-						</span>
+							<Phone />
+						</IconButton>
 					)}
-				</span>
-			</button>
-			<div className="ml-auto flex items-center gap-0.5">
-				{!isGroup && agent && (
-					<IconButton
-						label={inCall ? `On a call with ${agent.name}` : `Call ${agent.name}`}
-						onClick={() => startCall({ conversationId: conversation.id, agent })}
-						className={cn(inCall && "bg-success/15 text-success hover:bg-success/20 hover:text-success")}
-					>
-						<Phone />
-					</IconButton>
-				)}
-				{hasMachine && (
-					// Lit while the bot is working on its computer (Grok Bot's status level).
-					<IconButton
-						label={presence.computer ? `${agent?.name} is using its computer` : "Computer"}
-						onClick={onOpenComputer}
-						className={cn(presence.computer && "bg-violet-500/15 text-violet-500 hover:bg-violet-500/20")}
-					>
-						<Monitor />
-					</IconButton>
-				)}
-				{!isGroup && agent && (
-					<DropdownMenu>
-						<DropdownTrigger asChild>
-							<Button variant="ghost" size="icon" aria-label="Chats">
-								<MoreHorizontal />
-							</Button>
-						</DropdownTrigger>
-						<DropdownContent className="w-72" align="end">
-							<DropdownItem icon={<MessageSquarePlus />} onSelect={() => newChat.mutate()}>
-								New chat
-							</DropdownItem>
-							<DropdownItem icon={<Monitor />} onSelect={onOpenComputer}>
-								{hasMachine
-									? `${agent.name}'s computer`
-									: agent.sharedBy
-										? "Computers and browsers"
-										: "Give it a computer"}
-							</DropdownItem>
-							<DropdownSeparator />
-							<DropdownLabel>Chats with {agent.name}</DropdownLabel>
-							<div className="max-h-72 overflow-y-auto scrollbar-thin">
-								{threads.map((t) => (
-									<DropdownItem
-										key={t.id}
-										onSelect={() => navigate(`/c/${t.id}`)}
-										className={cn(t.id === conversation.id && "bg-surface-2")}
-									>
-										<span className="flex w-full items-center gap-2">
-											<span className="min-w-0 flex-1 truncate">{t.title}</span>
-											<span className="text-xs text-fg-subtle">
-												{shortTime(t.lastMessageAt ?? t.createdAt)}
-											</span>
-										</span>
-									</DropdownItem>
-								))}
-							</div>
-							<DropdownSeparator />
-							<DropdownItem icon={<Eraser />} onSelect={() => setConfirm("reset")}>
-								Reset this chat
-							</DropdownItem>
-							<DropdownItem danger icon={<Trash2 />} onSelect={() => setConfirm("delete")}>
-								Delete this chat
-							</DropdownItem>
-						</DropdownContent>
-					</DropdownMenu>
-				)}
-				{!phone && (
-					<IconButton
-						label={wide ? "Toggle details" : "Details"}
-						shortcut="Ctrl ."
-						onClick={() => (wide ? ui.togglePanel() : onOpenPanel())}
-					>
-						<PanelRight />
-					</IconButton>
-				)}
+					{hasMachine && (
+						// Lit while the bot is working on its computer (Grok Bot's status level).
+						<IconButton
+							label={presence.computer ? "Using its computer" : "Computer"}
+							onClick={onOpenComputer}
+							className={cn(presence.computer && "bg-brand-soft text-brand-ink hover:bg-brand-soft")}
+						>
+							<Monitor />
+						</IconButton>
+					)}
+					{!isGroup && agent && (
+						<DropdownMenu>
+							<DropdownTrigger asChild>
+								<IconButton variant="ghost" size="icon" label="Chat menu">
+									<MoreHorizontal />
+								</IconButton>
+							</DropdownTrigger>
+							<DropdownContent className="w-64" align="end" title="Chat menu">
+								<DropdownEntries
+									entries={[
+										{
+											label: `New chat with ${agent.name}`,
+											icon: <MessageSquarePlus />,
+											onSelect: () => newChat.mutate(),
+											disabled: newChat.isPending,
+										},
+										{ label: "Past chats", icon: <History />, onSelect: () => setPastOpen(true) },
+										{ label: "Chat details", icon: <Info />, onSelect: onOpenDetails },
+										{
+											label: "Bot settings",
+											icon: <SlidersHorizontal />,
+											onSelect: () => navigate(`/bots/${agent.id}`),
+										},
+										Boolean(owner) &&
+											!hasMachine &&
+											can("computers") && {
+												label: "Give it a computer",
+												icon: <Monitor />,
+												onSelect: () => navigate(`/bots/${agent.id}/computer`),
+											},
+										sharedAccess && {
+											label: "Your shared access",
+											icon: <Monitor />,
+											onSelect: onOpenComputer,
+										},
+										{
+											label: "Reset chat",
+											icon: <Eraser />,
+											danger: true,
+											onSelect: () => setConfirm("reset"),
+										},
+										{
+											label: "Delete chat",
+											icon: <Trash2 />,
+											danger: true,
+											onSelect: () => setConfirm("delete"),
+										},
+									]}
+								/>
+							</DropdownContent>
+						</DropdownMenu>
+					)}
+					{!phone && (
+						<IconButton label="Chat details" shortcut="Ctrl ." onClick={onToggleDetails}>
+							<PanelRight />
+						</IconButton>
+					)}
+				</div>
 			</div>
+			<Dialog
+				open={pastOpen}
+				onOpenChange={setPastOpen}
+				title="Past chats"
+				description={`Other chats with ${agent?.name ?? "this bot"}.`}
+				size="sm"
+			>
+				{history.isPending ? (
+					<SkeletonRows count={3} />
+				) : history.isError ? (
+					<ErrorState title="Couldn't load past chats" onRetry={() => void history.refetch()} />
+				) : threads.length === 0 ? (
+					<EmptyState size="sm" title="No other chats yet." />
+				) : (
+					<List label="Past chats">
+						{threads.map((t) => (
+							<Row
+								key={t.id}
+								title={<span className="block truncate">{t.title}</span>}
+								subtitle={shortTime(t.lastMessageAt ?? t.createdAt)}
+								chevron
+								onClick={() => {
+									setPastOpen(false);
+									navigate(`/c/${t.id}`);
+								}}
+							/>
+						))}
+					</List>
+				)}
+			</Dialog>
 			<Confirm
 				open={confirm === "reset"}
 				onOpenChange={(o) => !o && setConfirm(null)}
@@ -275,20 +341,20 @@ function AgentIntro({ agent, onPick }: { agent: Agent; onPick: (text: string) =>
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
 			<AgentAvatar avatar={agent.avatar} size={88} />
-			<h1 className="mt-4 text-2xl font-semibold tracking-tight">{agent.name}</h1>
-			{agent.label && <p className="mt-1 text-sm text-fg-muted">{agent.label}</p>}
-			{agent.job && <p className="mt-3 line-clamp-3 max-w-md text-sm leading-6 text-fg-subtle">{agent.job}</p>}
-			<div className="mt-7 grid w-full max-w-lg grid-cols-1 gap-2 xs:grid-cols-2">
-				{STARTERS.map((s) => (
-					<button
-						key={s}
-						type="button"
-						onClick={() => onPick(s)}
-						className="rounded-2xl border border-border px-4 py-3 text-left text-[13px] leading-5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
-					>
-						{s}
-					</button>
-				))}
+			<h1 className="mt-4 text-title font-semibold tracking-tight">{agent.name}</h1>
+			{agent.label && <p className="mt-1 text-body text-fg-muted">{agent.label}</p>}
+			{agent.job && <p className="mt-3 line-clamp-3 max-w-md text-body text-fg-subtle">{agent.job}</p>}
+			<Button className="mt-6" variant="secondary" onClick={() => onPick(STARTERS[0] ?? "")}>
+				Ask what it can do
+			</Button>
+			<div className="mt-3 w-full max-w-sm text-left [&>div]:items-center">
+				<Fold title="More prompts" variant="link">
+					<List>
+						{STARTERS.slice(1).map((s) => (
+							<Row key={s} title={s} onClick={() => onPick(s)} />
+						))}
+					</List>
+				</Fold>
 			</div>
 		</div>
 	);
@@ -298,16 +364,15 @@ function GroupIntro({ conversation, members }: { conversation: Conversation; mem
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
 			<GroupAvatar avatars={members.map((m) => m.avatar)} size={88} />
-			<h1 className="mt-4 text-2xl font-semibold tracking-tight">{conversation.title}</h1>
-			<p className="mt-2 max-w-md text-sm leading-6 text-fg-subtle">
-				{conversation.settings.purpose ||
-					"Write normally and the right bot answers. Use @Name to address someone, or @everyone for all. Bots can @mention each other to hand off work."}
+			<h1 className="mt-4 text-title font-semibold tracking-tight">{conversation.title}</h1>
+			<p className="mt-2 max-w-md text-body text-fg-subtle">
+				{conversation.settings.purpose || "Message the group, or use @name to choose who answers."}
 			</p>
 			<div className="mt-6 flex flex-wrap justify-center gap-2">
 				{members.map((m) => (
 					<span
 						key={m.id}
-						className="flex items-center gap-2 rounded-full border border-border py-1 pr-3 pl-1 text-[13px]"
+						className="flex items-center gap-2 rounded-full border border-border py-1 pr-3 pl-1 text-small"
 					>
 						<AgentAvatar avatar={m.avatar} size={22} />
 						{m.name}
@@ -326,7 +391,7 @@ function MessagingNotice({ chat, agentName, agentId }: { chat: MessagingChat; ag
 	const openAgent = useOpenAgent();
 	const app = channelTitle(chat.type);
 	return (
-		<div className="mx-auto mb-2 flex w-full max-w-3xl items-center gap-2 rounded-2xl bg-surface-2/70 px-3.5 py-2 text-xs text-fg-subtle">
+		<div className="mx-auto mb-2 flex w-full max-w-3xl items-center gap-2 rounded-lg bg-surface-2/70 px-3.5 py-2 text-small text-fg-subtle">
 			<span className="min-w-0 flex-1">
 				{chat.dm ? `Your ${app} DM with ${agentName}.` : `${agentName} in ${chat.name} on ${app}.`} What you
 				type here stays in Sekai.
@@ -344,24 +409,54 @@ function MessagingNotice({ chat, agentName, agentId }: { chat: MessagingChat; ag
 
 export function ConversationPage() {
 	const { conversationId = "" } = useParams();
-	const { data: conversation, isLoading } = useConversation(conversationId);
-	const { data: messages, isLoading: loadingMessages } = useMessages(conversationId);
-	const { data: settings } = useSettings();
+	const chat = useConversation(conversationId);
+	const qc = useQueryClient();
+	const { data: conversation, isLoading } = chat;
+	const timeline = useMessages(conversationId);
+	const { data: messages, isLoading: loadingMessages } = timeline;
+	const navigate = useNavigate();
+	const [highlighted, setHighlighted] = useState<string | null>(null);
 	const agents = useAgentMap();
+	const agent =
+		conversation?.kind === "direct" && conversation.agentId ? (agents.get(conversation.agentId) ?? null) : null;
 	const layout = useLayout();
 	const ui = useUi();
 	const markSeen = useSeen((s) => s.markSeen);
 	const runs = useWorkingAgents(conversationId);
 	const scrollRef = useRef<HTMLDivElement>(null);
-	const [files, setFiles] = useState<PendingFile[]>([]);
-	// Attachments belong to the chat they were added in: switching chats starts empty.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when the chat changes
-	useEffect(() => setFiles([]), [conversationId]);
 	const [panelSheet, setPanelSheet] = useState(false);
 	const [sheetView, setSheetView] = useState<"details" | "computer">("details");
+	const [askToClose, setAskToClose] = useState(false);
+	// The side panel docks beside the chat only while the chat keeps at least 560px; else it's a sheet over it.
+	const [rootRef, width] = useWidth<HTMLDivElement>();
+	const docked = !layout.phone && width >= CHAT_MIN + PANEL_WIDTH;
+	// A bot shared with you shows what you lend it there (never its owner's computer).
+	const canViewComputer = Boolean(agent);
+	const dockOpen = docked && ui.panelOpen && (ui.panelView !== "computer" || canViewComputer);
+	const dismissPanel = useCallback(() => {
+		if (docked) ui.closePanel();
+		else setPanelSheet(false);
+	}, [docked, ui.closePanel]);
+	const closePanel = useCallback(() => {
+		if (conversation?.kind === "group" && hasUnsavedChanges()) setAskToClose(true);
+		else dismissPanel();
+	}, [conversation?.kind, dismissPanel]);
+	useBackLayer(dockOpen, closePanel);
+	// Phones: toasts sit above the composer.
+	const composerRef = useToastLift<HTMLDivElement>(layout.phone);
+	const composerNode = useRef<HTMLDivElement>(null);
+	const bindComposer = useCallback(
+		(node: HTMLDivElement | null) => {
+			composerRef(node);
+			composerNode.current = node;
+		},
+		[composerRef],
+	);
+	const setLastChat = useUi((s) => s.setLastChat);
+	useEffect(() => {
+		if (conversation) setLastChat(conversation.id);
+	}, [conversation, setLastChat]);
 
-	const agent =
-		conversation?.kind === "direct" && conversation.agentId ? (agents.get(conversation.agentId) ?? null) : null;
 	const members = useMemo(
 		() => (conversation?.memberIds ?? []).flatMap((id) => agents.get(id) ?? []),
 		[conversation?.memberIds, agents],
@@ -381,8 +476,7 @@ export function ConversationPage() {
 			const el = scrollRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(target)}"]`);
 			if (el) {
 				el.scrollIntoView({ block: "center" });
-				el.classList.add("bg-brand/10", "rounded-2xl", "transition-colors", "duration-700");
-				setTimeout(() => el.classList.remove("bg-brand/10"), 2200);
+				setHighlighted(target);
 			} else {
 				toast("That message is further back than this chat shows.");
 			}
@@ -396,6 +490,11 @@ export function ConversationPage() {
 		}, 120);
 		return () => clearTimeout(t);
 	}, [target, messages, setParams]);
+	useEffect(() => {
+		if (!highlighted) return;
+		const timer = setTimeout(() => setHighlighted(null), 2200);
+		return () => clearTimeout(timer);
+	}, [highlighted]);
 
 	useEffect(() => {
 		const last = list.at(-1);
@@ -405,71 +504,79 @@ export function ConversationPage() {
 	// Jump to the bottom when switching chats.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: only on chat change / first load
 	useEffect(() => {
-		requestAnimationFrame(() => scrollToBottom(false));
+		if (!target) requestAnimationFrame(() => scrollToBottom(false));
 	}, [conversationId, loadingMessages]);
 
 	const updateAgent = useMutation({
 		mutationFn: (patch: Parameters<typeof api.agents.update>[1]) => api.agents.update(agent?.id ?? "", patch),
 	});
-	const send = useMutation({ mutationFn: (text: string) => api.conversations.send(conversationId, { text }) });
 	const messaging = useMessagingChat(conversation);
 
 	if (isLoading) {
-		return (
-			<div className="flex flex-1 items-center justify-center">
-				<Spinner className="size-6" />
-			</div>
-		);
+		return <SkeletonChat className="mx-auto w-full max-w-3xl" />;
 	}
 	if (!conversation) {
-		return <EmptyState title="Chat not found" description="It may have been deleted." className="flex-1" />;
+		return chat.error && !(chat.error instanceof ApiError && chat.error.status === 404) ? (
+			<ErrorState
+				title="Couldn't open this chat"
+				onRetry={() => void qc.refetchQueries({ queryKey: ["conversation", conversationId] })}
+				className="flex-1"
+			/>
+		) : (
+			<EmptyState
+				title="This chat isn't here."
+				action={
+					<Button variant="secondary" onClick={() => navigate("/", { replace: true })}>
+						Back to chats
+					</Button>
+				}
+				className="flex-1"
+			/>
+		);
 	}
 
 	const isGroup = conversation.kind === "group";
-	const inheritedMode =
-		(agent && agent.capabilities.approvalMode !== "inherit"
-			? agent.capabilities.approvalMode
-			: settings?.approvalMode) ?? "auto";
 	const pendingTyping = runs.filter((r) => !r.messageId || !list.some((m) => m.id === r.messageId));
 	const busy = runs.length > 0;
 	const lastAgentMessageId = [...list].reverse().find((m) => m.sender === "agent")?.id;
 	const byId = new Map(list.map((m) => [m.id, m]));
 
-	const openPanel = () => {
-		if (layout.wide) ui.openPanel();
+	const openDetails = () => {
+		if (docked) ui.openPanel();
 		else {
 			setSheetView("details");
 			setPanelSheet(true);
 		}
 	};
+	const toggleDetails = () => {
+		if (docked) {
+			if (ui.panelOpen && ui.panelView === "details") closePanel();
+			else ui.openPanel();
+		} else openDetails();
+	};
 	const openComputer = () => {
-		if (layout.wide) ui.openComputer();
+		if (docked) ui.openComputer();
 		else {
 			setSheetView("computer");
 			setPanelSheet(true);
 		}
 	};
-	const view = layout.wide ? ui.panelView : sheetView;
+	const view = canViewComputer ? (docked ? ui.panelView : sheetView) : "details";
+	const computerTitle = agent?.sharedBy ? "Your shared access" : "Computer";
 
 	const panel =
 		agent && view === "computer" ? (
-			<ComputerPanel agent={agent} onClose={() => (layout.wide ? ui.closePanel() : setPanelSheet(false))} />
-		) : isGroup ? (
-			<GroupPanel
+			<ComputerPanel agent={agent} onClose={closePanel} />
+		) : (
+			<ChatDetails
+				key={conversation.id}
 				conversation={conversation}
-				members={members}
-				onClose={() => (layout.wide ? ui.closePanel() : setPanelSheet(false))}
-			/>
-		) : agent ? (
-			<AgentPanel
 				agent={agent}
-				conversation={conversation}
-				onClose={() => (layout.wide ? ui.closePanel() : setPanelSheet(false))}
+				members={members}
+				onClose={closePanel}
 			/>
-		) : null;
+		);
 
-	// Your messages take the bot's color in its chats (Grok Bot style); groups stay neutral.
-	const tint = !isGroup && agent ? avatarColor(agent.avatar) : undefined;
 	const rows: { key: string; node: ReactNode }[] = [];
 	let prev: Message | undefined;
 	for (const m of list) {
@@ -478,7 +585,7 @@ export function ConversationPage() {
 				key: `day-${m.id}`,
 				node: (
 					<div className="flex justify-center py-3">
-						<span className="px-3 py-1 text-[11px] font-medium text-fg-subtle">
+						<span className="px-3 py-1 text-caption font-medium text-fg-subtle">
 							{dayLabel(m.createdAt)}
 						</span>
 					</div>
@@ -502,7 +609,6 @@ export function ConversationPage() {
 					isLastAgentMessage={m.id === lastAgentMessageId}
 					onReply={isGroup ? (msg) => ui.setReplyTo(conversationId, msg) : undefined}
 					replyTarget={m.replyToId ? (byId.get(m.replyToId) ?? null) : null}
-					tint={tint}
 				/>
 			),
 		});
@@ -510,34 +616,57 @@ export function ConversationPage() {
 	}
 
 	return (
-		<div className="flex min-h-0 flex-1">
+		<div ref={rootRef} className="flex min-h-0 flex-1">
 			<div className="flex min-w-0 flex-1 flex-col">
 				<ChatHeader
+					key={conversation.id}
 					conversation={conversation}
 					agent={agent}
 					members={members}
-					onOpenPanel={openPanel}
+					onOpenDetails={openDetails}
+					onToggleDetails={toggleDetails}
 					onOpenComputer={openComputer}
 				/>
-				<div
+				<section
 					ref={attach}
-					className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin [mask-image:linear-gradient(to_bottom,transparent,black_18px)]"
+					className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin"
+					aria-label="Messages"
 				>
 					<div className="mx-auto flex min-h-full w-full max-w-3xl flex-col pb-4">
 						{loadingMessages ? (
-							<div className="flex flex-1 items-center justify-center">
-								<Spinner />
-							</div>
+							<SkeletonChat />
+						) : timeline.isError && !messages ? (
+							<ErrorState
+								title="Couldn't load messages"
+								onRetry={() => void timeline.refetch()}
+								className="flex-1"
+							/>
 						) : list.length === 0 && pendingTyping.length === 0 ? (
 							isGroup ? (
 								<GroupIntro conversation={conversation} members={members} />
 							) : (
-								agent && <AgentIntro agent={agent} onPick={(t) => send.mutate(t)} />
+								agent && (
+									<AgentIntro
+										agent={agent}
+										onPick={(t) => {
+											const draft = useUi.getState().drafts[conversation.id];
+											ui.setDraft(conversation.id, draft ? `${draft}\n\n${t}` : t);
+											composerNode.current?.querySelector("textarea")?.focus();
+										}}
+									/>
+								)
 							)
 						) : (
 							<div className="pt-2">
 								{rows.map((r) => (
-									<div key={r.key} data-message-id={r.key}>
+									<div
+										key={r.key}
+										data-message-id={r.key}
+										className={cn(
+											"rounded-lg transition-colors duration-panel",
+											highlighted === r.key && "bg-brand-soft",
+										)}
+									>
 										{r.node}
 									</div>
 								))}
@@ -558,55 +687,59 @@ export function ConversationPage() {
 							</div>
 						)}
 					</div>
-				</div>
-				<div className="relative shrink-0">
+				</section>
+				<div ref={bindComposer} className="relative shrink-0">
 					{!atBottom && (
-						<button
-							type="button"
-							onClick={() => scrollToBottom()}
-							aria-label="Scroll to bottom"
-							className="absolute -top-12 left-1/2 z-10 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface shadow-soft hover:bg-surface-2"
+						<IconButton
+							label="Jump to latest"
+							pill
+							variant="outline"
+							onClick={() => scrollToBottom(!matchMedia("(prefers-reduced-motion: reduce)").matches)}
+							className="absolute -top-12 left-1/2 z-sticky -translate-x-1/2 bg-surface-raised"
 						>
-							<ArrowDown className="size-4" />
-						</button>
+							<ArrowDown />
+						</IconButton>
 					)}
 					{messaging && agent && (
 						<MessagingNotice chat={messaging} agentName={agent.name} agentId={agent.id} />
 					)}
 					<Composer
+						key={conversation.id}
 						conversation={conversation}
 						agent={agent}
 						members={members}
 						busy={busy}
-						inheritedMode={inheritedMode}
 						onUpdateAgentModel={(primary: ModelRef) =>
 							agent && updateAgent.mutate({ models: { ...agent.models, primary } })
 						}
-						onToggleWebSearch={() =>
-							agent &&
-							updateAgent.mutate({
-								capabilities: { ...agent.capabilities, webSearch: !agent.capabilities.webSearch },
-							})
-						}
-						files={files}
-						setFiles={setFiles}
 					/>
 				</div>
 			</div>
-			{layout.wide && ui.panelOpen && panel && (
-				<aside className="flex w-[400px] shrink-0 flex-col border-l border-border bg-bg-subtle 2xl:w-[440px]">
+			{dockOpen && (
+				<aside
+					aria-label={view === "computer" ? computerTitle : "Chat details"}
+					className="flex w-[400px] shrink-0 flex-col border-l border-border bg-bg-subtle"
+				>
 					{panel}
 				</aside>
 			)}
-			{!layout.wide && panel && (
+			{!docked && (
 				<Sheet
 					open={panelSheet}
-					onOpenChange={setPanelSheet}
-					title={view === "computer" ? "Computer" : isGroup ? "Group details" : "Bot details"}
+					onOpenChange={(open) => (open ? setPanelSheet(true) : closePanel())}
+					title={view === "computer" ? computerTitle : isGroup ? "Group details" : "Chat details"}
 				>
 					{panel}
 				</Sheet>
 			)}
+			<LeaveConfirm
+				open={askToClose}
+				onStay={() => setAskToClose(false)}
+				onLeave={() => {
+					setAskToClose(false);
+					dismissPanel();
+				}}
+			/>
 		</div>
 	);
 }

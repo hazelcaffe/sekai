@@ -130,7 +130,7 @@ export async function getMachine(id: string): Promise<Machine | null> {
 
 export async function requireMachine(id: string): Promise<Machine> {
 	const m = await getMachine(id);
-	if (!m) throw notFound("Machine");
+	if (!m) throw notFound("Computer");
 	return m;
 }
 
@@ -256,11 +256,11 @@ export async function seatOf(m: Machine, agentId = m.agentId, pending = false): 
 /** The passwords and key of a seat: the machine's own bot's (with root's), or a member's own (no root). */
 export async function machineAccess(id: string, agentId?: string): Promise<MachineAccess> {
 	const row = await db.query.machines.findFirst({ where: eq(schema.machines.id, id) });
-	if (!row) throw notFound("Machine");
+	if (!row) throw notFound("Computer");
 	const who = agentId ?? row.agentId;
 	if (who !== row.agentId) {
 		const member = await memberRow(row.id, who);
-		if (!member) throw notFound("Seat");
+		if (!member) throw notFound("Computer account");
 		const s = unsealJson<MemberSecrets>(member.secrets);
 		const keys = await seatKeypair(member);
 		return {
@@ -400,7 +400,7 @@ export async function createMachine(input: MachineCreateInput, createdBy: "user"
 	}
 	requirePermission("computers");
 	const agent = await getAgent(data.agentId);
-	if (!agent) throw notFound("Agent");
+	if (!agent) throw notFound("Bot");
 	requireOwnAgent(agent);
 	const settings = (await getSettings()).machines;
 	const mine = await listMachines({ agentId: agent.id });
@@ -413,7 +413,7 @@ export async function createMachine(input: MachineCreateInput, createdBy: "user"
 	if (data.provider === "proxmox" && (!settings.proxmox.url || !settings.proxmox.tokenId || !settings.proxmox.node)) {
 		throw badRequest("Set up Proxmox first (Settings → Computers)");
 	}
-	if (data.provider === "ssh" && !data.ssh) throw badRequest("Say where the machine is (host, port, user)");
+	if (data.provider === "ssh" && !data.ssh) throw badRequest("Say where the computer is (host, port, user)");
 
 	const backend =
 		data.provider === "proxmox"
@@ -501,7 +501,7 @@ function provision(id: string): Promise<void> {
 
 async function secretsOf(id: string): Promise<Secrets> {
 	const row = await db.query.machines.findFirst({ where: eq(schema.machines.id, id) });
-	if (!row) throw notFound("Machine");
+	if (!row) throw notFound("Computer");
 	return unsealJson<Secrets>(row.secrets);
 }
 
@@ -846,7 +846,7 @@ async function adoptSsh(m: Machine): Promise<void> {
 /** Tries the setup of a machine you added over SSH again (after adding the bot's key there, say). */
 export async function retryMachine(id: string): Promise<Machine> {
 	const m = await requireMachine(id);
-	if (m.provider !== "ssh") throw badRequest("Delete this machine and create it again");
+	if (m.provider !== "ssh") throw badRequest("Delete this computer and create it again");
 	if (m.status === "running") return m;
 	const next = (await patch(id, { status: "creating", statusDetail: "Trying again" })) ?? m;
 	void provision(id);
@@ -875,11 +875,11 @@ export async function updateMachine(id: string, input: MachineUpdateInput): Prom
 }
 
 async function resize(m: Machine, next: MachineSpecs): Promise<void> {
-	if (m.provider !== "proxmox") throw badRequest("Only Proxmox machines can be resized from Sekai");
+	if (m.provider !== "proxmox") throw badRequest("Only computers on Proxmox can be resized from Sekai");
 	const vmid = vmidOf(m);
-	if (!vmid) throw badRequest("This machine isn't on Proxmox yet");
+	if (!vmid) throw badRequest("This computer isn't on Proxmox yet");
 	const guest = guestOf(m, (await getSettings()).machines, vmid);
-	if (!guest) throw badRequest("This machine isn't on Proxmox yet");
+	if (!guest) throw badRequest("This computer isn't on Proxmox yet");
 	// A VM's CPU and memory changes need a restart (unless hotplug is on); containers take them right away.
 	if ((await guest.resize(m.specs, next)) && m.status === "running") {
 		await detail(m.id, "Restarting to apply the new size");
@@ -891,9 +891,9 @@ async function resize(m: Machine, next: MachineSpecs): Promise<void> {
 export async function powerMachine(id: string, action: "start" | "stop" | "restart"): Promise<Machine> {
 	const m = await requireMachine(id);
 	if (m.provider === "local") throw badRequest("Sekai doesn't power your own computer on or off");
-	if (m.provider !== "proxmox") throw badRequest("Sekai can only power Proxmox machines on and off");
+	if (m.provider !== "proxmox") throw badRequest("Sekai can only turn computers on Proxmox on and off");
 	const guest = guestOf(m, (await getSettings()).machines);
-	if (!guest) throw badRequest("This machine isn't on Proxmox yet");
+	if (!guest) throw badRequest("This computer isn't on Proxmox yet");
 	await guest.power(action === "restart" ? "reboot" : action === "stop" ? "shutdown" : "start");
 	return (await patch(id, { status: action === "stop" ? "stopped" : "running", statusDetail: null })) ?? m;
 }
@@ -1162,7 +1162,7 @@ function snapshotProblem(err: unknown): Error {
 	const msg = errorMessage(err);
 	if (/snapshot feature is not available|not supported|can't snapshot|raw/i.test(msg)) {
 		return badRequest(
-			"This machine's disk can't be checkpointed: its Proxmox storage doesn't take snapshots (qcow2 on a directory, LVM-thin, ZFS or Ceph can).",
+			"This computer's disk can't be checkpointed: its Proxmox storage doesn't take snapshots (qcow2 on a directory, LVM-thin, ZFS or Ceph can).",
 		);
 	}
 	return err instanceof Error ? err : new Error(msg);
@@ -1340,7 +1340,7 @@ export async function checkpointBefore(m: Machine, command: string, member = fal
 	try {
 		const cp = await makeCheckpoint(m.id, `Before \`${command.replace(/\s+/g, " ").slice(0, 80)}\``, true);
 		return member
-			? `Saved a checkpoint of the machine first (${cp.name}); its owner can roll back to it if this breaks something.`
+			? `Saved a checkpoint of the computer first (${cp.name}); its owner can roll back to it if this breaks something.`
 			: `Saved a checkpoint first (${cp.name}); machine_checkpoint can roll back to it if this breaks something.`;
 	} catch (err) {
 		log.debug(`no checkpoint before a risky command on ${m.name}: ${errorMessage(err)}`);

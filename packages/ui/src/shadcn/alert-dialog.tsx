@@ -20,7 +20,7 @@ function AlertDialogOverlay({ className, ...props }: React.ComponentProps<typeof
 	return (
 		<AlertDialogPrimitive.Overlay
 			data-slot="alert-dialog-overlay"
-			className={cn(overlayStyles, "z-[90]", className)}
+			className={cn(overlayStyles, "z-dialog", className)}
 			{...props}
 		/>
 	);
@@ -33,7 +33,7 @@ function AlertDialogContent({ className, ...props }: React.ComponentProps<typeof
 			<AlertDialogPrimitive.Content
 				data-slot="alert-dialog-content"
 				className={cn(
-					"group/alert-dialog-content fixed top-1/2 left-1/2 z-[90] grid w-[min(420px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-[28px] border border-border bg-popover p-6 text-popover-foreground shadow-pop outline-none duration-200 ease-spring data-open:animate-in data-open:fade-in-0 data-open:zoom-in-90 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-100",
+					"group/alert-dialog-content fixed top-1/2 left-1/2 z-dialog grid w-[min(420px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-xl border border-border bg-surface-raised p-6 text-fg shadow-pop outline-none duration-panel ease-out-soft data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-fast android:rounded-sheet",
 					className,
 				)}
 				{...props}
@@ -71,7 +71,7 @@ function AlertDialogMedia({ className, ...props }: React.ComponentProps<"div">) 
 		<div
 			data-slot="alert-dialog-media"
 			className={cn(
-				"row-span-2 flex size-10 items-center justify-center rounded-2xl bg-muted text-muted-foreground [&_svg]:size-5",
+				"row-span-2 flex size-10 items-center justify-center rounded-lg bg-surface-2 text-fg-muted [&_svg]:size-5",
 				className,
 			)}
 			{...props}
@@ -83,7 +83,7 @@ function AlertDialogTitle({ className, ...props }: React.ComponentProps<typeof A
 	return (
 		<AlertDialogPrimitive.Title
 			data-slot="alert-dialog-title"
-			className={cn("self-center font-heading text-[17px] font-semibold tracking-tight", className)}
+			className={cn("self-center font-heading text-heading font-semibold tracking-tight", className)}
 			{...props}
 		/>
 	);
@@ -96,7 +96,7 @@ function AlertDialogDescription({
 	return (
 		<AlertDialogPrimitive.Description
 			data-slot="alert-dialog-description"
-			className={cn("text-sm leading-6 text-muted-foreground", className)}
+			className={cn("text-body text-fg-muted", className)}
 			{...props}
 		/>
 	);

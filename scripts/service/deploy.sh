@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Puts the code in this checkout live: installs dependencies, checks it, builds the web and admin apps, restarts
+# Puts the code in this checkout live: installs dependencies, checks it, builds the web app, restarts
 # the service (migrations run as it starts) and waits until it answers.
 #   --fast   skip lint, typecheck and tests
 #   --here   deploy on this machine even if SEKAI_DEPLOY_HOST is set
@@ -27,7 +27,6 @@ fi
 bun install
 if [ -z "$fast" ]; then bun run check; fi
 bun run build:web
-bun run build:admin
 if ! systemctl --user cat sekai.service >/dev/null 2>&1; then
 	echo "Sekai isn't installed as a service yet: running scripts/service/install.sh"
 	exec "$root/scripts/service/install.sh"

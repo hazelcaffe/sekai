@@ -1,5 +1,6 @@
 import { assetUrl, cn } from "@sekai/client";
 import type { AudioPart } from "@sekai/shared";
+import { IconButton } from "@sekai/ui";
 import { Pause, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -29,10 +30,11 @@ const clock = (ms: number) => {
 let playing: HTMLAudioElement | null = null;
 
 /** A voice message: play it, see how far along it is, tap the bars to jump. */
-export function VoiceNote({ part, tint, className }: { part: AudioPart; tint?: string; className?: string }) {
+export function VoiceNote({ part, className }: { part: AudioPart; className?: string }) {
 	const audio = useRef<HTMLAudioElement | null>(null);
 	const [state, setState] = useState<"idle" | "playing" | "paused">("idle");
 	const [at, setAt] = useState(0);
+	const [failed, setFailed] = useState(false);
 	const shape = useMemo(() => bars(part.waveform), [part.waveform]);
 	const duration = part.durationMs || 1;
 
@@ -61,6 +63,7 @@ export function VoiceNote({ part, tint, className }: { part: AudioPart; tint?: s
 		return audio.current;
 	};
 	const toggle = () => {
+		setFailed(false);
 		const a = el();
 		if (state === "playing") {
 			a.pause();
@@ -72,51 +75,69 @@ export function VoiceNote({ part, tint, className }: { part: AudioPart; tint?: s
 		playing = a;
 		a.play()
 			.then(() => setState("playing"))
-			.catch(() => setState("idle"));
+			.catch(() => {
+				setState("idle");
+				setFailed(true);
+			});
 	};
-	const seek = (e: React.MouseEvent<HTMLDivElement>) => {
-		const r = e.currentTarget.getBoundingClientRect();
-		const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+	const seek = (next: number) => {
 		const a = el();
-		a.currentTime = (frac * duration) / 1000;
-		setAt(frac * duration);
-		if (state !== "playing") toggle();
+		a.currentTime = next / 1000;
+		setAt(next);
+		if (state === "idle") toggle();
 	};
 	const progress = Math.min(1, at / duration);
 
 	return (
-		<div
-			className={cn("flex w-[min(320px,100%)] items-center gap-3 rounded-full py-1.5 pr-4 pl-1.5", className)}
-			style={tint ? { background: `color-mix(in oklab, ${tint} 26%, var(--surface-2))` } : undefined}
-		>
-			<button
-				type="button"
-				onClick={toggle}
-				aria-label={state === "playing" ? "Pause voice message" : "Play voice message"}
-				className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-transform active:scale-90 [&_svg]:size-4"
+		<>
+			<div
+				className={cn("flex w-[min(320px,100%)] items-center gap-3 rounded-full py-1.5 pr-4 pl-1.5", className)}
 			>
-				{state === "playing" ? (
-					<Pause className="fill-current" />
-				) : (
-					<Play className="translate-x-px fill-current" />
-				)}
-			</button>
-			<div className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-[2px]" onClick={seek}>
-				{shape.map((h, i) => (
-					<span
-						// biome-ignore lint/suspicious/noArrayIndexKey: fixed set of bars
-						key={i}
-						className={cn(
-							"w-[3px] shrink-0 rounded-full transition-colors",
-							i / BARS < progress ? "bg-foreground" : "bg-foreground/25",
-						)}
-						style={{ height: `${Math.round(h * 100)}%` }}
+				<IconButton
+					onClick={toggle}
+					label={state === "playing" ? "Pause voice message" : "Play voice message"}
+					variant="primary"
+					pill
+				>
+					{state === "playing" ? (
+						<Pause className="fill-current" />
+					) : (
+						<Play className="translate-x-px fill-current" />
+					)}
+				</IconButton>
+				<div className="relative flex h-8 min-w-0 flex-1 items-center gap-px rounded-md focus-within:ring-2 focus-within:ring-brand-ink coarse:h-11">
+					<input
+						type="range"
+						aria-label="Voice message position"
+						aria-valuetext={`${clock(at)} of ${clock(duration)}`}
+						min={0}
+						max={duration}
+						step={100}
+						value={at}
+						onChange={(e) => seek(Number(e.target.value))}
+						className="absolute inset-0 w-full cursor-pointer opacity-0"
 					/>
-				))}
+					{shape.map((h, i) => (
+						<span
+							// biome-ignore lint/suspicious/noArrayIndexKey: fixed set of bars
+							key={i}
+							className={cn(
+								"pointer-events-none min-w-0 flex-1 rounded-full transition-colors",
+								i / BARS < progress ? "bg-fg" : "bg-fg/25",
+							)}
+							style={{ height: `${Math.round(h * 100)}%` }}
+						/>
+					))}
+				</div>
+				<span className="shrink-0 text-caption text-fg-subtle tabular-nums">
+					{clock(state === "idle" ? duration : at)}
+				</span>
 			</div>
-			<span className="shrink-0 text-xs text-fg-subtle tabular-nums">
-				{clock(state === "idle" ? duration : at)}
-			</span>
-		</div>
+			{failed && (
+				<p role="alert" className="text-small text-danger-ink">
+					Couldn't play the recording. Try again.
+				</p>
+			)}
+		</>
 	);
 }

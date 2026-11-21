@@ -26,7 +26,7 @@ export const McpTransport = z.discriminatedUnion("type", [
 export type McpTransport = z.infer<typeof McpTransport>;
 export type McpTransportInput = z.input<typeof McpTransport>;
 
-/** "all": every bot has its tools; "agents": only bots it's turned on for (in their Tools tab). */
+/** "all": every bot has its tools; "agents": only bots it's turned on for (in their Tools & access). */
 export const McpScope = z.enum(["all", "agents"]);
 export type McpScope = z.infer<typeof McpScope>;
 

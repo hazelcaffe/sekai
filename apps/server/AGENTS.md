@@ -1,8 +1,8 @@
 # apps/server
 
 Bun + Hono API, Postgres (drizzle-orm), an in-process event bus streamed to clients over SSE, and WebSockets for
-VNC takeover, voice calls and the desktop bridge. It also serves the built web app at `/` and the admin app at
-`/admin`.
+VNC takeover, voice calls and the desktop bridge. It also serves the built web app at `/` (with its page for any
+other address, `/admin/…` too, so the app's router can send old links to Settings).
 
 ## Startup (src/index.ts)
 
@@ -23,7 +23,8 @@ and other accounts), MCP servers, X mention poller, push, etc. SIGTERM shuts the
   password, required two-factor sign-in) to the pages for it.
 - `auth/`: `service.ts` (accounts, sessions, tokens), `routes.ts` (sign-in, two-factor, SSO, invites, account),
   `admin-routes.ts` (`/api/admin`: people, roles, SSO providers, email and SMS, phone app push), `actor.ts`, `roles.ts`, `users.ts`,
-  `mfa.ts` + `totp.ts`, `sso.ts`, `tickets.ts` (single-use hashed tokens), `passkeys.ts`, `request.ts` (cookies, origin,
+  `mfa.ts` + `totp.ts`, `sso.ts`, `tickets.ts` (single-use hashed tokens), `passkeys.ts` (WebAuthn: signing in, the
+  second step, "Require a passkey to sign in" with `owesPasskey` in mfa.ts), `request.ts` (cookies, origin,
   trusted proxies), `app-signin.ts` (the phone apps sign in through the system browser: a PKCE-style one-time code). Admin-only route groups and sudo mode (`requireRecentAuth`) are set up in `app.ts`.
 - Ownership (see the root AGENTS.md): services scope by `currentActor()` with `services/visibility.ts`; background
   work must `runAs` the owner; events are filtered per person in `events/scope.ts`; limits in `services/limits.ts`;
@@ -36,9 +37,9 @@ and other accounts), MCP servers, X mention poller, push, etc. SIGTERM shuts the
 ## Map
 
 ```
-src/agent/        the brain
+src/agent/        the agent runtime
   runtime.ts        run queue (one per conversation), sendUserMessage, retries, group turns, cancel
-  context.ts        builds what the model sees (history, memory, notes, tools) — also feeds the Brain view
+  context.ts        builds what the model sees (history, memory, notes, tools) — also feeds the chat details' Context
   prompt.ts         system prompt sections (identity, chat/channel/call context, machines, accounts, team…)
   strategies.ts     model strategies (single, planner/executor, helpers) → runToolLoop
   loop.ts           gateway tool loop: authorizeToolCall (approvals) → executeToolCall
@@ -50,6 +51,8 @@ src/agent/        the brain
                     that can see (draftSkill), then saved and turned on for the bot (saveTaughtSkill)
   tools/            built-in tools (one defineTool each), index.ts lists BUILTIN_TOOLS and MCP tool wiring
 src/providers/    BYOS: ACP client (acp.ts), Claude Agent SDK (claude.ts), tools bridge over MCP for them
+                   Pi runs chat-only (pi-chat.sh), with one ACP process per session: its adapter doesn't
+                   gate native tools, forward MCP servers or keep multiple active sessions in one process.
 src/llm/          gateway client (OpenAI-compatible), API providers (OpenAI/Anthropic/Gemini kinds), embeddings
 src/channels/     messaging platforms: types.ts (ChannelAdapter), discord.ts, discord-user.ts, slack.ts (Socket Mode
                   and the Web API; each thread its own chat), slack-format.ts (mrkdwn), manager.ts
@@ -57,7 +60,7 @@ src/channels/     messaging platforms: types.ts (ChannelAdapter), discord.ts, di
                   voice.ts (Discord voice channels: join, hear allowed users, speak)
 src/voice/        voice-call.ts (calls: speech to text → the bot's own model → text to speech), tts.ts, listen.ts
                   (STT, live or clip by clip), ogg.ts, settings.ts (voiceFor(agent) resolves defaults), custom.ts
-                  (made voices), providers/ (ElevenLabs, Fish Audio: API providers added in Admin → Voice)
+                  (made voices), providers/ (ElevenLabs, Fish Audio: API providers added in Settings → Voice)
 src/machines/     bots' computers and devboxes, each a Proxmox VM or container (backend): manager.ts (also
                   checkpoints = Proxmox snapshots or backups, auto before risky run_command), guest.ts (the calls
                   that differ between a VM and a container), setup.ts (each machine's setup described once, rendered
@@ -76,7 +79,7 @@ src/browser/      Playwright sessions on a bot's computer (or its seat on a shar
 src/mcp/          MCP client manager, OAuth for apps, app icons
 src/web/          the web engine: Firecrawl Local started and watched here (engine.ts: loopback, own token,
                   no --allow-private) or one elsewhere; settings.ts (kv "web", sealed key and token); the web tools
-                  (web_fetch, web_search, web_map, web_crawl) and routes/web.ts (Admin → Web reading) use it;
+                  (web_fetch, web_search, web_map, web_crawl) and routes/web.ts (Settings → Web reading) use it;
                   setup.ts ("Set it up for me": a model installs it here command by command, each checked by
                   guardCommand first)
 src/code/         code index: chunking, incremental indexing, hybrid search (pgvector + tsvector, RRF)
@@ -89,12 +92,15 @@ src/library/      document library: extract.ts (PDF via unpdf, .docx via fflate,
 src/backups/      archive.ts (dump every public table as JSONL + kept data files into a tar.gz; restore in FK order in
                   one transaction), index.ts (list, schedule, copy to a device, restore staged for the next start)
 src/services/     housekeeping.ts (daily pruning of caches, deleted bots' folders, old builds, expired sign-ins);
+                  downloads.ts (the apps of this server's GitHub release for Get the apps: release file names →
+                  platform and label, the version's release else the latest, kept in memory an hour, a failure a
+                  minute; routes/downloads.ts serves it at /api/apps/downloads);
                   CRUD for agents, conversations, messages, memories, notes, routines, skills, settings, kv,
                   uploads
 src/db/           schema.ts (all tables), index.ts (initDb, db, schema)
 src/lib/          errors, log, ids (newId), secrets (seal/unseal), text helpers, time
 src/push.ts       Web Push (VAPID), driven by bus notifications; also sends to phones (src/mobile)
-src/mobile/       the phone apps' push: settings (Admin → Phone apps), devices (each person's phones), fcm.ts, apns.ts
+src/mobile/       the phone apps' push: settings (PUT /api/admin/mobile), devices (each person's phones), fcm.ts, apns.ts
 ```
 
 ## Core patterns
@@ -109,7 +115,7 @@ src/mobile/       the phone apps' push: settings (Admin → Phone apps), devices
   Seal secret values before writing them.
 - **Settings**: `getSettings()` merges kv overrides over env defaults; `updateSettings()` masks/keeps secrets.
 - **Models**: the gateway is any OpenAI-compatible endpoint, so never assume a model id exists. `agent/models.ts`:
-  `defaultModels()` (new bots), `fastModelFor()` (background work) and `resolveModel()` swap a default from Admin →
+  `defaultModels()` (new bots), `fastModelFor()` (background work) and `resolveModel()` swap a default from Settings →
   Models that isn't on offer (`listModels()`) for the first chat model that is; a bot's own choices are kept.
 - **Logging**: `log.info|warn|error` from `lib/log.ts`; never log tokens, passwords or cookies.
 
@@ -139,7 +145,7 @@ defineTool({
 });
 ```
 
-Add it to a module and to `BUILTIN_TOOLS` in `tools/index.ts`; approvals, the Brain/Tools views and the BYOS
+Add it to a module and to `BUILTIN_TOOLS` in `tools/index.ts`; approvals, the chat details, Tools & access and the BYOS
 bridge pick it up. `ctx` has the agent, conversation, run and message ids, trigger, approval mode, abort signal.
 Tell the bot about it in `prompt.ts` when it needs context to choose it.
 
@@ -155,7 +161,8 @@ stay valid. Postgres runs in Docker on port 5433 (`bun run db:up`).
   Keep new tests database-free (pass fakes, e.g. `PostedStore` in channels tests, the fake Slack in `slack.test.ts`).
   `auth.test.ts`, `access.test.ts` and `slack-routing.test.ts` are the exceptions: they run sign-in, several people's
   isolation and the channel manager end to end against scratch databases when Postgres is up, and skip themselves
-  otherwise.
+  otherwise. `test/fixtures/passkey-check.ts` has a software authenticator (`SoftPasskey`) that makes real WebAuthn
+  answers, for passkey flows.
 - Live checks: `scripts/discord-e2e.ts`, `scripts/slack-e2e.ts` (three Slack apps, existing server), `scripts/proxmox-e2e.ts`.
 - For a one-off check against real data, write `scripts/.<name>.tmp.ts` that calls `initDb()` and the service
   functions directly, run it with `bun`, then delete it.

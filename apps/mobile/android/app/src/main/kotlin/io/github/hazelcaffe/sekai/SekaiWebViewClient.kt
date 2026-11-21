@@ -8,18 +8,13 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.webkit.WebResourceErrorCompat
-import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 
 /**
  * Where the web view may go: the server's own pages stay; other sites open in the browser; mailto:/tel:/sms: in
- * the phone's apps; sekai:// links in the app. A server that can't be reached shows the connect screen.
+ * the phone's apps; sekai:// links in the app. A server that can't be reached shows the offline screen.
  */
-internal class SekaiWebViewClient(private val activity: MainActivity, private val assets: WebViewAssetLoader) :
-    WebViewClientCompat() {
-    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-        assets.shouldInterceptRequest(request.url)
-
+internal class SekaiWebViewClient(private val activity: MainActivity) : WebViewClientCompat() {
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         // Frames load what the page's own rules allow.
         if (!request.isForMainFrame) return false
@@ -27,8 +22,6 @@ internal class SekaiWebViewClient(private val activity: MainActivity, private va
         return when (val scheme = url.scheme?.lowercase()) {
             "http", "https" -> when {
                 isSameOrigin(url.toString(), activity.bridgeOrigin) -> false
-                // Only the app itself opens its connect screen.
-                url.host == MainActivity.ASSETS_HOST -> true
                 else -> {
                     Links.openInBrowser(activity, url, activity.pageTheme)
                     true
@@ -47,21 +40,26 @@ internal class SekaiWebViewClient(private val activity: MainActivity, private va
     }
 
     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-        activity.onPageStarted(url)
+        activity.onPageStarted()
     }
 
     override fun onPageCommitVisible(view: WebView, url: String) {
-        activity.onPageVisible()
+        activity.onPageVisible(url)
     }
 
     override fun onPageFinished(view: WebView, url: String) {
         activity.onPageFinished(url)
     }
 
+    override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+        activity.onHistoryChanged()
+    }
+
     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceErrorCompat) {
         val server = activity.bridgeOrigin ?: return
         if (request.isForMainFrame && isSameOrigin(request.url.toString(), server)) {
-            activity.showConnect(unreachable(server))
+            val kind = if (Connectivity.isOnline(activity)) ProblemKind.Unreachable else ProblemKind.Offline
+            activity.onLoadFailed(ServerProblem(kind, server))
         }
     }
 
@@ -71,16 +69,14 @@ internal class SekaiWebViewClient(private val activity: MainActivity, private va
         if (request.isForMainFrame && isSameOrigin(request.url.toString(), server) &&
             errorResponse.statusCode in 502..504
         ) {
-            activity.showConnect(
-                "$server isn't answering right now (error ${errorResponse.statusCode}). Try again in a moment.",
-            )
+            activity.onLoadFailed(ServerProblem(ProblemKind.ServerError, server, errorResponse.statusCode))
         }
     }
 
     override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
         handler.cancel()
         val server = activity.bridgeOrigin ?: return
-        if (isSameOrigin(error.url, server)) activity.showConnect(untrusted(server))
+        if (isSameOrigin(error.url, server)) activity.onLoadFailed(ServerProblem(ProblemKind.Untrusted, server))
     }
 
     override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {

@@ -5,10 +5,11 @@ import { findReachable, grantAccess, reachableFor, revokeAccess, runAs } from ".
 import { listAgents } from "../../services/agents.ts";
 import { defineTool, ToolError } from "./types.ts";
 
+/** Who let the bot in, for "Allowed by …" beside the access: by the approvals rule that let the request through. */
 const MODE_WORD: Record<string, string> = {
-	yolo: "YOLO mode",
-	auto: "approved (auto mode)",
-	primary: "approved (primary bot mode)",
+	yolo: "the Don't ask rule",
+	auto: "the reviewer",
+	primary: "the primary bot",
 	manual: "the user",
 };
 

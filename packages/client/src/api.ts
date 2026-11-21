@@ -41,10 +41,40 @@ export const api = createApiClient({
 	onReauth: () => (reauthHandler ? reauthHandler() : Promise.resolve(false)),
 });
 
-/** A page of the admin app (a separate app, served at /admin), e.g. adminUrl("subscriptions"). */
-export function adminUrl(path = ""): string {
-	return api.url(`/admin/${path.replace(/^\/+/, "")}`);
+/**
+ * A Settings section of the app, e.g. settingsUrl("subscriptions") → "/settings/subscriptions" (ids are in the web
+ * app's src/settings/registry.tsx). An in-app path: open it with the router (a Link, navigate()).
+ */
+export function settingsUrl(section: SettingsSectionId = "", rest = ""): string {
+	const base = section ? `/settings/${section}` : "/settings";
+	return rest ? `${base}/${rest.replace(/^\/+/, "")}` : base;
 }
+
+/** The Settings sections other packages link to. */
+export type SettingsSectionId =
+	| ""
+	| "profile"
+	| "sign-in-security"
+	| "appearance"
+	| "notifications"
+	| "browser-extension"
+	| "this-computer"
+	| "approvals"
+	| "models"
+	| "subscriptions"
+	| "apps"
+	| "voice"
+	| "web-reading"
+	| "memory"
+	| "usage"
+	| "people"
+	| "roles"
+	| "sign-in-options"
+	| "status"
+	| "computers"
+	| "network"
+	| "backups"
+	| "about";
 
 /** Upload and avatar URLs come back relative ("/api/uploads/…"); make them absolute for remote servers. */
 export function assetUrl(url: string): string {

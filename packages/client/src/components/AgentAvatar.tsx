@@ -168,6 +168,8 @@ const BADGE: Partial<Record<Presence, string>> = {
 	blocked: "bg-danger",
 	done: "bg-success",
 };
+/** With `statusDot`: working shows a dot too (brand), like StatusDot's. */
+const BUSY_BADGE: Partial<Record<Presence, string>> = { thinking: "bg-brand", working: "bg-brand" };
 
 /** A stable, per-avatar delay so a roster of bots doesn't blink in unison. */
 function blinkDelay(seed: string): string {
@@ -182,6 +184,7 @@ export function AgentAvatar({
 	working = false,
 	state,
 	alive = false,
+	statusDot = false,
 	className,
 	title,
 }: {
@@ -189,11 +192,14 @@ export function AgentAvatar({
 	size?: number;
 	/** Shorthand for state="working". */
 	working?: boolean;
-	/** What the bot is doing; its motion shows it. */
+	/** What the bot is doing; its motion shows it (and a dot when it needs you, failed or just finished). */
 	state?: Presence;
 	/** Idle bots blink now and then (roster and header, not every message). */
 	alive?: boolean;
+	/** A dot while it's working too, where the avatar is small (the chat list). */
+	statusDot?: boolean;
 	className?: string;
+	/** A picture's text alternative. Not a hover tooltip: touch screens can't show one. */
 	title?: string;
 }) {
 	const id = useId().replace(/:/g, "");
@@ -204,12 +210,13 @@ export function AgentAvatar({
 		className,
 	);
 	const style = { width: size, height: size, "--blink-delay": blinkDelay(title ?? id) } as CSSProperties;
-	const badge = BADGE[presence] ? (
+	const tone = BADGE[presence] ?? (statusDot ? BUSY_BADGE[presence] : undefined);
+	const badge = tone ? (
 		<span
 			className={cn(
 				"avatar-badge absolute right-0 bottom-0 rounded-full ring-2 ring-bg",
-				BADGE[presence],
-				presence === "waiting" && "avatar-badge-pulse",
+				tone,
+				(presence === "waiting" || tone === "bg-brand") && "avatar-badge-pulse",
 			)}
 			style={{ width: Math.max(7, size * 0.26), height: Math.max(7, size * 0.26) }}
 			aria-hidden
@@ -220,7 +227,7 @@ export function AgentAvatar({
 		// Pictures come from Sekai's uploads (or an http(s) or data: image): nothing else is put in an <img>.
 		const safe = /^(\/|https?:|data:image\/)/.test(avatar.url);
 		return (
-			<span className={box} style={style} title={title}>
+			<span className={box} style={style}>
 				<img
 					src={safe ? assetUrl(avatar.url) : undefined}
 					alt={title ?? ""}
@@ -240,7 +247,7 @@ export function AgentAvatar({
 	}
 	if (avatar.kind === "emoji") {
 		return (
-			<span className={cn(box, "rounded-full")} style={{ ...style, background: avatar.color }} title={title}>
+			<span className={cn(box, "rounded-full")} style={{ ...style, background: avatar.color }}>
 				<span style={{ fontSize: size * 0.55, lineHeight: 1 }} aria-hidden>
 					{avatar.emoji}
 				</span>
@@ -249,7 +256,7 @@ export function AgentAvatar({
 		);
 	}
 	return (
-		<span className={box} style={style} title={title}>
+		<span className={box} style={style}>
 			<svg viewBox="0 0 100 100" width={size} height={size} aria-hidden className="overflow-visible">
 				<defs>
 					<radialGradient id={`s${id}`} cx="32%" cy="26%" r="75%">
@@ -292,7 +299,7 @@ function GalleryAvatar({
 	const icon = galleryIcon(id);
 	const name = icon ? galleryShortName(icon) : "?";
 	return (
-		<span className={cn(box, "avatar-gallery")} style={style} title={title}>
+		<span className={cn(box, "avatar-gallery")} style={style}>
 			{icon && !failed ? (
 				<img
 					src={assetUrl(`/api/avatars/gallery/${encodeURIComponent(id)}`)}
@@ -307,7 +314,7 @@ function GalleryAvatar({
 				/>
 			) : (
 				<span
-					className="flex size-full items-center justify-center rounded-full font-semibold text-white"
+					className="flex size-full items-center justify-center rounded-full font-semibold text-paper"
 					style={{ background: color, fontSize: size * 0.42 }}
 					aria-hidden
 				>
@@ -337,7 +344,7 @@ export function AvatarStack({ avatars, size = 22, max = 3 }: { avatars: Avatar[]
 			))}
 			{extra > 0 && (
 				<span
-					className="flex items-center justify-center rounded-full bg-surface-3 text-[10px] font-semibold text-fg-muted ring-2 ring-bg"
+					className="flex items-center justify-center rounded-full bg-surface-3 text-caption font-semibold text-fg-muted ring-2 ring-bg"
 					style={{ width: size, height: size, marginLeft: -size * 0.35 }}
 				>
 					+{extra}

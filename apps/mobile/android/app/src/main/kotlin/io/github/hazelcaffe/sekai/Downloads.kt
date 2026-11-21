@@ -12,7 +12,6 @@ import android.provider.MediaStore
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import java.io.File
@@ -62,10 +61,13 @@ internal object Downloads {
                     .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
                 CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
                 activity.getSystemService(DownloadManager::class.java).enqueue(request)
-                Toast.makeText(activity, activity.getString(R.string.downloading, name), Toast.LENGTH_SHORT).show()
+                Snacks.show(activity, R.string.downloading, name)
             } catch (e: RuntimeException) {
                 Log.w(TAG, "DownloadManager refused $url", e)
-                Toast.makeText(activity, R.string.download_failed, Toast.LENGTH_LONG).show()
+                val again = SnackAction(activity.getString(R.string.try_again)) {
+                    enqueue(activity, url, userAgent, disposition, mime)
+                }
+                Snacks.show(activity, Snack(activity.getString(R.string.download_failed), again))
             }
         }
     }
@@ -84,7 +86,8 @@ internal object Downloads {
                     .getOrNull()
             }
             if (result == null) {
-                Toast.makeText(activity.applicationContext, R.string.download_failed, Toast.LENGTH_LONG).show()
+                val again = SnackAction(activity.getString(R.string.try_again)) { fetch(activity, url, userAgent) }
+                Snacks.show(activity, Snack(activity.getString(R.string.download_failed), again))
             } else {
                 announce(activity.applicationContext, result.first, result.second, result.third)
             }
@@ -117,7 +120,7 @@ internal object Downloads {
     private suspend fun canWrite(activity: MainActivity): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return true
         if (activity.permissions.request(Manifest.permission.WRITE_EXTERNAL_STORAGE)) return true
-        Toast.makeText(activity, R.string.storage_needed, Toast.LENGTH_LONG).show()
+        Snacks.show(activity, R.string.storage_needed)
         return false
     }
 
@@ -158,12 +161,16 @@ internal object Downloads {
         return file
     }
 
+    /** In the app: a snackbar with Open. Out of it: a notification to tap, or a toast when those are off. */
     private fun announce(context: Context, name: String, mime: String, uri: Uri?) {
         when {
-            uri == null -> Toast.makeText(context, R.string.save_failed, Toast.LENGTH_LONG).show()
-            // A notification can be tapped to open the file; without notifications, a toast says where it went.
+            uri == null -> Snacks.show(context, R.string.save_failed)
+            AppState.inFront -> {
+                val open = SnackAction(context.getString(R.string.open)) { Notifications.openFile(context, name, uri, mime) }
+                Snacks.show(context, Snack(context.getString(R.string.saved_named, name), open))
+            }
             Notifications.allowed(context) -> Notifications.saved(context, name, uri, mime)
-            else -> Toast.makeText(context, context.getString(R.string.saved_named, name), Toast.LENGTH_LONG).show()
+            else -> Snacks.show(context, R.string.saved_named, name)
         }
     }
 

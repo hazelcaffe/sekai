@@ -36,7 +36,7 @@ import { log } from "../lib/log.ts";
 import { truncate, truncateMiddle } from "../lib/text.ts";
 import { EMPTY_USAGE } from "../llm/types.ts";
 import { asKind, gatedExternalTool, KIND_LABELS, type ToolKind } from "./kinds.ts";
-import { agentEnv, checkDir, OutputTail, pipeText, withTimeout } from "./process.ts";
+import { acpEnv, checkDir, OutputTail, pipeText, withTimeout } from "./process.ts";
 import { setProviderStatus } from "./store.ts";
 import type { RunnerInput, RunnerResult, TurnBlock } from "./turn.ts";
 
@@ -45,7 +45,7 @@ const AGENT_OWN_KINDS = new Set(["read", "edit", "delete", "move", "search", "ex
 
 /**
  * Agent Client Protocol (agentclientprotocol.com) client. Sekai plays the editor: it starts the agent CLI
- * you installed (codex-acp, grok, gemini --acp, devin acp…) over stdio, opens one session per agent and
+ * you installed (codex-acp, opencode acp, pi-acp, devin acp…) over stdio, opens one session per agent and
  * conversation, streams its replies into the chat and answers its permission requests with Sekai's
  * approval gate. Sekai offers no file-system or terminal capabilities; the agent works in its own folder.
  */
@@ -194,18 +194,19 @@ export class AcpHost {
 	}
 
 	static async start(provider: Provider, cwd: string, onDispose: () => void = () => {}): Promise<AcpHost> {
+		const env = acpEnv(provider);
 		let proc: Bun.Subprocess<"pipe", "pipe", "pipe">;
 		try {
 			proc = Bun.spawn(resolveCommand(provider), {
 				cwd,
-				env: agentEnv(provider.env),
+				env,
 				stdin: "pipe",
 				stdout: "pipe",
 				stderr: "pipe",
 			});
 		} catch (err) {
 			throw new Error(
-				`Couldn't run "${provider.command}" (${errorMessage(err)}). Install ${provider.title}, or set the full path to it in Connect apps → Subscriptions.`,
+				`Couldn't run "${provider.command}" (${errorMessage(err)}). Install ${provider.title}, or set the full path to it in Settings → Subscriptions.`,
 			);
 		}
 		const host = new AcpHost(provider, proc, onDispose);
@@ -333,39 +334,49 @@ export class AcpHost {
 
 const pool = new Map<string, Promise<AcpHost>>();
 
-async function acquire(provider: Provider): Promise<AcpHost> {
-	const existing = pool.get(provider.id);
+/** pi-acp closes other sessions in the same process on session/new or session/load. */
+function hostKey(provider: Provider, session: RunnerInput["session"]): string {
+	return provider.preset === "pi" ? `${provider.id}:${session.id}` : provider.id;
+}
+
+async function acquire(provider: Provider, session: RunnerInput["session"]): Promise<AcpHost> {
+	const key = hostKey(provider, session);
+	const existing = pool.get(key);
 	if (existing) {
 		const host = await existing.catch(() => null);
 		if (host && !host.exited && !host.stale) {
 			host.retain();
 			return host;
 		}
-		if (pool.get(provider.id) === existing) pool.delete(provider.id);
+		if (pool.get(key) === existing) pool.delete(key);
 	}
 	const root = join(config.dataDir, "workspaces");
 	const starting = AcpHost.start(provider, root, () => {
-		if (pool.get(provider.id) === starting) pool.delete(provider.id);
+		if (pool.get(key) === starting) pool.delete(key);
 	});
-	pool.set(provider.id, starting);
+	pool.set(key, starting);
 	try {
 		const host = await starting;
 		host.retain();
 		return host;
 	} catch (err) {
-		if (pool.get(provider.id) === starting) pool.delete(provider.id);
+		if (pool.get(key) === starting) pool.delete(key);
 		throw err;
 	}
 }
 
 /** Settings changed or the provider was removed: restart its process once the current turn is done. */
 export async function invalidateAcpHost(providerId: string): Promise<void> {
-	const p = pool.get(providerId);
-	pool.delete(providerId);
-	const host = await p?.catch(() => null);
-	if (!host) return;
-	host.stale = true;
-	if (!host.busy) host.dispose();
+	const hosts = [...pool].filter(([key]) => key === providerId || key.startsWith(`${providerId}:`));
+	for (const [key] of hosts) pool.delete(key);
+	await Promise.all(
+		hosts.map(async ([, pending]) => {
+			const host = await pending.catch(() => null);
+			if (!host) return;
+			host.stale = true;
+			if (!host.busy) host.dispose();
+		}),
+	);
 }
 
 export async function shutdownAcpHosts(): Promise<void> {
@@ -746,9 +757,9 @@ async function applyConfig(host: AcpHost, sessionId: string, r: RunnerInput): Pr
 }
 
 export async function runAcpTurn(r: RunnerInput): Promise<RunnerResult> {
-	const host = await acquire(r.provider);
+	const host = await acquire(r.provider, r.session);
 	try {
-		const mcpServers = [host.mcpServer(r.mcpUrl)];
+		const mcpServers = r.provider.preset === "pi" ? [] : [host.mcpServer(r.mcpUrl)];
 		const caps = host.init.agentCapabilities;
 		let usage = EMPTY_USAGE;
 		let sessionId = r.session.sessionId && host.sessions.has(r.session.sessionId) ? r.session.sessionId : null;
@@ -848,7 +859,7 @@ export async function runAcpTurn(r: RunnerInput): Promise<RunnerResult> {
 				state: "auth_required",
 				error: `${r.provider.title} needs you to sign in.`,
 			});
-			throw new Error(`${r.provider.title} needs you to sign in. Open Connect apps → Subscriptions to see how.`);
+			throw new Error(`${r.provider.title} needs you to sign in. Open Settings → Subscriptions to see how.`);
 		}
 		if (err instanceof RequestError) throw new Error(`${r.provider.title}: ${truncate(err.message, 1000)}`);
 		throw err;

@@ -69,11 +69,9 @@ export const config = {
 		.map((x) => x.trim())
 		.filter(Boolean),
 	webDir: resolve(env.SEKAI_WEB_DIR ?? join(ROOT_DIR, "apps", "web", "dist")),
-	/** The admin app, served at /admin. */
-	adminDir: resolve(env.SEKAI_ADMIN_DIR ?? join(ROOT_DIR, "apps", "admin", "dist")),
 	migrationsDir: resolve(env.SEKAI_MIGRATIONS_DIR ?? join(ROOT_DIR, "apps", "server", "drizzle")),
 	gateway: {
-		// Any OpenAI-compatible endpoint (also settable in Admin → Models).
+		// Any OpenAI-compatible endpoint (also settable in Settings → Models).
 		url: (env.GATEWAY_URL ?? "").trim().replace(/\/+$/, ""),
 		apiKey: env.GATEWAY_API_KEY?.trim() ?? "",
 	},

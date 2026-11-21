@@ -15,8 +15,9 @@ import org.json.JSONObject
 
 /**
  * Approve / Deny on a notification: answers the request the way the page would (the web view's cookies, the
- * server's Origin), then says how it went in the notification. Android doesn't let a notification button's
- * receiver open the app, so when answering fails the notification says so and opens the chat when tapped.
+ * server's Origin), then says how it went by replacing the notification. Android doesn't let a notification button's
+ * receiver open the app, so when answering fails the notification says so and opens the chat when tapped. The buttons
+ * ask for the phone to be unlocked first (see Notifications.show).
  */
 class ApprovalReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -27,9 +28,17 @@ class ApprovalReceiver : BroadcastReceiver() {
         val path = safePath(intent.getStringExtra(EXTRA_PATH)) ?: "/"
         val approve = intent.getBooleanExtra(EXTRA_APPROVE, false)
 
-        fun done(text: Int) = Notifications.update(context, tag, title, context.getString(text), path)
+        // What's done needs nothing more from you, so it clears itself; a failure stays to tap.
+        fun done(text: Int, clears: Boolean = true) = Notifications.update(
+            context,
+            tag,
+            title,
+            context.getString(text),
+            path,
+            dismissAfterMs = if (clears) CLEAR_MS else 0,
+        )
         // Notifications from a server you've since left can't be answered from here.
-        if (server != Store(context).serverUrl) return done(R.string.answer_failed)
+        if (server != Store(context).serverUrl) return done(R.string.answer_other_server, clears = false)
 
         Notifications.update(
             context,
@@ -44,13 +53,11 @@ class ApprovalReceiver : BroadcastReceiver() {
         AppState.scope.launch {
             try {
                 val code = withContext(Dispatchers.IO) { answer(server, toolCallId, approve, cookies) }
-                done(
-                    when (code) {
-                        in 200..299 -> if (approve) R.string.approved else R.string.denied
-                        404 -> R.string.already_answered
-                        else -> R.string.answer_failed
-                    },
-                )
+                when (code) {
+                    in 200..299 -> done(if (approve) R.string.approved else R.string.denied)
+                    404 -> done(R.string.already_answered)
+                    else -> done(R.string.answer_failed, clears = false)
+                }
             } finally {
                 pending.finish()
             }
@@ -82,6 +89,7 @@ class ApprovalReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "SekaiApproval"
+        private const val CLEAR_MS = 6_000L
         private const val EXTRA_TOOL_CALL = "toolCallId"
         private const val EXTRA_APPROVE = "approve"
         private const val EXTRA_TAG = "tag"

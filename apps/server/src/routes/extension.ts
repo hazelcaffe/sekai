@@ -15,14 +15,14 @@ import { body, ok } from "./util.ts";
 
 async function ownBot(id: string) {
 	const agent = await getAgent(id);
-	if (!agent || agent.userId !== requireActorId()) throw notFound("Agent");
+	if (!agent || agent.userId !== requireActorId()) throw notFound("Bot");
 	return agent;
 }
 
 /** Every sidebar chat is a direct chat with your own bot, never a shared bot's private browser. */
 async function ownChat(id: string) {
 	const chat = await requireConversation(id);
-	if (chat.kind !== "direct" || !chat.agentId) throw notFound("Conversation");
+	if (chat.kind !== "direct" || !chat.agentId) throw notFound("Chat");
 	await ownBot(chat.agentId);
 	return chat;
 }
@@ -78,7 +78,7 @@ export const extensionRoutes = new Hono()
 	.post("/sessions", async (c) => {
 		const input = await body(c, ExtensionConnect);
 		const chat = await ownChat(input.conversationId);
-		if (chat.agentId !== input.agentId) throw notFound("Conversation");
+		if (chat.agentId !== input.agentId) throw notFound("Chat");
 		const p = c.get("principal");
 		if (p.kind !== "token" || p.scope !== "extension")
 			throw badRequest("Use a browser extension token to share tabs.");

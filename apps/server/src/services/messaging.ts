@@ -73,7 +73,8 @@ export async function emailReady(): Promise<boolean> {
 /** Sends an email (plain text, with a simple HTML copy). Throws a friendly error when it can't. */
 export async function sendEmail(to: string, subject: string, text: string): Promise<void> {
 	const c = await emailConfig();
-	if (!c.enabled || !c.host || !c.from) throw badRequest("Email isn't set up yet (Admin → Sign-in → Email).");
+	if (!c.enabled || !c.host || !c.from)
+		throw badRequest("Email isn't set up yet (Settings → Sign-in options → Email).");
 	const nodemailer = await import("nodemailer");
 	const transport = nodemailer.createTransport({
 		host: c.host,
@@ -117,7 +118,8 @@ export async function smsReady(): Promise<boolean> {
 /** Sends a text message to a number with its country code (+15551234567). */
 export async function sendSms(to: string, message: string): Promise<void> {
 	const c = await smsConfig();
-	if (!(await smsReady())) throw badRequest("Text messages aren't set up yet (Admin → Sign-in → Text messages).");
+	if (!(await smsReady()))
+		throw badRequest("Text messages aren't set up yet (Settings → Sign-in options → Text messages).");
 	if (!/^\+[1-9]\d{6,14}$/.test(to)) throw badRequest("That phone number needs its country code (+1…)");
 	try {
 		if (c.provider === "twilio") {

@@ -21,10 +21,12 @@ targets:
       Release: ../version.xcconfig
     sources:
       - path: Sekai
-      # The connect screen, the page bridge and the logo are shared with the Android app.
+      # Only server pages use a bridge; the iOS connection screens are native.
       - path: ../shared
         name: Shared
-        includes: [bridge.js, connect.html, icon.png]
+        includes: [bridge.js]
+        buildPhase: resources
+      - path: ../../../LICENSE
         buildPhase: resources
     settings:
       base:
@@ -43,7 +45,7 @@ targets:
         COMPRESS_PNG_FILES: false
         STRIP_PNG_TEXT: false
     scheme:
-      testTargets: [SekaiTests]
+      testTargets: [SekaiTests, SekaiUITests]
   # Unit tests for what the screenshots can't show (addresses, paths, bridge values).
   SekaiTests:
     type: bundle.unit-test
@@ -56,3 +58,14 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(SEKAI_APP_ID).tests
         GENERATE_INFOPLIST_FILE: true
+  SekaiUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [SekaiUITests]
+    dependencies:
+      - target: Sekai
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(SEKAI_APP_ID).uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: Sekai

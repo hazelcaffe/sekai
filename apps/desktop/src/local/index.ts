@@ -177,7 +177,10 @@ export class LocalComputer {
 			this.abortAll();
 			if (this.stopped) return;
 			this.scheduleReconnect(
-				ev.reason || (ev.code === 1006 ? "The connection to Sekai dropped" : `Closed (${ev.code})`),
+				ev.reason ||
+					(ev.code === 1006
+						? "Lost connection to Sekai. Reconnecting…"
+						: "Disconnected from Sekai. Reconnecting…"),
 			);
 		};
 		ws.onerror = () => {};
@@ -378,7 +381,7 @@ export class LocalComputer {
 			case "idle.wait":
 				return { idle: await this.waitIdle(platform, num("seconds") || 3, signal) };
 			default:
-				throw new Error(`The desktop app doesn't know "${method}" (update it?)`);
+				throw new Error(`This desktop app needs an update to run "${method}".`);
 		}
 	}
 

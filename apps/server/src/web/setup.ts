@@ -16,7 +16,7 @@ import { saveWebSettings, webSettings } from "./settings.ts";
 
 /**
  * "Set it up for me": a model installs Firecrawl Local on this server. It runs shell commands here, as Sekai's own
- * account, one at a time and visible in Admin → Web reading; Sekai checks each one first (guardCommand) and turns
+ * account, one at a time and visible in Settings → Web reading; Sekai checks each one first (guardCommand) and turns
  * the engine on when the model says it's done, telling it what went wrong if it doesn't start.
  */
 
@@ -273,7 +273,7 @@ async function loop(signal: AbortSignal): Promise<void> {
 	const settings = await getSettings();
 	const model = gatewayModel(settings.defaultModel) ?? gatewayModel(settings.defaultFastModel);
 	if (!model) {
-		finish("failed", "There's no model to do it with: pick a default model in Admin → Models first.");
+		finish("failed", "There's no model to do it with: pick a default model in Settings → Models first.");
 		return;
 	}
 	setup.model = model.model;
@@ -386,7 +386,7 @@ async function handle(
 	return { content: `There's no tool called ${name}.` };
 }
 
-/** Starts a setup run (admins, from Admin → Web reading). Returns at once: the page follows the steps. */
+/** Starts a setup run (admins, from Settings → Web reading). Returns at once: the page follows the steps. */
 export function startWebSetup(isInstalling: () => boolean): WebSetup {
 	if (setup.state === "running") throw new HttpError(409, "It's setting it up already.");
 	if (isInstalling()) throw new HttpError(409, "Firecrawl Local is installing already.");

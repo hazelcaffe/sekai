@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
 }
 
 // The version lives in apps/mobile/version.xcconfig, shared with the iOS app ("KEY = value" lines, // comments).
@@ -60,7 +61,7 @@ android {
     }
 }
 
-/** Copies the files shared with the iOS app (the bridge, the connect screen, the logo) into the app's assets. */
+/** Copies the files shared with the iOS app (the bridge, the logo) and the licence into the app's assets. */
 abstract class CopySharedAssets : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -82,7 +83,7 @@ abstract class CopySharedAssets : DefaultTask() {
 }
 
 val copySharedAssets = tasks.register<CopySharedAssets>("copySharedAssets") {
-    sources.from(rootProject.files("../shared/bridge.js", "../shared/connect.html", "../shared/icon.png"))
+    sources.from(rootProject.files("../shared/bridge.js", "../shared/icon.png", "../../../LICENSE"))
     outputDir = layout.buildDirectory.dir("generated/sekai/assets")
 }
 
@@ -101,6 +102,11 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.splashscreen)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material3)
     implementation(libs.firebase.messaging)
     testImplementation(libs.junit)
 }

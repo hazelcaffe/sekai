@@ -2,128 +2,412 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'; font-src 'self'"
+		/>
 		<title>Connect to Sekai</title>
+		<link rel="stylesheet" href="tokens.css" />
 		<style>
-			:root {
-				color-scheme: dark light;
-				/* Nightcord at 25:00 (dark) and Virtual Singers (light), like the app. */
-				--bg: #0d0a10;
-				--surface: #15111a;
-				--border: rgb(235 215 255 / 0.1);
-				--fg: #efe9f4;
-				--muted: #a99fb4;
-				--accent: #9b54ad;
-				--accent-fg: #ffffff;
-				--danger: #ff6b6b;
-			}
-			@media (prefers-color-scheme: light) {
-				:root {
-					--bg: #ffffff;
-					--surface: #eef6f5;
-					--border: rgb(10 60 56 / 0.1);
-					--fg: #0b1716;
-					--muted: #4c5f5d;
-					--accent: #33ccbb;
-					--accent-fg: #03302b;
-					--danger: #dc3e42;
-				}
-			}
-			* {
-				box-sizing: border-box;
-			}
+			html,
 			body {
 				margin: 0;
-				min-height: 100vh;
-				display: grid;
-				place-items: center;
-				background: var(--bg);
-				color: var(--fg);
-				font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-				-webkit-app-region: drag;
+				height: 100%;
 			}
-			main {
-				width: min(380px, calc(100vw - 48px));
+			body {
 				display: flex;
 				flex-direction: column;
-				gap: 16px;
-				text-align: center;
-				-webkit-app-region: no-drag;
+				min-height: 100vh;
+				background: var(--bg-subtle);
+				color: var(--fg);
+				font-family: var(--type-font);
+				font-size: var(--type-body);
+				line-height: var(--type-body-lh);
+				font-feature-settings: "cv11", "ss01";
+				-webkit-font-smoothing: antialiased;
 			}
-			img {
-				width: 72px;
-				height: 72px;
-				margin: 0 auto;
-				border-radius: 18px;
+			.drag-bar {
+				height: 36px;
+				flex-shrink: 0;
+				-webkit-app-region: drag;
+			}
+			.stage {
+				flex: 1;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 16px 24px 32px;
+			}
+			.card {
+				width: min(400px, 100%);
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: var(--radius-xl);
+				padding: 28px 24px 24px;
+			}
+			.hero {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				text-align: center;
+				margin-bottom: 24px;
+			}
+			.mark {
+				width: 56px;
+				height: 56px;
+				border-radius: 9999px;
+				margin-bottom: 16px;
+				user-select: none;
+				-webkit-user-drag: none;
 			}
 			h1 {
 				margin: 0;
-				font-size: 20px;
-				letter-spacing: -0.01em;
+				font-size: var(--type-title);
+				line-height: var(--type-title-lh);
+				font-weight: 600;
+				letter-spacing: -0.015em;
+				color: var(--fg);
 			}
-			p {
-				margin: 0;
-				color: var(--muted);
+			.subtitle {
+				margin: 6px 0 0;
+				font-size: var(--type-small);
+				line-height: var(--type-small-lh);
+				color: var(--fg-muted);
+				max-width: 34ch;
+			}
+			form {
+				display: flex;
+				flex-direction: column;
+				gap: 16px;
+			}
+			.field {
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+			}
+			label {
+				font-size: var(--type-body);
+				line-height: var(--type-body-lh);
+				font-weight: 500;
+				color: var(--fg);
 			}
 			input {
-				height: 44px;
-				padding: 0 14px;
-				border-radius: 12px;
+				width: 100%;
+				height: 40px;
+				padding: 0 12px;
+				border-radius: var(--radius-md);
 				border: 1px solid var(--border);
-				background: var(--surface);
+				background: var(--surface-2);
 				color: var(--fg);
-				font: 14px ui-monospace, monospace;
-				outline: none;
+				font-family: var(--type-font);
+				font-size: var(--type-body);
+				line-height: var(--type-body-lh);
+				transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+			}
+			input::placeholder {
+				color: var(--fg-subtle);
+			}
+			input:hover:not(:disabled) {
+				border-color: var(--border-strong);
+			}
+			input[aria-invalid="true"] {
+				border-color: var(--danger);
+			}
+			.callout {
+				display: flex;
+				align-items: flex-start;
+				gap: 10px;
+				padding: 10px 12px;
+				border-radius: var(--radius-lg);
+				background: var(--danger-soft);
+				color: var(--danger-ink);
+				font-size: var(--type-small);
+				line-height: var(--type-small-lh);
+			}
+			button[hidden],
+			.callout[hidden],
+			.spinner[hidden] {
+				display: none;
+			}
+			.callout svg {
+				width: 16px;
+				height: 16px;
+				margin-top: 1px;
+				flex-shrink: 0;
+			}
+			.actions {
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
 			}
 			button {
-				height: 44px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 8px;
+				width: 100%;
+				height: 40px;
+				padding: 0 16px;
 				border: 0;
-				border-radius: 12px;
-				background: var(--accent);
-				color: var(--accent-fg);
-				font: 600 14px system-ui, sans-serif;
+				border-radius: var(--radius-md);
+				font-family: var(--type-font);
+				font-size: var(--type-body);
+				line-height: var(--type-body-lh);
+				font-weight: 500;
 				cursor: pointer;
+				transition: background-color var(--motion-fast) ease, opacity var(--motion-fast) ease;
 			}
 			button:disabled {
-				opacity: 0.5;
+				opacity: 0.45;
+				cursor: default;
 			}
-			#error {
-				color: var(--danger);
-				min-height: 21px;
+			.btn-primary {
+				background: var(--primary);
+				color: var(--primary-foreground);
 			}
-			code {
-				font-size: 12px;
+			.btn-primary:hover:not(:disabled) {
+				opacity: 0.88;
+			}
+			.btn-ghost {
+				background: transparent;
+				color: var(--fg-muted);
+			}
+			.btn-ghost:hover:not(:disabled) {
+				background: var(--surface-2);
+				color: var(--fg);
+			}
+			.spinner {
+				width: 15px;
+				height: 15px;
+				border: 2px solid currentColor;
+				border-right-color: transparent;
+				border-radius: 9999px;
+				animation: spin 0.75s linear infinite;
+			}
+			.spinner[hidden] {
+				display: none;
+			}
+			@keyframes spin {
+				to {
+					transform: rotate(360deg);
+				}
+			}
+			details {
+				margin-top: 16px;
+			}
+			summary {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+				list-style: none;
+				cursor: pointer;
+				font-size: var(--type-small);
+				line-height: var(--type-small-lh);
+				font-weight: 500;
+				color: var(--brand-ink);
+				border-radius: var(--radius-sm);
+			}
+			summary::-webkit-details-marker {
+				display: none;
+			}
+			summary:hover {
+				text-decoration: underline;
+				text-underline-offset: 3px;
+			}
+			.chevron {
+				width: 15px;
+				height: 15px;
+				transition: transform var(--motion-fast) ease;
+			}
+			details[open] .chevron {
+				transform: rotate(90deg);
+			}
+			.help-body {
+				margin: 8px 0 0;
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+				font-size: var(--type-small);
+				line-height: var(--type-small-lh);
+				color: var(--fg-muted);
+			}
+			.help-body p {
+				margin: 0;
+			}
+			footer {
+				padding: 12px 24px 16px;
+				text-align: center;
+				font-size: var(--type-caption);
+				line-height: var(--type-caption-lh);
+				color: var(--fg-subtle);
 			}
 		</style>
 	</head>
 	<body>
-		<main>
-			<img src="icon.png" alt="" />
-			<h1>Connect to Sekai</h1>
-			<p>Sekai couldn't reach its server. Start it (<code>bun run docker:up</code> or <code>bun run dev</code>), or point the app at another one.</p>
-			<form id="form">
-				<input id="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:7420" />
-			</form>
-			<button id="go" type="submit" form="form">Connect</button>
-			<div id="error"></div>
+		<div class="drag-bar" aria-hidden="true"></div>
+		<main class="stage">
+			<section class="card" aria-labelledby="heading">
+				<div class="hero">
+					<img class="mark" src="icon.png" alt="" aria-hidden="true" draggable="false" />
+					<h1 id="heading">Connect to Sekai</h1>
+					<p id="subtitle" class="subtitle">Enter the address of your Sekai server.</p>
+				</div>
+				<form id="form" novalidate>
+					<div id="error" class="callout" role="alert" hidden>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<circle cx="12" cy="12" r="10" />
+							<line x1="12" y1="8" x2="12" y2="12" />
+							<line x1="12" y1="16" x2="12.01" y2="16" />
+						</svg>
+						<span id="error-text"></span>
+					</div>
+					<div class="field">
+						<label for="url">Server address</label>
+						<input
+							id="url"
+							type="url"
+							spellcheck="false"
+							autocomplete="url"
+							placeholder="https://sekai.example.com"
+							required
+						/>
+					</div>
+					<div class="actions">
+						<button id="go" type="submit" class="btn-primary">
+							<span id="spinner" class="spinner animate-spin" hidden aria-hidden="true"></span>
+							<span id="go-label">Connect</span>
+						</button>
+						<button id="back" type="button" class="btn-ghost" hidden>Cancel</button>
+					</div>
+				</form>
+				<details>
+					<summary>
+						<span>Learn more</span>
+						<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<polyline points="9 18 15 12 9 6" />
+						</svg>
+					</summary>
+					<div class="help-body">
+						<p>
+							Use the full address where your Sekai runs, such as http://127.0.0.1:7420 on this
+							computer or https://sekai.example.com over the internet or Tailscale.
+						</p>
+						<p>
+							Switching to a different server turns off lending this computer until you enable it for the
+							new server.
+						</p>
+					</div>
+				</details>
+			</section>
 		</main>
+		<footer id="footer">Character art © SEGA / © CP / © CFM</footer>
 		<script>
 			const input = document.getElementById("url");
 			const button = document.getElementById("go");
-			const error = document.getElementById("error");
-			input.value = window.sekaiConnect.getServerUrl();
+			const buttonLabel = document.getElementById("go-label");
+			const spinner = document.getElementById("spinner");
+			const backButton = document.getElementById("back");
+			const heading = document.getElementById("heading");
+			const subtitle = document.getElementById("subtitle");
+			const errorBox = document.getElementById("error");
+			const errorText = document.getElementById("error-text");
+			const footer = document.getElementById("footer");
+
+			let mode = "first-run";
+			let savedUrl = "";
+
+			function showError(msg) {
+				if (msg) {
+					errorText.textContent = msg;
+					errorBox.hidden = false;
+					input.setAttribute("aria-invalid", "true");
+				} else {
+					errorText.textContent = "";
+					errorBox.hidden = true;
+					input.removeAttribute("aria-invalid");
+				}
+			}
+
+			function syncButtonLabel() {
+				const same = input.value.trim().replace(/\/+$/, "") === savedUrl.replace(/\/+$/, "");
+				buttonLabel.textContent = mode === "unreachable" && same ? "Try again" : "Connect";
+			}
+
+			function applyContext(ctx) {
+				mode = ctx?.mode || "first-run";
+				savedUrl = ctx?.serverUrl || window.sekaiConnect?.getServerUrl?.() || "";
+				input.value = savedUrl;
+				if (ctx?.version) {
+					footer.textContent = `Sekai ${ctx.version} · Character art © SEGA / © CP / © CFM`;
+				}
+				if (mode === "unreachable") {
+					document.title = "Couldn't reach Sekai";
+					heading.textContent = "Couldn't reach Sekai";
+					subtitle.textContent =
+						ctx?.error || "Check that your server is running and this device is online, then try again.";
+					showError("");
+				} else if (mode === "change") {
+					document.title = "Change server";
+					heading.textContent = "Change server";
+					subtitle.textContent = "Enter the address of the Sekai server you want to use.";
+					showError("");
+				} else {
+					document.title = "Connect to Sekai";
+					heading.textContent = "Connect to Sekai";
+					subtitle.textContent = "Enter the address of your Sekai server.";
+					showError("");
+				}
+				backButton.hidden = !ctx?.canReturn;
+				syncButtonLabel();
+			}
+
+			input.addEventListener("input", () => {
+				if (!errorBox.hidden) showError("");
+				syncButtonLabel();
+			});
+
+			backButton.addEventListener("click", () => {
+				window.sekaiConnect?.cancel?.();
+			});
+
 			document.getElementById("form").addEventListener("submit", async (e) => {
 				e.preventDefault();
+				const value = input.value.trim();
+				if (!value) {
+					showError("Enter a server address, like https://sekai.example.com.");
+					input.focus();
+					return;
+				}
 				button.disabled = true;
-				button.textContent = "Connecting…";
-				error.textContent = "";
-				const result = await window.sekaiConnect.connect(input.value);
-				if (!result.ok) {
-					error.textContent = result.error || "Couldn't connect.";
+				backButton.disabled = true;
+				spinner.hidden = false;
+				buttonLabel.textContent = "Connecting…";
+				showError("");
+				try {
+					const result = await window.sekaiConnect.connect(value);
+					if (!result.ok) {
+						showError(result.error || "Couldn't reach that server. Check the address and try again.");
+						button.disabled = false;
+						backButton.disabled = false;
+						spinner.hidden = true;
+						syncButtonLabel();
+						input.focus();
+					}
+				} catch {
+					showError("Couldn't connect right now. Try again in a moment.");
 					button.disabled = false;
-					button.textContent = "Connect";
+					backButton.disabled = false;
+					spinner.hidden = true;
+					syncButtonLabel();
 				}
 			});
+
+			if (window.sekaiConnect?.getContext) {
+				Promise.resolve(window.sekaiConnect.getContext()).then(applyContext);
+			} else {
+				applyContext({ mode: "first-run", serverUrl: window.sekaiConnect?.getServerUrl?.() || "" });
+			}
 		</script>
 	</body>
 </html>

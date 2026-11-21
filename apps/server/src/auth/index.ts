@@ -97,7 +97,7 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
 				error:
 					p.restriction === "password"
 						? "Choose your own password first"
-						: "Set up two-factor sign-in first (your role requires it)",
+						: "Set up two-step sign-in first (your role requires it)",
 				code: "restricted",
 				restriction: p.restriction,
 			},

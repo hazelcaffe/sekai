@@ -1,7 +1,7 @@
 import { VOICE_CAPS, type VoiceCap } from "@sekai/shared";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requirePermission } from "../auth/actor.ts";
+import { can, requirePermission } from "../auth/actor.ts";
 import { badRequest, errorMessage } from "../lib/errors.ts";
 import { activeRings, declineRing } from "../outreach/calls.ts";
 import { listVoiceModels, listVoices } from "../voice/catalog.ts";
@@ -24,7 +24,10 @@ const capOf = (v: string | undefined): VoiceCap => (VOICE_CAPS.includes(v as Voi
 export const voiceRoutes = new Hono()
 	// Using voice (calls, read-aloud, voice messages, making voices) is a role feature; its setup is an admin's.
 	.use("*", async (c, next) => {
-		if (!(c.req.method === "GET" && c.req.path.endsWith("/settings"))) requirePermission("voice");
+		const read = c.req.method === "GET";
+		// Every app checks for incoming calls when it connects; nobody calls someone whose role has no voice.
+		if (read && c.req.path.endsWith("/rings") && !can("voice")) return c.json([]);
+		if (!(read && c.req.path.endsWith("/settings"))) requirePermission("voice");
 		return next();
 	})
 	.get("/settings", async (c) => c.json(await voiceSettings()))

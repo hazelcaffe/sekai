@@ -1,6 +1,6 @@
 import { AgentAvatar } from "@sekai/client";
 import { type Agent, slackCommand, slackManifest } from "@sekai/shared";
-import { Button } from "@sekai/ui";
+import { Button, Fold } from "@sekai/ui";
 import { Copy, Download, ExternalLink } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -50,14 +50,14 @@ export function SlackSetup({ agent }: { agent: Agent }) {
 	const avatar = useRef<HTMLDivElement>(null);
 	const [show, setShow] = useState(false);
 	return (
-		<div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border bg-surface-2/40 p-4">
+		<div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-surface p-4">
 			<div className="flex items-center gap-3">
 				<div ref={avatar}>
 					<AgentAvatar avatar={agent.avatar} size={44} />
 				</div>
 				<div className="min-w-0">
-					<p className="text-sm font-medium">{agent.name}'s own Slack app</p>
-					<p className="text-xs leading-5 text-fg-subtle">Its own name, picture, mentions and DMs.</p>
+					<p className="text-body font-medium">{agent.name}'s own Slack app</p>
+					<p className="text-small text-fg-muted">Its own name, picture, mentions and DMs.</p>
 				</div>
 			</div>
 			<div className="flex flex-wrap gap-2">
@@ -74,7 +74,7 @@ export function SlackSetup({ agent }: { agent: Agent }) {
 							() => toast.success("Manifest copied"),
 							() => {
 								setShow(true);
-								toast.error("Copy it from the manifest below.");
+								toast.error("Couldn't copy it. Copy it from the manifest below.");
 							},
 						)
 					}
@@ -94,26 +94,31 @@ export function SlackSetup({ agent }: { agent: Agent }) {
 					<Download /> Save its picture
 				</Button>
 			</div>
-			<p className="text-xs leading-5 text-fg-subtle">
-				Slack can't take the picture from Sekai: save it, then set it as the app icon (Basic information →
-				Display information). Its command is{" "}
-				<code className="break-all text-fg-muted">{slackCommand(agent)}</code>, followed by help, status, new,
-				stop or model. In a thread, type <code className="text-fg-muted">@{agent.name} /help</code>.
-			</p>
 			{agent.avatar.kind === "gallery" && (
-				<p className="text-[11px] text-fg-subtle">
+				<p className="text-caption text-fg-subtle">
 					© SEGA / © Colorful Palette Inc. / © Crypton Future Media, INC. www.piapro.net
 				</p>
 			)}
-			<button
-				type="button"
-				className="self-start text-xs text-fg-muted underline underline-offset-4 coarse:py-2"
-				onClick={() => setShow(!show)}
-			>
-				{show ? "Hide manifest" : "View manifest"}
-			</button>
+			<Fold variant="link" title="About the app">
+				<div className="flex flex-col gap-2">
+					<p>
+						Slack can't take the picture from Sekai: save it, then set it as the app icon (Basic information
+						→ Display information). Its command is{" "}
+						<code className="break-all text-fg">{slackCommand(agent)}</code>, followed by help, status, new,
+						stop or model. In a thread, type <code className="text-fg">@{agent.name} /help</code>.
+					</p>
+					<button
+						type="button"
+						className="self-start text-small font-medium text-brand-ink hover:underline coarse:py-2"
+						onClick={() => setShow(!show)}
+					>
+						{show ? "Hide the manifest" : "Show the manifest"}
+					</button>
+				</div>
+			</Fold>
+			{/* Outside the fold, so it's there to copy by hand when copying it didn't work. */}
 			{show && (
-				<pre className="max-h-64 max-w-full overflow-auto rounded-xl bg-surface-2 p-3 text-[11px] text-fg-muted">
+				<pre className="max-h-64 max-w-full overflow-auto rounded-lg bg-surface-2 p-3 text-caption text-fg-muted">
 					{manifest}
 				</pre>
 			)}

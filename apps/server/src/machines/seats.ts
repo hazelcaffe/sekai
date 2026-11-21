@@ -126,7 +126,7 @@ async function present(rows: MemberRow[], ownerId: string): Promise<MachineMembe
 
 async function ownerOf(m: Machine): Promise<string> {
 	const id = await agentOwner(m.agentId);
-	if (!id) throw notFound("Machine");
+	if (!id) throw notFound("Computer");
 	return id;
 }
 
@@ -149,7 +149,7 @@ export async function listMembers(machineId: string): Promise<MachineMember[]> {
 	return present(rows, await ownerOf(m));
 }
 
-/** Your machines this bot has a seat on, with the seat (for its Computer tab). */
+/** Your machines this bot has a seat on, with the seat (for its Computer section). */
 export async function listSeats(agentId: string): Promise<MachineSeat[]> {
 	const me = currentActor()?.userId;
 	const rows = await db
@@ -175,7 +175,7 @@ export async function listSeats(agentId: string): Promise<MachineSeat[]> {
 export async function requireSeat(machineId: string, agentId: string): Promise<{ m: Machine; row: MemberRow }> {
 	const m = await requireMachine(machineId);
 	const row = await memberRow(m.id, agentId);
-	if (!row) throw notFound("Seat");
+	if (!row) throw notFound("Computer account");
 	return { m, row };
 }
 
@@ -230,12 +230,12 @@ export async function addMember(machineId: string, input: unknown): Promise<Mach
 	const m = await requireMachine(machineId);
 	if (m.kind !== "computer" && m.kind !== "devbox") throw badRequest("Only computers and devboxes can be shared");
 	if (m.provider === "local") throw badRequest("Your own computer is lent from the desktop app");
-	if (agentId === m.agentId) throw badRequest("That's this machine's own bot");
+	if (agentId === m.agentId) throw badRequest("That's this computer's own bot");
 	if (m.status !== "running") throw badRequest(`Turn ${m.name} on first: its new account is made on it`);
 	const ownerId = await ownerOf(m);
 	const agent = await getAgent(agentId);
 	const owner = await actorFor(ownerId);
-	if (!agent || !(await mayUseShared({ ownerId, shareWithViewers: false }, agent, owner))) throw notFound("Agent");
+	if (!agent || !(await mayUseShared({ ownerId, shareWithViewers: false }, agent, owner))) throw notFound("Bot");
 	const row = await oneAtATime(m.id, async () => {
 		const existing = await memberRow(m.id, agentId);
 		if (existing) return existing;
@@ -278,7 +278,7 @@ export async function addMember(machineId: string, input: unknown): Promise<Mach
 	changed(m.id);
 	if (row.status === "adding") void setupMember(row.id);
 	const [out] = await present([row], ownerId);
-	if (!out) throw notFound("Agent");
+	if (!out) throw notFound("Bot");
 	return out;
 }
 
@@ -288,7 +288,7 @@ export async function retryMember(machineId: string, memberId: string): Promise<
 	const row = await db.query.machineMembers.findFirst({
 		where: and(eq(schema.machineMembers.id, memberId), eq(schema.machineMembers.machineId, m.id)),
 	});
-	if (!row) throw notFound("Seat");
+	if (!row) throw notFound("Computer account");
 	if (m.status !== "running") throw badRequest(`Turn ${m.name} on first`);
 	if (row.status === "error" || row.status === "ready") {
 		await patchMember(row.id, { status: "adding", statusDetail: "Trying again" });
@@ -296,7 +296,7 @@ export async function retryMember(machineId: string, memberId: string): Promise<
 	}
 	const fresh = await db.query.machineMembers.findFirst({ where: eq(schema.machineMembers.id, row.id) });
 	const [out] = await present([fresh ?? row], await ownerOf(m));
-	if (!out) throw notFound("Seat");
+	if (!out) throw notFound("Computer account");
 	return out;
 }
 
@@ -431,7 +431,7 @@ export async function removeMember(machineId: string, memberId: string): Promise
 	const row = await db.query.machineMembers.findFirst({
 		where: and(eq(schema.machineMembers.id, memberId), eq(schema.machineMembers.machineId, m.id)),
 	});
-	if (!row) throw notFound("Seat");
+	if (!row) throw notFound("Computer account");
 	const before: MemberStatus = row.status === "removing" ? "error" : row.status;
 	await patchMember(row.id, { status: "removing", statusDetail: "Removing its account" });
 	await leaveSeat(m, row.agentId);

@@ -13,7 +13,7 @@ extension ShellViewController: WKUIDelegate {
 		windowFeatures: WKWindowFeatures
 	) -> WKWebView? {
 		guard let url = navigationAction.request.url else { return nil }
-		if case let .server(origin) = screen, origin.contains(url) {
+		if let origin, origin.contains(url) {
 			if url.path.hasPrefix("/api/") {
 				files.fetch(url, in: webView)
 			} else {
@@ -33,7 +33,7 @@ extension ShellViewController: WKUIDelegate {
 		type: WKMediaCaptureType,
 		decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void
 	) {
-		guard case let .server(server) = screen, Origin(origin) == server, Origin(frame.securityOrigin) == server else {
+		guard let server = self.origin, Origin(origin) == server, Origin(frame.securityOrigin) == server else {
 			decisionHandler(.deny)
 			return
 		}

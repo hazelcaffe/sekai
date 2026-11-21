@@ -3,20 +3,28 @@ package io.github.hazelcaffe.sekai
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
-import android.widget.Toast
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.graphics.ColorUtils
 
 /** Opening things outside the app's web view. */
 internal object Links {
     /** Other sites open in a Custom Tab (the system browser), never in the app's web view. */
     fun openInBrowser(context: Context, url: Uri, theme: PageTheme?) {
-        val builder = CustomTabsIntent.Builder().setShowTitle(true)
+        // Share is in the tab's menu (a page you opened may be worth sending on); the bar hides as you scroll.
+        val builder = CustomTabsIntent.Builder()
+            .setShowTitle(true)
+            .setShareState(CustomTabsIntent.SHARE_STATE_ON)
+            .setUrlBarHidingEnabled(true)
         if (theme != null) {
+            // The tab's bars take the page's color, with its divider a hair off it (as the web app's own borders).
+            val divider = ColorUtils.blendARGB(theme.color, if (theme.dark) Color.WHITE else Color.BLACK, 0.12f)
             val colors = CustomTabColorSchemeParams.Builder()
                 .setToolbarColor(theme.color)
                 .setNavigationBarColor(theme.color)
+                .setNavigationBarDividerColor(divider)
                 .build()
             builder.setDefaultColorSchemeParams(colors)
             builder.setColorScheme(
@@ -26,7 +34,7 @@ internal object Links {
         try {
             builder.build().launchUrl(context, url)
         } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, R.string.no_browser, Toast.LENGTH_LONG).show()
+            Snacks.show(context, R.string.no_browser)
         }
     }
 
@@ -36,7 +44,7 @@ internal object Links {
         try {
             context.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, R.string.no_app_for_link, Toast.LENGTH_LONG).show()
+            Snacks.show(context, R.string.no_app_for_link)
         }
     }
 

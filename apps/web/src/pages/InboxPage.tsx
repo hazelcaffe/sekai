@@ -1,135 +1,197 @@
 import {
 	AgentAvatar,
 	api,
+	haptic,
+	qk,
 	timeAgo,
+	useAccess,
 	useAgentMap,
 	useApprovals,
 	useCredentialRequests,
 	usePairings,
 } from "@sekai/client";
-import { channelTitle, type PendingApproval, type ToolPart } from "@sekai/shared";
-import { Button, EmptyState, IconButton, Spinner } from "@sekai/ui";
-import { useMutation } from "@tanstack/react-query";
-import { Check, Inbox, X } from "lucide-react";
-import { useNavigate } from "react-router";
+import { type CredentialRequest, channelTitle } from "@sekai/shared";
+import { Button, Dialog, EmptyState, ErrorState, List, Page, Row, Section, SkeletonRows } from "@sekai/ui";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, Inbox } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { ChannelIcon } from "../components/channels/ChannelIcon.tsx";
+import { approvalPart } from "../components/chat/approval-part.ts";
 import { ApprovalCard } from "../components/chat/Parts.tsx";
 import { LoginForm } from "../components/computer/CredentialPrompt.tsx";
-import { Page } from "../components/layout/PageHeader.tsx";
-
-function toPart(a: PendingApproval): ToolPart {
-	return {
-		type: "tool",
-		id: a.toolCallId,
-		name: a.toolName,
-		title: a.title,
-		source: a.category.startsWith("mcp:") ? "mcp" : a.category === "external" ? "external" : "builtin",
-		category: a.category,
-		risk: a.risk,
-		args: a.args,
-		status: "awaiting_approval",
-		reason: a.reason,
-	};
-}
 
 /** Everything waiting on you, across all bots and chats. */
 export function InboxPage() {
-	const { data: approvals = [], isLoading } = useApprovals();
-	const { data: pairings = [] } = usePairings();
-	const { data: logins = [], refetch: refetchLogins } = useCredentialRequests();
+	const approvals = useApprovals();
+	const pairings = usePairings();
+	const logins = useCredentialRequests();
 	const agents = useAgentMap();
-	const navigate = useNavigate();
+	const canPair = useAccess().can("channels");
+	const qc = useQueryClient();
+	const [login, setLogin] = useState<CredentialRequest | null>(null);
+	const [search] = useSearchParams();
+	const approvalId = search.get("approval");
+	const requests = approvals.data ?? [];
+	const waiting = pairings.data ?? [];
+	const signIns = logins.data ?? [];
 	const decide = useMutation({
-		mutationFn: (p: { code: string; approve: boolean }) => api.channels.decidePairing(p.code, p.approve),
+		mutationFn: ({ code, approve }: { code: string; approve: boolean }) =>
+			api.channels.decidePairing(code, approve),
+		onSuccess: (_, { approve }) => {
+			haptic(approve ? "success" : "warning");
+			void qc.invalidateQueries({ queryKey: qk.pairings });
+		},
 	});
+	useEffect(() => {
+		if (approvalId && approvals.data)
+			document.getElementById(`approval-${approvalId}`)?.scrollIntoView({ block: "nearest" });
+	}, [approvalId, approvals.data]);
+	const failed = approvals.isError || pairings.isError || logins.isError;
+	const pending = approvals.isPending || pairings.isPending || logins.isPending;
 	return (
-		<Page title="Needs you" description="Actions your bots want to take, and people asking to talk to them.">
-			{logins.length > 0 && (
-				<div className="mb-8 flex flex-col gap-3">
-					<h2 className="text-[13px] font-semibold">Sign-in requests</h2>
-					{logins.map((r) => (
-						<div key={r.id} className="rounded-2xl border border-border p-4">
-							<LoginForm request={r} onDone={() => void refetchLogins()} />
-						</div>
-					))}
-				</div>
+		<Page title="Needs you" description="Review requests from your bots and connected accounts.">
+			{failed && (
+				<ErrorState
+					title="Some requests didn't load"
+					onRetry={() => {
+						if (approvals.isError) void approvals.refetch();
+						if (pairings.isError) void pairings.refetch();
+						if (logins.isError) void logins.refetch();
+					}}
+				/>
 			)}
-			{pairings.length > 0 && (
-				<div className="mb-8 flex flex-col gap-2">
-					<h2 className="text-[13px] font-semibold">Pairing requests</h2>
-					{pairings.map((p) => {
-						const agent = agents.get(p.agentId);
+			{requests.length > 0 && (
+				<Section title="Approvals">
+					{requests.map((request) => {
+						const agent = agents.get(request.agentId);
 						return (
 							<div
-								key={p.code}
-								className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3"
+								key={request.toolCallId}
+								id={`approval-${request.toolCallId}`}
+								className="flex scroll-mt-16 flex-col gap-1.5"
 							>
-								<ChannelIcon type={p.type} size={32} />
-								<div className="min-w-0 flex-1">
-									<div className="truncate text-sm font-medium">
-										{p.senderName} → {agent?.name ?? "bot"}
-									</div>
-									<div className="text-xs text-fg-subtle">
-										{channelTitle(p.type)} · code{" "}
-										<span className="font-mono font-semibold text-fg">{p.code}</span> ·{" "}
-										{timeAgo(p.createdAt)}
-									</div>
+								<div className="flex flex-wrap items-center gap-x-2 text-small text-fg-subtle">
+									{agent && <AgentAvatar avatar={agent.avatar} size={24} />}
+									<span className="font-medium text-fg">{agent?.name ?? "Bot"}</span>
+									<span>{timeAgo(request.createdAt)}</span>
+									{request.expiresAt && <span>· Expires {timeAgo(request.expiresAt)}</span>}
+									<Link
+										to={`/c/${request.conversationId}?m=${encodeURIComponent(request.messageId)}`}
+										className="ml-auto flex min-h-8 items-center text-brand-ink hover:underline coarse:min-h-11"
+									>
+										Open chat
+									</Link>
 								</div>
-								<Button
-									variant="primary"
-									size="sm"
-									onClick={() => decide.mutate({ code: p.code, approve: true })}
-								>
-									<Check /> Approve
-								</Button>
-								<IconButton
-									label="Reject"
-									size="icon-sm"
-									onClick={() => decide.mutate({ code: p.code, approve: false })}
-								>
-									<X />
-								</IconButton>
+								<ApprovalCard
+									part={approvalPart(request)}
+									conversationId={request.conversationId}
+									agentId={request.agentId}
+								/>
 							</div>
 						);
 					})}
-					<p className="text-xs text-fg-subtle">
-						Only approve codes you requested yourself: an approved sender can use the bot with your tools
-						and memory.
-					</p>
-				</div>
+				</Section>
 			)}
-			{isLoading ? (
-				<Spinner />
-			) : approvals.length === 0 && pairings.length === 0 && logins.length === 0 ? (
-				<EmptyState
-					icon={<Inbox />}
-					title="You're all caught up"
-					description="Approval requests show up here and in the chat that asked."
-				/>
+			{signIns.length > 0 && (
+				<Section title="Sign-in requests">
+					<List>
+						{signIns.map((request) => {
+							const agent = agents.get(request.agentId);
+							return (
+								<Row
+									key={request.id}
+									leading={agent && <AgentAvatar avatar={agent.avatar} size={32} />}
+									title={request.site}
+									subtitle={`${agent?.name ?? "A bot"} needs to sign in.`}
+									chevron
+									onClick={() => setLogin(request)}
+								/>
+							);
+						})}
+					</List>
+				</Section>
+			)}
+			{waiting.length > 0 && (
+				<Section
+					title="Pairing requests"
+					description={
+						canPair
+							? "Only approve codes you requested; senders can use your bot's tools and memory."
+							: "Your role can see these requests, but can't approve or reject them."
+					}
+				>
+					<List>
+						{waiting.map((pair) => (
+							<Row
+								key={pair.code}
+								wrap
+								leading={<ChannelIcon type={pair.type} size={32} />}
+								title={`${pair.senderName} → ${agents.get(pair.agentId)?.name ?? "Bot"}`}
+								subtitle={
+									<>
+										{channelTitle(pair.type)} · Code <code>{pair.code}</code> ·{" "}
+										{timeAgo(pair.createdAt)}
+									</>
+								}
+								trailing={
+									canPair && (
+										<>
+											<Button
+												variant="primary"
+												disabled={decide.isPending}
+												onClick={() => decide.mutate({ code: pair.code, approve: true })}
+											>
+												<Check />
+												Approve
+											</Button>
+											<Button
+												variant="ghost"
+												disabled={decide.isPending}
+												onClick={() => decide.mutate({ code: pair.code, approve: false })}
+											>
+												Reject
+											</Button>
+										</>
+									)
+								}
+							/>
+						))}
+					</List>
+					{decide.isError && (
+						<ErrorState
+							title="Couldn't record your decision"
+							onRetry={() => decide.variables && decide.mutate(decide.variables)}
+						/>
+					)}
+				</Section>
+			)}
+			{pending ? (
+				<SkeletonRows count={2} leading />
 			) : (
-				<div className="flex flex-col gap-5">
-					{approvals.map((a) => {
-						const agent = agents.get(a.agentId);
-						return (
-							<div key={a.toolCallId}>
-								<button
-									type="button"
-									onClick={() => navigate(`/c/${a.conversationId}`)}
-									className="mb-1 flex items-center gap-2 text-[13px] hover:underline"
-								>
-									{agent && <AgentAvatar avatar={agent.avatar} size={22} />}
-									<span className="font-medium">{agent?.name ?? "Bot"}</span>
-									<span className="text-fg-subtle">· {timeAgo(a.createdAt)}</span>
-									{a.expiresAt && (
-										<span className="text-fg-subtle">· expires {timeAgo(a.expiresAt)}</span>
-									)}
-								</button>
-								<ApprovalCard part={toPart(a)} conversationId={a.conversationId} />
-							</div>
-						);
-					})}
-				</div>
+				!failed &&
+				!requests.length &&
+				!waiting.length &&
+				!signIns.length && (
+					<EmptyState
+						icon={<Inbox />}
+						title="You're all caught up."
+						description="New requests will appear here."
+					/>
+				)
 			)}
+			<Dialog open={Boolean(login)} onOpenChange={(open) => !open && setLogin(null)} title="Sign in" size="sm">
+				{login && (
+					<LoginForm
+						key={login.id}
+						request={login}
+						onDone={() => {
+							setLogin(null);
+							void logins.refetch();
+						}}
+					/>
+				)}
+			</Dialog>
 		</Page>
 	);
 }

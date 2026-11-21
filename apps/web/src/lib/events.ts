@@ -1,26 +1,23 @@
 import { api, qk } from "@sekai/client";
-import type { Agent, Conversation, Machine, Message, ServerEvent } from "@sekai/shared";
+import type { Agent, AuthStatus, Conversation, Machine, Message, ServerEvent } from "@sekai/shared";
 import type { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useUi } from "../stores/ui.ts";
+import { can } from "./access.ts";
 import { pushOn, systemNotify } from "./notifications.ts";
 
-/** The app's own script, to tell when the server has a newer build than the one running in this tab. */
+/**
+ * The app's own script, to tell when the server has a newer build than the one running in this tab. Only Sekai's
+ * built files count: a proxy (Cloudflare's analytics) or a browser extension can add scripts to the page you loaded
+ * that the page fetched afterwards doesn't have.
+ */
 const loadedBuild = (doc: Document) =>
 	[...doc.querySelectorAll<HTMLScriptElement>("script[type=module][src]")]
-		.map((s) => new URL(s.src, location.href).pathname)
+		.map((s) => new URL(s.getAttribute("src") ?? "", location.href))
+		.filter((u) => u.origin === location.origin && u.pathname.startsWith("/assets/"))
+		.map((u) => u.pathname)
 		.join(",");
 let updateOffered = false;
-
-// A part of the app loaded on demand (the remote desktop viewer…) that a new build replaced: reload, once a minute
-// at most so a real outage can't loop.
-window.addEventListener("vite:preloadError", (e) => {
-	const last = Number(sessionStorage.getItem("sekai.reloadedForBuild") ?? 0);
-	if (Date.now() - last < 60_000) return;
-	e.preventDefault();
-	sessionStorage.setItem("sekai.reloadedForBuild", String(Date.now()));
-	location.reload();
-});
 
 /** After the server restarts with a new build, offer to reload (an open tab keeps running the old one). */
 async function checkForUpdate(): Promise<void> {
@@ -48,6 +45,20 @@ async function checkForUpdate(): Promise<void> {
 }
 
 type Delta = { conversationId: string; messageId: string; index: number; delta: string };
+
+/** Events that are chat traffic (what Settings pages don't show). */
+const CHAT_TRAFFIC = new Set<ServerEvent["type"]>([
+	"hello",
+	"message.created",
+	"message.updated",
+	"message.delta",
+	"message.part",
+	"message.deleted",
+	"conversation.updated",
+	"call.ring",
+	"call.ring.ended",
+	"notification",
+]);
 
 function upsert<T extends { id: string }>(list: T[] | undefined, item: T, sort?: (a: T, b: T) => number): T[] {
 	const next = list ? [...list] : [];
@@ -105,7 +116,19 @@ export function connectEvents(qc: QueryClient): () => void {
 		}
 	};
 
+	// On a Settings page, what's on screen follows anything saved elsewhere (here, by a bot, in another tab): a
+	// moment later, so a burst of changes refetches once. Chat traffic doesn't count.
+	let settingsRefresh: ReturnType<typeof setTimeout> | null = null;
+	const refreshSettings = (ev: ServerEvent) => {
+		if (settingsRefresh || CHAT_TRAFFIC.has(ev.type) || !location.pathname.startsWith("/settings")) return;
+		settingsRefresh = setTimeout(() => {
+			settingsRefresh = null;
+			void qc.invalidateQueries();
+		}, 250);
+	};
+
 	const handle = (ev: ServerEvent) => {
+		refreshSettings(ev);
 		switch (ev.type) {
 			case "hello":
 				// Reloading everything: words from before the reconnect are in the fresh copies.
@@ -117,10 +140,12 @@ export function connectEvents(qc: QueryClient): () => void {
 				void checkForUpdate();
 				// Anything could have changed while we were disconnected.
 				void qc.invalidateQueries();
-				void api.voice
-					.rings()
-					.then((rings) => useUi.getState().setRings(() => rings))
-					.catch(() => {});
+				// Calls only reach people whose role has voice.
+				if (can(qc.getQueryData<AuthStatus>(qk.auth)?.access ?? null, "voice"))
+					void api.voice
+						.rings()
+						.then((rings) => useUi.getState().setRings(() => rings))
+						.catch(() => {});
 				void api.runs
 					.list({ status: "queued,running,awaiting_approval", limit: 200 })
 					.then((runs) => useUi.getState().syncActiveRuns(runs.filter((r) => r.status !== "done")))
@@ -258,7 +283,7 @@ export function connectEvents(qc: QueryClient): () => void {
 				for (const key of [qk.machines(ev.machine.agentId), qk.machines()]) {
 					qc.setQueryData<Machine[]>(key, (list) => (list ? upsert(list, ev.machine) : list));
 				}
-				// Bots with a seat on it see the machine's state in their Computer tab.
+				// Bots with a seat on it see the machine's state in their Computer section.
 				void qc.invalidateQueries({ queryKey: ["seats"] });
 				break;
 			case "machine.deleted":
@@ -299,15 +324,14 @@ export function connectEvents(qc: QueryClient): () => void {
 				)
 					break;
 				if (document.visibilityState === "visible") {
+					const target = ev.url ?? (ev.conversationId ? `/c/${ev.conversationId}` : null);
 					toast(ev.title, {
 						description: ev.body,
-						action: ev.conversationId
+						action: target
 							? {
 									label: "Open",
 									onClick: () =>
-										window.dispatchEvent(
-											new CustomEvent("sekai:navigate", { detail: `/c/${ev.conversationId}` }),
-										),
+										window.dispatchEvent(new CustomEvent("sekai:navigate", { detail: target })),
 								}
 							: undefined,
 					});
@@ -352,6 +376,7 @@ export function connectEvents(qc: QueryClient): () => void {
 	return () => {
 		closed = true;
 		if (retry) clearTimeout(retry);
+		if (settingsRefresh) clearTimeout(settingsRefresh);
 		if (frame) cancelAnimationFrame(frame);
 		document.removeEventListener("visibilitychange", onVisible);
 		source?.close();

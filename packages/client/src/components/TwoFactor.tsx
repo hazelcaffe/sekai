@@ -1,14 +1,15 @@
-import type { MfaStatus, TotpSetup } from "@sekai/shared";
-import { Badge, Button, Callout, Confirm, Dialog, Field, Input, Spinner } from "@sekai/ui";
+import { ApiError, type MfaStatus, type TotpSetup } from "@sekai/shared";
+import { Badge, Button, Callout, Confirm, CopyField, Dialog, Field, Input, Spinner } from "@sekai/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, Copy, Download, KeyRound, Mail, MessageSquareText, Smartphone } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../api.ts";
+import { useAuth } from "../data.ts";
 
 const MFA_KEY = ["auth", "mfa"] as const;
 
-/** Your two-factor sign-in methods (what Account shows). */
+/** Your two-step sign-in methods (what Sign-in & security shows). */
 export function useMfaStatus() {
 	return useQuery({ queryKey: MFA_KEY, queryFn: () => api.auth.mfa() });
 }
@@ -18,7 +19,16 @@ function copy(text: string, what = "Copied") {
 }
 
 /** Recovery codes, shown once: copy or download them. */
-export function RecoveryCodes({ codes, onDone }: { codes: string[] | null; onDone: () => void }) {
+export function RecoveryCodes({
+	codes,
+	onDone,
+	lost = "your phone",
+}: {
+	codes: string[] | null;
+	onDone: () => void;
+	/** What they stand in for ("your phone", "your passkeys"). */
+	lost?: string;
+}) {
 	const text = codes?.join("\n") ?? "";
 	const download = () => {
 		const url = URL.createObjectURL(new Blob([`Sekai recovery codes\n\n${text}\n`], { type: "text/plain" }));
@@ -35,14 +45,14 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[] | null; onDon
 			size="sm"
 			icon={<KeyRound />}
 			title="Save your recovery codes"
-			description="If you lose your phone, each code signs you in once. Keep them somewhere safe: they won't be shown again."
+			description={`If you lose ${lost}, each code signs you in once. Keep them somewhere safe: they won't be shown again.`}
 			footer={
 				<Button variant="primary" onClick={onDone}>
 					I saved them
 				</Button>
 			}
 		>
-			<div className="grid grid-cols-2 gap-2 rounded-2xl bg-surface-2 p-4 font-mono text-sm tabular-nums">
+			<div className="grid grid-cols-2 gap-2 rounded-lg bg-surface-2 p-4 font-mono text-body tabular-nums">
 				{codes?.map((c) => (
 					<span key={c}>{c}</span>
 				))}
@@ -102,7 +112,7 @@ function TotpDialog({
 					disabled={code.replace(/\s/g, "").length !== 6 || confirm.isPending}
 					onClick={() => confirm.mutate()}
 				>
-					{confirm.isPending && <Spinner className="text-primary-foreground" />}
+					{confirm.isPending && <Spinner />}
 					Turn on
 				</Button>
 			}
@@ -111,22 +121,25 @@ function TotpDialog({
 				{setup ? (
 					<>
 						<div
-							className="size-48 rounded-2xl bg-white p-2 [&_svg]:size-full"
+							className="size-48 rounded-lg bg-paper p-2 [&_svg]:size-full"
 							// The server draws the QR code (an SVG of rectangles, no scripts).
 							// biome-ignore lint/security/noDangerouslySetInnerHtml: trusted SVG from Sekai's own server
 							dangerouslySetInnerHTML={{ __html: setup.qrSvg }}
 						/>
-						<button
-							type="button"
-							className="max-w-full rounded-xl bg-surface-2 px-3 py-2 text-center font-mono text-xs break-all text-fg-muted coarse:py-3"
-							onClick={() => copy(setup.secret.replace(/\s/g, ""), "Key copied")}
-							title="Can't scan? Type this key into the app (tap to copy)."
-						>
-							{setup.secret}
-						</button>
+						<div className="flex w-full flex-col gap-1.5">
+							<CopyField
+								multiline
+								label="key"
+								value={setup.secret}
+								copyValue={setup.secret.replace(/\s/g, "")}
+							/>
+							<p className="text-small text-fg-subtle">
+								Can't scan it? Type this key into the app instead.
+							</p>
+						</div>
 					</>
 				) : (
-					<div className="flex size-48 items-center justify-center rounded-2xl bg-surface-2">
+					<div className="flex size-48 items-center justify-center rounded-lg bg-surface-2">
 						<Spinner />
 					</div>
 				)}
@@ -136,7 +149,7 @@ function TotpDialog({
 						autoComplete="one-time-code"
 						value={code}
 						onChange={(e) => setCode(e.target.value)}
-						className="text-center text-lg tracking-[0.3em] tabular-nums"
+						className="text-center text-heading tracking-[0.3em] tabular-nums"
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && code.replace(/\s/g, "").length === 6) confirm.mutate();
 						}}
@@ -161,10 +174,23 @@ function CodeDialog({
 	onOpenChange: (o: boolean) => void;
 	onDone: (codes?: string[]) => void;
 }) {
+	const qc = useQueryClient();
+	const { data: auth } = useAuth();
+	// Where codes go. Without one yet, it's asked for right here: when your role requires two-step sign-in, this
+	// may be the only page you can open.
+	const saved = kind === "sms" ? auth?.user?.phone : kind === "email" ? auth?.user?.email : null;
+	const [address, setAddress] = useState("");
 	const [hint, setHint] = useState<string | null>(null);
 	const [code, setCode] = useState("");
 	const send = useMutation({
-		mutationFn: () => api.auth.codeFactorSetup(kind ?? "email"),
+		mutationFn: async () => {
+			if (!saved) {
+				const value = kind === "sms" ? address.replace(/[\s().-]/g, "") : address.trim();
+				await api.auth.updateAccount(kind === "sms" ? { phone: value } : { email: value });
+				void qc.invalidateQueries({ queryKey: ["auth"] });
+			}
+			return api.auth.codeFactorSetup(kind ?? "email");
+		},
 		onSuccess: (r) => setHint(r.hint),
 	});
 	const confirm = useMutation({
@@ -176,6 +202,10 @@ function CodeDialog({
 		},
 	});
 	const label = kind === "sms" ? "text message" : "email";
+	const error = send.error ?? confirm.error;
+	// Closing "Confirm it's you" (asked before an email or a number is added) isn't an error.
+	const shownError = error instanceof ApiError && error.code === "reauth_required" ? null : error;
+	const needsAddress = !saved && !hint;
 	return (
 		<Dialog
 			open={kind !== null}
@@ -183,6 +213,7 @@ function CodeDialog({
 				if (!o) {
 					setHint(null);
 					setCode("");
+					setAddress("");
 					send.reset();
 					confirm.reset();
 				}
@@ -199,20 +230,58 @@ function CodeDialog({
 						disabled={code.trim().length !== 6 || confirm.isPending}
 						onClick={() => confirm.mutate()}
 					>
-						{confirm.isPending && <Spinner className="text-primary-foreground" />}
+						{confirm.isPending && <Spinner />}
 						Turn on
 					</Button>
 				) : (
-					<Button variant="primary" disabled={send.isPending} onClick={() => send.mutate()}>
-						{send.isPending && <Spinner className="text-primary-foreground" />}
+					<Button
+						variant="primary"
+						disabled={send.isPending || (needsAddress && !address.trim())}
+						onClick={() => send.mutate()}
+					>
+						{send.isPending && <Spinner />}
 						Send a code
 					</Button>
 				)
 			}
 		>
+			{needsAddress && (
+				<form
+					onSubmit={(e) => {
+						e.preventDefault();
+						if (address.trim() && !send.isPending) send.mutate();
+					}}
+				>
+					{kind === "sms" ? (
+						<Field label="Your phone number" hint="With its country code, e.g. +1 555 123 4567.">
+							<Input
+								autoFocus
+								type="tel"
+								inputMode="tel"
+								autoComplete="tel"
+								value={address}
+								onChange={(e) => setAddress(e.target.value)}
+								placeholder="e.g. +1 555 123 4567"
+							/>
+						</Field>
+					) : (
+						<Field label="Your email" hint="It's saved to your account; codes and reset links go there.">
+							<Input
+								autoFocus
+								type="email"
+								inputMode="email"
+								autoComplete="email"
+								value={address}
+								onChange={(e) => setAddress(e.target.value)}
+								placeholder="e.g. you@example.com"
+							/>
+						</Field>
+					)}
+				</form>
+			)}
 			{hint && (
 				<div className="flex flex-col gap-3">
-					<p className="text-sm text-fg-muted">
+					<p className="text-body text-fg-muted">
 						Sent to {hint}.{" "}
 						<button type="button" className="text-brand-ink underline" onClick={() => send.mutate()}>
 							Send another
@@ -225,14 +294,14 @@ function CodeDialog({
 							autoComplete="one-time-code"
 							value={code}
 							onChange={(e) => setCode(e.target.value)}
-							className="text-center text-lg tracking-[0.3em] tabular-nums"
+							className="text-center text-heading tracking-[0.3em] tabular-nums"
 						/>
 					</Field>
 				</div>
 			)}
-			{(send.error || confirm.error) && (
+			{shownError && (
 				<Callout tone="danger" icon={<CircleAlert />} className="mt-3">
-					{(send.error ?? confirm.error)?.message}
+					{shownError.message}
 				</Callout>
 			)}
 		</Dialog>
@@ -254,15 +323,15 @@ function MethodRow({
 }) {
 	return (
 		<div className="flex items-center gap-3 px-4 py-3">
-			<span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-fg-muted [&_svg]:size-4.5">
+			<span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-2 text-fg-muted [&_svg]:size-5">
 				{icon}
 			</span>
 			<div className="min-w-0 flex-1">
-				<div className="flex items-center gap-2 text-sm font-medium">
+				<div className="flex items-center gap-2 text-body font-medium">
 					{title}
 					{on && <Badge tone="success">On</Badge>}
 				</div>
-				<div className="truncate text-xs text-fg-muted">{detail}</div>
+				<div className="text-small text-fg-muted">{detail}</div>
 			</div>
 			{action}
 		</div>
@@ -270,7 +339,7 @@ function MethodRow({
 }
 
 /**
- * Two-factor sign-in: an authenticator app, codes by email or text, and recovery codes. onChange runs after a
+ * Two-step sign-in: an authenticator app, codes by email or text, and recovery codes. onChange runs after a
  * method was added or removed (a forced setup moves on).
  */
 export function TwoFactorSettings({ onChange }: { onChange?: (status: MfaStatus) => void }) {
@@ -288,7 +357,7 @@ export function TwoFactorSettings({ onChange }: { onChange?: (status: MfaStatus)
 	const added = (recovery?: string[]) => {
 		setTotp(false);
 		setCodeKind(null);
-		toast.success("Two-factor sign-in is on", { duration: 1500 });
+		toast.success("Two-step sign-in is on", { duration: 1500 });
 		// New recovery codes are shown first (moving on would hide them).
 		if (recovery?.length) setCodes(recovery);
 		else void refresh();
@@ -309,7 +378,7 @@ export function TwoFactorSettings({ onChange }: { onChange?: (status: MfaStatus)
 	const s = status.data;
 	if (!s) {
 		return (
-			<div className="flex justify-center rounded-2xl border border-border bg-card p-6">
+			<div className="flex justify-center rounded-lg border border-border bg-surface p-6">
 				<Spinner />
 			</div>
 		);
@@ -319,10 +388,10 @@ export function TwoFactorSettings({ onChange }: { onChange?: (status: MfaStatus)
 		<div className="flex flex-col gap-3">
 			{s.required && !any && (
 				<Callout tone="warning" icon={<CircleAlert />}>
-					Your role asks for two-factor sign-in. Add a method below (or a passkey).
+					Your role asks for two-step sign-in. Add one below (or a passkey).
 				</Callout>
 			)}
-			<div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+			<div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
 				<MethodRow
 					icon={<Smartphone />}
 					title="Authenticator app"
@@ -365,12 +434,7 @@ export function TwoFactorSettings({ onChange }: { onChange?: (status: MfaStatus)
 				<MethodRow
 					icon={<MessageSquareText />}
 					title="Text message codes"
-					detail={
-						s.sms ??
-						(s.smsAvailable
-							? "A code to your phone (add your number above)"
-							: "This server can't send texts yet")
-					}
+					detail={s.sms ?? (s.smsAvailable ? "A code to your phone" : "This server can't send texts yet")}
 					on={Boolean(s.sms)}
 					action={
 						s.sms ? (
@@ -389,11 +453,13 @@ export function TwoFactorSettings({ onChange }: { onChange?: (status: MfaStatus)
 						)
 					}
 				/>
-				{any && (
+				{(any || s.passkeyRequired) && (
 					<MethodRow
 						icon={<KeyRound />}
 						title="Recovery codes"
-						detail={`${s.recoveryCodesLeft} left. Each signs you in once if you lose your phone.`}
+						detail={`${s.recoveryCodesLeft} left. Each signs you in once if you lose your ${
+							!any ? "passkeys" : s.passkeyRequired ? "phone or passkeys" : "phone"
+						}.`}
 						on={false}
 						action={
 							<Button
@@ -421,7 +487,11 @@ export function TwoFactorSettings({ onChange }: { onChange?: (status: MfaStatus)
 				open={removing !== null}
 				onOpenChange={(o) => !o && setRemoving(null)}
 				title="Remove this method?"
-				description="You'll sign in without it. If it's your last one, your recovery codes stop working too."
+				description={
+					s.passkeyRequired
+						? "You'll sign in without it."
+						: "You'll sign in without it. If it's your last one, your recovery codes stop working too."
+				}
 				confirmLabel="Remove"
 				danger
 				onConfirm={() => {

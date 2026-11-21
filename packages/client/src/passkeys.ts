@@ -66,6 +66,23 @@ export async function signInWithPasskey(opts: { autofill?: boolean; reauth?: boo
 }
 
 /**
+ * The second step of a waiting sign-in with a passkey: the browser only offers the passkeys of the account that's
+ * signing in.
+ */
+export async function passkeySecondStep(): Promise<SignInResult> {
+	const { challengeId, options } = await api.auth.mfaPasskeyOptions();
+	let response: unknown;
+	try {
+		response = await startAuthentication({
+			optionsJSON: options as unknown as PublicKeyCredentialRequestOptionsJSON,
+		});
+	} catch (err) {
+		throw friendly(err);
+	}
+	return api.auth.mfaPasskeyVerify({ challengeId, response });
+}
+
+/**
  * Offers saved passkeys in the username field's autofill (the field needs autocomplete="username webauthn").
  * Resolves with the user once one is picked, or null if this browser can't, or the offer was withdrawn.
  */

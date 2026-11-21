@@ -24,7 +24,7 @@ export interface VoiceBackend {
 /** "api_abc::eleven_flash_v2_5" → how to reach it. */
 export async function backendOf(id: string): Promise<VoiceBackend> {
 	const api = parseApiModel(id);
-	if (!api) throw badRequest(id ? `Unknown voice model: ${id}` : "No voice model picked yet (Admin → Voice)");
+	if (!api) throw badRequest(id ? `Unknown voice model: ${id}` : "No voice model picked yet (Settings → Voice)");
 	const { kind, endpoint } = await voiceProvider(api.providerId);
 	return { kind, model: api.model, providerId: api.providerId, endpoint };
 }

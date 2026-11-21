@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'; font-src 'self'"
+		/>
+		<title>About Sekai</title>
+		<link rel="stylesheet" href="tokens.css" />
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+			}
+			body {
+				display: flex;
+				flex-direction: column;
+				min-height: 100vh;
+				background: var(--bg-subtle);
+				color: var(--fg);
+				font-family: var(--type-font);
+				font-size: var(--type-body);
+				line-height: var(--type-body-lh);
+				font-feature-settings: "cv11", "ss01";
+				-webkit-font-smoothing: antialiased;
+			}
+			main {
+				flex: 1;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				padding: 28px 20px 20px;
+				gap: 20px;
+			}
+			.hero {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				text-align: center;
+			}
+			.mark {
+				width: 56px;
+				height: 56px;
+				border-radius: 9999px;
+				margin-bottom: 12px;
+				user-select: none;
+				-webkit-user-drag: none;
+			}
+			h1 {
+				margin: 0;
+				font-size: var(--type-title);
+				line-height: var(--type-title-lh);
+				font-weight: 600;
+				letter-spacing: -0.015em;
+			}
+			.version {
+				margin: 2px 0 0;
+				font-size: var(--type-small);
+				line-height: var(--type-small-lh);
+				color: var(--fg-muted);
+			}
+			.list {
+				width: 100%;
+				margin: 0;
+				padding: 0;
+				list-style: none;
+				background: var(--surface);
+				border: 1px solid var(--border);
+				border-radius: var(--radius-lg);
+				overflow: hidden;
+			}
+			.row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+				min-height: 44px;
+				padding: 10px 14px;
+			}
+			.row + .row {
+				border-top: 1px solid var(--border);
+			}
+			.row-text {
+				min-width: 0;
+				flex: 1;
+			}
+			.row-title {
+				font-size: var(--type-body);
+				line-height: var(--type-body-lh);
+				font-weight: 500;
+				color: var(--fg);
+			}
+			.row-sub {
+				margin-top: 2px;
+				font-size: var(--type-small);
+				line-height: var(--type-small-lh);
+				color: var(--fg-muted);
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.btn {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				height: 30px;
+				padding: 0 11px;
+				border: 0;
+				border-radius: var(--radius-md);
+				font-family: var(--type-font);
+				font-size: var(--type-small);
+				line-height: var(--type-small-lh);
+				font-weight: 500;
+				cursor: pointer;
+				flex-shrink: 0;
+				transition: background-color var(--motion-fast) ease, opacity var(--motion-fast) ease;
+			}
+			.btn[hidden] {
+				display: none;
+			}
+			.btn:disabled {
+				opacity: 0.45;
+				cursor: default;
+			}
+			.btn-secondary {
+				background: var(--surface-2);
+				color: var(--fg);
+			}
+			.btn-secondary:hover:not(:disabled) {
+				background: var(--surface-hover);
+			}
+			.btn-primary {
+				background: var(--primary);
+				color: var(--primary-foreground);
+			}
+			.btn-primary:hover:not(:disabled) {
+				opacity: 0.88;
+			}
+			footer {
+				padding: 10px 20px 18px;
+				text-align: center;
+				font-size: var(--type-caption);
+				line-height: var(--type-caption-lh);
+				color: var(--fg-subtle);
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<div class="hero">
+				<img class="mark" src="icon.png" alt="" aria-hidden="true" draggable="false" />
+				<h1>Sekai</h1>
+				<p id="version" class="version">Version 0.2.0</p>
+			</div>
+
+			<ul class="list" aria-label="App details">
+				<li class="row">
+					<div class="row-text">
+						<div class="row-title">Server</div>
+						<div id="server" class="row-sub">Not connected</div>
+					</div>
+					<button id="change-server" type="button" class="btn btn-secondary">Change</button>
+				</li>
+				<li class="row">
+					<div class="row-text">
+						<div class="row-title">This computer</div>
+						<div id="local" class="row-sub">Not lent to bots</div>
+					</div>
+					<button id="open-local" type="button" class="btn btn-secondary">Settings</button>
+				</li>
+				<li class="row">
+					<div class="row-text">
+						<div class="row-title">Updates</div>
+						<div id="updates" class="row-sub">Up to date</div>
+					</div>
+					<button id="update-btn" type="button" class="btn btn-secondary">Check</button>
+				</li>
+			</ul>
+		</main>
+		<footer>Character art © SEGA / © CP / © CFM</footer>
+		<script>
+			const versionEl = document.getElementById("version");
+			const serverEl = document.getElementById("server");
+			const localEl = document.getElementById("local");
+			const updatesEl = document.getElementById("updates");
+			const updateBtn = document.getElementById("update-btn");
+
+			let latestUpdate = { state: "idle" };
+
+			function hostOf(raw) {
+				try {
+					return new URL(raw).host;
+				} catch {
+					return raw || "Not set";
+				}
+			}
+
+			function renderUpdate(u, packaged) {
+				latestUpdate = u || { state: "idle" };
+				updateBtn.className = "btn btn-secondary";
+				updateBtn.disabled = false;
+				if (!packaged) {
+					updatesEl.textContent = "Available in installed builds";
+					updateBtn.hidden = true;
+					return;
+				}
+				updateBtn.hidden = false;
+				if (u.state === "checking") {
+					updatesEl.textContent = "Checking for updates…";
+					updateBtn.textContent = "Checking…";
+					updateBtn.disabled = true;
+				} else if (u.state === "downloading") {
+					updatesEl.textContent = `Downloading ${u.version} (${u.percent}%)…`;
+					updateBtn.textContent = "Downloading…";
+					updateBtn.disabled = true;
+				} else if (u.state === "ready") {
+					updatesEl.textContent = `Version ${u.version} is ready`;
+					updateBtn.textContent = "Restart to update";
+					updateBtn.className = "btn btn-primary";
+				} else if (u.state === "error") {
+					updatesEl.textContent = "Couldn't check for updates";
+					updateBtn.textContent = "Try again";
+				} else if (u.state === "none") {
+					updatesEl.textContent = "Up to date";
+					updateBtn.textContent = "Check";
+				} else {
+					updatesEl.textContent = "Updates from your server";
+					updateBtn.textContent = "Check";
+				}
+			}
+
+			function renderLocal(info) {
+				if (!info?.settings?.enabled) {
+					localEl.textContent = "Not lent to bots";
+					return;
+				}
+				if (info.status?.activeAgent) {
+					localEl.textContent = `${info.status.activeAgent} is working here`;
+				} else if (info.status?.state === "online") {
+					localEl.textContent = "Ready for your bots";
+				} else if (info.status?.state === "connecting") {
+					localEl.textContent = "Connecting…";
+				} else if (info.status?.state === "problem") {
+					localEl.textContent = "Needs attention";
+				} else {
+					localEl.textContent = "Offline";
+				}
+			}
+
+			let packaged = false;
+			function applyInfo(info) {
+				if (!info) return;
+				packaged = Boolean(info.packaged);
+				versionEl.textContent = `Version ${info.version}`;
+				serverEl.textContent = hostOf(info.serverUrl);
+				renderLocal(info.local);
+				renderUpdate(info.update, packaged);
+			}
+
+			document.getElementById("change-server").addEventListener("click", () => {
+				window.sekaiAbout?.changeServer?.();
+			});
+			document.getElementById("open-local").addEventListener("click", () => {
+				window.sekaiAbout?.openThisComputer?.();
+			});
+			updateBtn.addEventListener("click", () => {
+				if (latestUpdate.state === "ready") window.sekaiAbout?.installUpdate?.();
+				else window.sekaiAbout?.checkUpdates?.();
+			});
+			window.addEventListener("keydown", (e) => {
+				if (e.key === "Escape") window.sekaiAbout?.close?.();
+			});
+
+			if (window.sekaiAbout?.getInfo) {
+				Promise.resolve(window.sekaiAbout.getInfo()).then(applyInfo);
+				window.sekaiAbout.onUpdate?.((u) => renderUpdate(u, packaged));
+				window.sekaiDesktop?.localComputer?.onChange?.(renderLocal);
+			}
+		</script>
+	</body>
+</html>

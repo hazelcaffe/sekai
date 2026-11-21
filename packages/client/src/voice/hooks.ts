@@ -91,7 +91,7 @@ export function useDictation(onText: (text: string) => void, conversationId?: st
 				if (e.code !== 1000 && e.code !== 1005)
 					setError(
 						(was) =>
-							was ?? (e.reason || "Couldn't reach dictation. Check the voice setup in Admin → Voice."),
+							was ?? (e.reason || "Couldn't reach dictation. Check the voice setup in Settings → Voice."),
 					);
 				cleanup();
 			}
@@ -244,7 +244,7 @@ export function useCall(conversationId: string | null, ring?: string | null) {
 		socket.onclose = (e) => {
 			if (ws.current !== socket) return;
 			if (e.code !== 1000 && e.code !== 1005) {
-				setError((was) => was ?? (e.reason || "The call dropped. Check the voice setup in Admin → Voice."));
+				setError((was) => was ?? (e.reason || "The call dropped. Check the voice setup in Settings → Voice."));
 			}
 			teardown();
 		};

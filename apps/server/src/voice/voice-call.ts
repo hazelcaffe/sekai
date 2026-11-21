@@ -123,7 +123,7 @@ export class VoiceCall implements CallSession {
 			this.v = await voiceFor(this.agent);
 			if (!this.v.ttsModel || !this.v.sttModel) {
 				throw new Error(
-					"Calls need a speaking voice and a speech-to-text model. Pick them in the bot's Voice tab, or ask an admin to set the defaults in Admin → Voice.",
+					"Calls need a speaking voice and a speech-to-text model. Pick them in the bot's Model & voice section, or ask an admin to set the defaults in Settings → Voice.",
 				);
 			}
 			const ears = await createListener((ev) => this.heard(ev), {

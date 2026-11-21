@@ -1,6 +1,7 @@
 import { ApiError } from "@sekai/shared";
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { haptic } from "./mobile.ts";
 
 export const queryClient: QueryClient = new QueryClient({
 	// Signed out elsewhere (or the session expired): re-check, which brings back the sign-in screen.
@@ -18,7 +19,10 @@ export const queryClient: QueryClient = new QueryClient({
 			refetchOnWindowFocus: false,
 		},
 		mutations: {
-			onError: (err) => toast.error(err instanceof Error ? err.message : String(err)),
+			onError: (err) => {
+				haptic("error");
+				toast.error(err instanceof Error ? err.message : String(err));
+			},
 		},
 	},
 });
@@ -29,6 +33,7 @@ export const qk = {
 	passkeys: ["auth", "passkeys"] as const,
 	apiTokens: ["auth", "tokens"] as const,
 	info: ["info"] as const,
+	appDownloads: ["appDownloads"] as const,
 	models: ["models"] as const,
 	settings: ["settings"] as const,
 	agents: ["agents"] as const,

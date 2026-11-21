@@ -5,8 +5,8 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { assetUrl } from "../api.ts";
 import { cn, copyText } from "../utils.ts";
+import { ChatImage } from "./ChatImage.tsx";
 
 function CodeBlock({ children, language }: { children: ReactNode; language: string | null }) {
 	const ref = useRef<HTMLPreElement>(null);
@@ -17,19 +17,19 @@ function CodeBlock({ children, language }: { children: ReactNode; language: stri
 		setTimeout(() => setCopied(false), 1500);
 	};
 	return (
-		<div className="group/code my-3 overflow-hidden rounded-2xl border border-border bg-bg-subtle">
-			<div className="flex h-9 items-center justify-between border-b border-border px-3.5 text-xs text-fg-subtle">
+		<div className="group/code my-3 overflow-hidden rounded-lg border border-border bg-bg-subtle">
+			<div className="flex h-9 items-center justify-between border-b border-border px-3.5 text-small text-fg-subtle">
 				<span className="font-mono">{language ?? "text"}</span>
 				<button
 					type="button"
 					onClick={copy}
-					className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-surface-2 hover:text-fg"
+					className="flex items-center gap-1 rounded-sm px-1.5 py-1 hover:bg-surface-2 hover:text-fg"
 				>
-					{copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+					{copied ? <Check className="size-4" /> : <Copy className="size-4" />}
 					{copied ? "Copied" : "Copy"}
 				</button>
 			</div>
-			<pre ref={ref} className="overflow-x-auto p-3.5 font-mono text-[13px] leading-6 scrollbar-thin">
+			<pre ref={ref} className="overflow-x-auto p-3.5 font-mono text-small scrollbar-thin">
 				{children}
 			</pre>
 		</div>
@@ -56,71 +56,6 @@ const components: ComponentProps<typeof ReactMarkdown>["components"] = {
 	),
 	img: ({ src, alt }) => (typeof src === "string" && src ? <ChatImage src={src} alt={alt ?? ""} /> : null),
 };
-
-/** Images from Sekai itself (uploads, screenshots) load right away; others wait for a tap. */
-function isOwnImage(url: string): boolean {
-	if (/^(data|blob):/i.test(url)) return true;
-	try {
-		return new URL(url, location.href).origin === location.origin;
-	} catch {
-		return false;
-	}
-}
-
-/**
- * An image in a reply: shown whole (up to a sensible size), opens full size in a new tab. Pictures from other
- * sites load only when you tap (a reply shaped by a hostile page could otherwise send data out in an image URL).
- */
-export function ChatImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
-	const [broken, setBroken] = useState(false);
-	const url = assetUrl(src);
-	const [allowed, setAllowed] = useState(() => isOwnImage(url));
-	if (!allowed) {
-		let host = "another site";
-		try {
-			host = new URL(url).hostname;
-		} catch {}
-		return (
-			<button
-				type="button"
-				onClick={() => setAllowed(true)}
-				className={cn(
-					"my-2 flex max-w-full items-center gap-2 rounded-2xl border border-dashed border-border px-3 py-2 text-left text-[13px] text-fg-muted hover:bg-surface-2",
-					className,
-				)}
-			>
-				<span className="truncate">
-					{alt || "Image"} · <span className="text-fg-subtle">from {host}, tap to load</span>
-				</span>
-			</button>
-		);
-	}
-	if (broken) {
-		return (
-			<a href={url} target="_blank" rel="noreferrer noopener" className="text-sm">
-				{alt || "Image"} (couldn't load it)
-			</a>
-		);
-	}
-	return (
-		<a
-			href={url}
-			target="_blank"
-			rel="noreferrer noopener"
-			className={cn("my-2 block w-fit max-w-full", className)}
-		>
-			<img
-				src={url}
-				alt={alt}
-				referrerPolicy="no-referrer"
-				loading="lazy"
-				decoding="async"
-				onError={() => setBroken(true)}
-				className="max-h-[min(70vh,520px)] max-w-full rounded-2xl border border-border bg-bg-subtle object-contain"
-			/>
-		</a>
-	);
-}
 
 function escapePrices(text: string): string {
 	let fence: string | null = null;
@@ -160,6 +95,7 @@ export function normalizeMath(input: string): string {
 		.join("\n");
 }
 
+/** The full renderer (GitHub-flavoured Markdown, math, highlighted code): loaded on demand, see LazyMarkdown.tsx. */
 export const Markdown = memo(function Markdown({ text, className }: { text: string; className?: string }) {
 	return (
 		<div className={cn("prose-chat", className)}>

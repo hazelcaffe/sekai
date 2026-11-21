@@ -16,6 +16,7 @@ function queryOf(c: Context): ActivityQuery {
 	const decidedBy = p("decidedBy");
 	return {
 		q: p("q")?.slice(0, 200),
+		scope: p("scope"),
 		agentId: p("agentId"),
 		status: status && STATUS.has(status) ? (status as ActivityEntry["status"]) : undefined,
 		risk: risk && RISK.has(risk) ? (risk as ActivityQuery["risk"]) : undefined,

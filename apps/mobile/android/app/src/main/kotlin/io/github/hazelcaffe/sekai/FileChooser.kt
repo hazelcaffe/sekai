@@ -11,8 +11,8 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient.FileChooserParams
-import android.widget.Toast
 import androidx.activity.result.ActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -58,7 +58,7 @@ internal class FileChooser(private val activity: MainActivity) {
             try {
                 launcher.launch(intent)
             } catch (_: ActivityNotFoundException) {
-                Toast.makeText(activity, R.string.no_file_picker, Toast.LENGTH_LONG).show()
+                Snacks.show(activity, R.string.no_file_picker)
                 finish(null)
             }
         }
@@ -112,13 +112,39 @@ internal class FileChooser(private val activity: MainActivity) {
             .apply { clipData = ClipData.newRawUri("", uri) }
     }
 
-    private fun pickIntent(types: List<String>, multiple: Boolean) = Intent(Intent.ACTION_GET_CONTENT)
-        .addCategory(Intent.CATEGORY_OPENABLE)
-        .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
-        .apply {
-            type = types.singleOrNull() ?: "*/*"
-            if (types.size > 1 && "*/*" !in types) putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
+    /** Photos and videos open in Android's photo picker (no broad file access to ask for); anything else, the file picker. */
+    private fun pickIntent(types: List<String>, multiple: Boolean): Intent {
+        val media = mediaRequest(types)
+        if (media != null && ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(activity)) {
+            return if (multiple) {
+                ActivityResultContracts.PickMultipleVisualMedia().createIntent(activity, media)
+            } else {
+                ActivityResultContracts.PickVisualMedia().createIntent(activity, media)
+            }
         }
+        return Intent(Intent.ACTION_GET_CONTENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
+            .apply {
+                type = types.singleOrNull() ?: "*/*"
+                if (types.size > 1 && "*/*" !in types) putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
+            }
+    }
+
+    // The photo picker's request for what the page accepts, or null when it takes more than photos and videos.
+    private fun mediaRequest(types: List<String>): PickVisualMediaRequest? {
+        if (types.isEmpty() || types.any { !it.startsWith("image/") && !it.startsWith("video/") }) return null
+        val images = types.all { it.startsWith("image/") }
+        val videos = types.all { it.startsWith("video/") }
+        val media: ActivityResultContracts.PickVisualMedia.VisualMediaType = when {
+            types.size == 1 && types.single().substringAfter('/') != "*" ->
+                ActivityResultContracts.PickVisualMedia.SingleMimeType(types.single())
+            images -> ActivityResultContracts.PickVisualMedia.ImageOnly
+            videos -> ActivityResultContracts.PickVisualMedia.VideoOnly
+            else -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+        }
+        return PickVisualMediaRequest(media)
+    }
 
     // The accept attribute as MIME types ("image/png,.pdf" → image/png, application/pdf); an extension Android
     // doesn't know allows anything.

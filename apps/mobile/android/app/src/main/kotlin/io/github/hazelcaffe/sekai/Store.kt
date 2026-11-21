@@ -34,6 +34,16 @@ internal class Store(context: Context) {
         }
     }
 
+    /** Forgets [origin]: gone from the recent servers, and no longer the server the app opens if it was. */
+    fun forgetServer(origin: String) {
+        val list = recent.filter { it != origin }
+        servers.edit {
+            if (serverUrl == origin) remove(SERVER)
+            putString(RECENT, JSONArray(list).toString())
+        }
+        if (serverUrl == null) theme = null
+    }
+
     /** The page's last colors, for the window before the page has loaded. */
     var theme: PageTheme?
         get() = if (device.contains(THEME_COLOR)) {

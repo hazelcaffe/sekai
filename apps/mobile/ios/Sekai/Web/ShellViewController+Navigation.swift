@@ -12,21 +12,16 @@ extension ShellViewController: WKNavigationDelegate {
 	}
 
 	private func policy(for action: WKNavigationAction) -> WKNavigationActionPolicy {
-		guard let url = action.request.url, let screen else { return .cancel }
+		guard let url = action.request.url, let origin else { return .cancel }
 		// target=_blank and window.open: createWebViewWith decides.
 		guard let frame = action.targetFrame else { return .allow }
-		switch screen {
-		case .connect:
-			return ConnectBridge.isConnectPage(url) ? .allow : .cancel
-		case let .server(origin):
-			if origin.contains(url) { return action.shouldPerformDownload ? .download : .allow }
-			// Embeds (videos, previews) load what they like: frames never get the bridge.
-			let scheme = url.scheme?.lowercased() ?? ""
-			if !frame.isMainFrame, ["http", "https", "about", "blob", "data"].contains(scheme) { return .allow }
-			if frame.isMainFrame, scheme == "about" { return .allow }
-			leave(to: url)
-			return .cancel
-		}
+		if origin.contains(url) { return action.shouldPerformDownload ? .download : .allow }
+		// Embeds (videos, previews) may load other sites: frames never get the bridge.
+		let scheme = url.scheme?.lowercased() ?? ""
+		if !frame.isMainFrame, ["http", "https", "about", "blob", "data"].contains(scheme) { return .allow }
+		if frame.isMainFrame, scheme == "about" { return .allow }
+		leave(to: url)
+		return .cancel
 	}
 
 	/// A link out of the app: other sites in the browser, mail and phone links in their apps, sekai:// here.
@@ -49,9 +44,15 @@ extension ShellViewController: WKNavigationDelegate {
 		decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
 	) {
 		let response = navigationResponse.response
+		if webView === self.webView, navigationResponse.isForMainFrame, origin?.contains(response.url) == true,
+		   let status = (response as? HTTPURLResponse)?.statusCode, (500...599).contains(status) {
+			decisionHandler(.cancel)
+			loadFailed(.serverError, at: response.url)
+			return
+		}
 		let disposition = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? ""
 		let attachment = disposition.lowercased().hasPrefix("attachment")
-		guard case let .server(origin) = screen, origin.contains(response.url),
+		guard let origin, origin.contains(response.url),
 		      attachment || !navigationResponse.canShowMIMEType
 		else {
 			decisionHandler(.allow)
@@ -73,24 +74,17 @@ extension ShellViewController: WKNavigationDelegate {
 		pageWillLoad()
 	}
 
-	func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+	func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
 		guard webView === self.webView else { return }
-		reveal()
+		pageCommitted()
 	}
 
 	func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-		guard webView === self.webView else { return }
-		reveal()
+		handleFailure(error, in: webView)
 	}
 
 	func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-		guard webView === self.webView else { return }
-		if case let .server(origin) = screen, let problem = Self.connectionProblem(error, origin: origin) {
-			showConnect(problem: problem)
-			return
-		}
-		pageDidNotLoad()
-		reveal()
+		handleFailure(error, in: webView)
 	}
 
 	/// iOS ends the web view's process when memory runs low (often while the app is in the background).
@@ -99,20 +93,14 @@ extension ShellViewController: WKNavigationDelegate {
 		webView.reload()
 	}
 
-	/// When a load failed because the server can't be reached, what to tell the person.
-	private static func connectionProblem(_ error: Error, origin: Origin) -> String? {
-		let error = error as NSError
-		guard error.domain == NSURLErrorDomain else { return nil }
-		switch error.code {
-		case NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate,
-		     NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid:
-			return ServerCheck.Failure.untrusted.message(for: origin)
-		case NSURLErrorNotConnectedToInternet, NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
-		     NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed,
-		     NSURLErrorSecureConnectionFailed, NSURLErrorInternationalRoamingOff, NSURLErrorDataNotAllowed:
-			return ServerCheck.Failure.unreachable.message(for: origin)
-		default:
-			return nil
+	private func handleFailure(_ error: Error, in webView: WKWebView) {
+		guard webView === self.webView else { return }
+		let ns = error as NSError
+		// Policy cancellations (e.g. a download) aren't network failures.
+		if (ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled) || (ns.domain == "WebKitErrorDomain" && ns.code == 102) {
+			pageDidNotLoad()
+			return
 		}
+		loadFailed(ServerCheck.failure(for: error), at: ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL ?? webView.url)
 	}
 }

@@ -58,7 +58,7 @@ export function gatedExternalTool(kind: ToolKind, providerTitle: string, title: 
 		name: `external_${kind}`,
 		category: "external",
 		risk: kindRisk(kind),
-		description: `${providerTitle}'s own tool: ${KIND_LABELS[kind].toLowerCase()} in the agent's workspace or on this computer.`,
+		description: `${providerTitle}'s own tool: ${KIND_LABELS[kind].toLowerCase()} in the bot's workspace or on this computer.`,
 		title: title?.trim() || KIND_LABELS[kind],
 	};
 }

@@ -4,7 +4,7 @@
 
 /* Markdown in messages. */
 .prose-chat {
-	@apply text-[15px] leading-7 break-words;
+	@apply text-message break-words;
 	& > :first-child {
 		margin-top: 0;
 	}
@@ -20,14 +20,17 @@
 	& h4 {
 		@apply mt-6 mb-2 font-semibold tracking-tight;
 	}
+	/* Headings in a message scale with its text (the message size follows the platform). */
 	& h1 {
-		@apply text-xl;
+		font-size: 1.25em;
+		line-height: 1.4;
 	}
 	& h2 {
-		@apply text-lg;
+		font-size: 1.125em;
+		line-height: 1.45;
 	}
 	& h3 {
-		@apply text-base;
+		font-size: 1em;
 	}
 	& ul {
 		@apply my-3 list-disc pl-6;
@@ -43,7 +46,7 @@
 		@apply my-1;
 	}
 	& a {
-		@apply text-info underline decoration-1 underline-offset-2;
+		@apply text-brand-ink underline decoration-1 underline-offset-2;
 	}
 	& blockquote {
 		@apply my-3 border-l-2 border-border-strong pl-4 text-fg-muted;
@@ -52,10 +55,13 @@
 		@apply my-6 border-border;
 	}
 	& :not(pre) > code {
-		@apply rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[0.85em];
+		@apply rounded-sm bg-surface-2 px-1.5 py-0.5 font-mono;
+		font-size: 0.85em;
 	}
 	& table {
-		@apply my-3 w-full border-collapse text-sm;
+		@apply my-3 w-full border-collapse;
+		font-size: 0.875em;
+		line-height: 1.5;
 	}
 	& th,
 	& td {
@@ -75,7 +81,7 @@
 	}
 }
 
-/* highlight.js tokens tuned for both themes. */
+/* highlight.js tokens: the syntax colours from @sekai/ui's tokens (readable on surface-2 in every theme). */
 .hljs {
 	color: var(--fg);
 }
@@ -88,52 +94,31 @@
 .hljs-selector-tag,
 .hljs-built_in,
 .hljs-type {
-	color: #c678dd;
+	color: var(--syntax-keyword);
 }
 .hljs-string,
 .hljs-attr,
 .hljs-symbol,
 .hljs-bullet,
 .hljs-addition {
-	color: #98c379;
+	color: var(--syntax-string);
 }
 .hljs-number,
 .hljs-literal,
 .hljs-meta {
-	color: #d19a66;
+	color: var(--syntax-number);
 }
 .hljs-title,
 .hljs-section,
 .hljs-function .hljs-title {
-	color: #61afef;
+	color: var(--syntax-title);
 }
 .hljs-variable,
 .hljs-template-variable,
 .hljs-name,
-.hljs-tag {
-	color: #e06c75;
-}
+.hljs-tag,
 .hljs-deletion {
-	color: #e06c75;
-}
-:root:not(.dark) .hljs-keyword,
-:root:not(.dark) .hljs-built_in {
-	color: #a626a4;
-}
-:root:not(.dark) .hljs-string,
-:root:not(.dark) .hljs-attr {
-	color: #50a14f;
-}
-:root:not(.dark) .hljs-number,
-:root:not(.dark) .hljs-literal {
-	color: #986801;
-}
-:root:not(.dark) .hljs-title {
-	color: #4078f2;
-}
-:root:not(.dark) .hljs-variable,
-:root:not(.dark) .hljs-name {
-	color: #e45649;
+	color: var(--syntax-variable);
 }
 
 @keyframes sekai-pulse {

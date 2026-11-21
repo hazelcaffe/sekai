@@ -6,7 +6,8 @@ import UserNotifications
 @MainActor
 enum Notifications {
 	/// Apple pushes name it in `aps.category` when they carry a `toolCallId`.
-	static let approvalCategory = "SEKAI_APPROVAL"
+	nonisolated static let approvalCategory = "SEKAI_APPROVAL"
+	private static let reviewCategory = "SEKAI_REVIEW"
 	private static let approveAction = "SEKAI_APPROVE"
 	private static let denyAction = "SEKAI_DENY"
 	private static let delegate = NotificationDelegate()
@@ -31,9 +32,12 @@ enum Notifications {
 			identifier: approvalCategory,
 			actions: [approve, deny],
 			intentIdentifiers: [],
+			hiddenPreviewsBodyPlaceholder: "A bot needs you",
 			options: []
 		)
-		center.setNotificationCategories([approval])
+		let review = UNNotificationCategory(identifier: reviewCategory, actions: [], intentIdentifiers: [],
+			hiddenPreviewsBodyPlaceholder: "A bot needs you", options: [])
+		center.setNotificationCategories([approval, review])
 	}
 
 	/// A notification from the app itself. With a `toolCallId` it gets Approve / Deny.
@@ -42,6 +46,8 @@ enum Notifications {
 		body: String,
 		path: String,
 		toolCallId: String? = nil,
+		allowsAnswer: Bool = false,
+		replacing: String? = nil,
 		thread: String? = nil,
 		sound: Bool = true
 	) {
@@ -51,12 +57,14 @@ enum Notifications {
 		if sound { content.sound = .default }
 		var info: [String: String] = ["url": path]
 		if let toolCallId {
-			info["toolCallId"] = toolCallId
-			content.categoryIdentifier = approvalCategory
+			if allowsAnswer { info["toolCallId"] = toolCallId }
+			content.categoryIdentifier = allowsAnswer ? approvalCategory : reviewCategory
+			content.interruptionLevel = .timeSensitive
 		}
+		if replacing != nil { content.interruptionLevel = .passive }
 		content.userInfo = info
 		if let thread { content.threadIdentifier = thread }
-		let id = toolCallId.map { "approval-\($0)" } ?? UUID().uuidString
+		let id = replacing ?? toolCallId.map { "approval-\($0)" } ?? UUID().uuidString
 		UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
 	}
 
@@ -85,14 +93,16 @@ enum Notifications {
 				title: approve ? "Approved" : "Denied",
 				body: payload.title,
 				path: payload.path,
+				replacing: payload.identifier,
 				thread: payload.thread,
 				sound: false
 			)
 		case .alreadyAnswered:
 			show(
-				title: "Already answered",
-				body: "That request was already answered (or timed out).",
+				title: "Request closed",
+				body: "This request was answered or expired.",
 				path: payload.path,
+				replacing: payload.identifier,
 				thread: payload.thread,
 				sound: false
 			)
@@ -110,9 +120,11 @@ enum Notifications {
 		}
 		show(
 			title: "Couldn't send your answer",
-			body: "Tap to open the chat and answer there.",
+			body: "Your bot still needs an answer in the chat.",
 			path: payload.path,
-			thread: payload.thread
+			replacing: payload.identifier,
+			thread: payload.thread,
+			sound: false
 		)
 	}
 }

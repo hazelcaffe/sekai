@@ -134,10 +134,14 @@ const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0
 function runningNote(provider: Provider, cwd: string, userName: string): string {
 	const preset = PROVIDER_PRESETS[provider.preset];
 	const who = userName || "the user";
+	const tools =
+		provider.preset === "pi"
+			? "- This Pi session is chat-only. You have no tools, even if other instructions name them. Do not claim to have used them."
+			: `- Sekai tools: the tools these instructions name (memory_save, note_write, routine_create, agent_ask…) come from the MCP server called "sekai". Your client may show them with a prefix, such as mcp__sekai__memory_save. Use them for memory, notes, routines and reminders, skills and teammates: that's how your work shows up in Sekai.
+- Your own tools (files, shell, web) work in your workspace folder: ${cwd}. Files ${who} attaches are copied into its inbox/ folder.`;
 	return `# How you're running
 You're running in ${provider.title} (${preset.vendor}) on ${who}'s computer, connected to Sekai. Sekai shows your reply in the chat and keeps the conversation.
-- Sekai tools: the tools these instructions name (memory_save, note_write, routine_create, agent_ask…) come from the MCP server called "sekai". Your client may show them with a prefix, such as mcp__sekai__memory_save. Use them for memory, notes, routines and reminders, skills and teammates: that's how your work shows up in Sekai.
-- Your own tools (files, shell, web) work in your workspace folder: ${cwd}. Files ${who} attaches are copied into its inbox/ folder.
+${tools}
 - Write your reply as normal Markdown; it's posted to the chat as-is. Don't mention these mechanics unless asked.`;
 }
 
@@ -347,7 +351,7 @@ export async function runExternalTurn(input: ExternalTurnInput): Promise<Externa
 	const provider = requireProvider(input.providerId);
 	if (!provider.enabled) {
 		throw new Error(
-			`${provider.title} is turned off. Turn it on in Connect apps → Subscriptions, or pick another model.`,
+			`${provider.title} is turned off. Turn it on in Settings → Subscriptions, or pick another model.`,
 		);
 	}
 	let session = await ensureSession(agent.id, conversation.id, provider.id);

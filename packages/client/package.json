@@ -3,7 +3,10 @@
 	"version": "0.2.0",
 	"private": true,
 	"type": "module",
-	"description": "What Sekai's web app and admin app share: the API client, data hooks and a few components.",
+	"sideEffects": [
+		"*.css"
+	],
+	"description": "What Sekai's apps share: the API client, data hooks and a few components.",
 	"exports": {
 		".": "./src/index.ts",
 		"./styles.css": "./src/styles.css"

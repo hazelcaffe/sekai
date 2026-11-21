@@ -137,10 +137,10 @@ try {
 	await panel.getByLabel("Server address").fill(base);
 	await panel.getByLabel("Browser token").fill(token.token);
 	await panel.getByRole("button", { name: "Connect", exact: true }).click();
-	await panel.getByRole("button", { name: "Choose tabs to share" }).click();
+	await panel.getByRole("button", { name: "Share tabs", exact: true }).click();
 	await panel
-		.getByTitle(`${base}/fixture`, { exact: true })
-		.locator("..")
+		.locator(`[data-tab-url="${base}/fixture"]`)
+		.locator("xpath=ancestor::*[@data-slot='row']")
 		.getByRole("button", { name: "Share", exact: true })
 		.click();
 	await panel.getByRole("button", { name: "Stop sharing", exact: true }).waitFor();
@@ -235,7 +235,7 @@ try {
 			new AbortController().signal,
 		),
 	);
-	await panel.getByRole("button", { name: "Allow once", exact: true }).click();
+	await panel.getByRole("button", { name: "Approve", exact: true }).click();
 	assert.equal((await approval).approve, true);
 
 	for (const width of [390, 1280]) {

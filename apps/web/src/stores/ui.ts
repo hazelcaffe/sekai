@@ -15,24 +15,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 
-/** The bot panel's tabs. Older names (model, brain, notes, channels) still open the tab that now holds them. */
-export type PanelTab =
-	| "profile"
-	| "model"
-	| "voice"
-	| "brain"
-	| "routines"
-	| "notes"
-	| "code"
-	| "tools"
-	| "apps"
-	| "accounts"
-	| "channels"
-	| "discord-user"
-	| "x"
-	| "instagram"
-	| "tiktok"
-	| "activity";
 /** One of the six group themes, or "auto" (Virtual Singers by day, Nightcord at 25:00 at night). */
 export type Theme = ThemeChoice;
 export type Connection = "connecting" | "online" | "offline";
@@ -44,7 +26,7 @@ export type Connection = "connecting" | "online" | "offline";
 export type { Presence };
 
 interface UiState {
-	/** Phone drawer. */
+	/** Tablets: the full sidebar opened over the screen from the collapsed rail. */
 	sidebarOpen: boolean;
 	/** Desktop: collapse the sidebar to an icon rail. */
 	sidebarCollapsed: boolean;
@@ -57,8 +39,7 @@ interface UiState {
 	/** Folds (or unfolds) several sections at once. */
 	foldSections: (ids: string[], folded: boolean) => void;
 	panelOpen: boolean;
-	panelTab: PanelTab;
-	/** What the side panel shows: the bot's details, or its computer. */
+	/** What the side panel beside a chat shows: the chat's details, or the bot's computer. */
 	panelView: "details" | "computer";
 	theme: Theme;
 	connection: Connection;
@@ -71,13 +52,23 @@ interface UiState {
 	drafts: Record<string, string>;
 	replyTo: Record<string, Message | null>;
 	paletteOpen: boolean;
+	/** What search (⌘K) looks through: everything, or Settings alone (opened from Settings on a phone). */
+	paletteScope: "all" | "settings";
 	newAgentOpen: boolean;
 	importBotOpen: boolean;
 	newGroupOpen: boolean;
+	/** New chat: pick a bot. */
+	newChatOpen: boolean;
+	/** The chat you had open last (desktop "/" opens it again). */
+	lastChatId: string | null;
+	/** The "Get the apps" dialog (desktop and phone apps, browser extension). */
+	getAppsOpen: boolean;
+	/** Who skipped the first-bot welcome on this device (a person's id), so "/" opens the app for them instead. */
+	welcomeSkippedBy: string | null;
 
 	setSidebarOpen(open: boolean): void;
 	toggleSidebarCollapsed(): void;
-	openPanel(tab?: PanelTab): void;
+	openPanel(): void;
 	openComputer(): void;
 	closePanel(): void;
 	togglePanel(): void;
@@ -89,10 +80,14 @@ interface UiState {
 	noteActivity(messageId: string, part: MessagePart): void;
 	setDraft(conversationId: string, text: string): void;
 	setReplyTo(conversationId: string, message: Message | null): void;
-	setPaletteOpen(open: boolean): void;
+	setPaletteOpen(open: boolean, scope?: "all" | "settings"): void;
 	setNewAgentOpen(open: boolean): void;
 	setImportBotOpen(open: boolean): void;
 	setNewGroupOpen(open: boolean): void;
+	setNewChatOpen(open: boolean): void;
+	setLastChat(conversationId: string): void;
+	setGetAppsOpen(open: boolean): void;
+	skipWelcome(userId: string): void;
 }
 
 const ACTIVE = new Set(["queued", "running", "awaiting_approval"]);
@@ -139,9 +134,8 @@ export const useUi = create<UiState>()(
 					foldedSections: { ...s.foldedSections, ...Object.fromEntries(ids.map((id) => [id, folded])) },
 				})),
 			panelOpen: false,
-			panelTab: "profile",
 			panelView: "details",
-			// The theme is saved on its own (sekai.theme), shared with Admin: not in this store's saved state.
+			// The theme is saved on its own (sekai.theme), shared with other tabs: not in this store's saved state.
 			theme: savedTheme(),
 			connection: "connecting",
 			activeRuns: {},
@@ -150,13 +144,18 @@ export const useUi = create<UiState>()(
 			drafts: {},
 			replyTo: {},
 			paletteOpen: false,
+			paletteScope: "all",
 			newAgentOpen: false,
 			importBotOpen: false,
 			newGroupOpen: false,
+			newChatOpen: false,
+			lastChatId: null,
+			getAppsOpen: false,
+			welcomeSkippedBy: null,
 
 			setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
 			toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-			openPanel: (tab) => set((s) => ({ panelOpen: true, panelView: "details", panelTab: tab ?? s.panelTab })),
+			openPanel: () => set({ panelOpen: true, panelView: "details" }),
 			openComputer: () => set({ panelOpen: true, panelView: "computer" }),
 			closePanel: () => set({ panelOpen: false }),
 			togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
@@ -231,19 +230,25 @@ export const useUi = create<UiState>()(
 					return { drafts };
 				}),
 			setReplyTo: (id, message) => set((s) => ({ replyTo: { ...s.replyTo, [id]: message } })),
-			setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+			setPaletteOpen: (paletteOpen, scope) =>
+				set(paletteOpen ? { paletteOpen, paletteScope: scope ?? "all" } : { paletteOpen }),
 			setNewAgentOpen: (newAgentOpen) => set({ newAgentOpen }),
 			setImportBotOpen: (importBotOpen) => set({ importBotOpen }),
 			setNewGroupOpen: (newGroupOpen) => set({ newGroupOpen }),
+			setNewChatOpen: (newChatOpen) => set({ newChatOpen }),
+			setLastChat: (lastChatId) => set((s) => (s.lastChatId === lastChatId ? {} : { lastChatId })),
+			setGetAppsOpen: (getAppsOpen) => set({ getAppsOpen }),
+			skipWelcome: (welcomeSkippedBy) => set({ welcomeSkippedBy }),
 		}),
 		{
 			name: "sekai.ui",
 			partialize: (s) => ({
 				sidebarCollapsed: s.sidebarCollapsed,
 				foldedSections: s.foldedSections,
-				panelTab: s.panelTab,
 				drafts: s.drafts,
 				panelOpen: s.panelOpen,
+				lastChatId: s.lastChatId,
+				welcomeSkippedBy: s.welcomeSkippedBy,
 			}),
 		},
 	),

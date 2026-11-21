@@ -1,7 +1,7 @@
 /**
  * Sekai's six themes, one per Project Sekai group, each a fixed look (the colors are in styles/index.css).
  * "auto", the default, follows the device: Virtual Singers when it's light, Nightcord at 25:00 when it's dark.
- * The choice is saved in localStorage ("sekai.theme"), shared by the main app and Admin (same origin).
+ * The choice is saved in localStorage ("sekai.theme") and applies to every page of the app (same origin).
  */
 
 export type ThemeId = "vs" | "ln" | "mmj" | "vbs" | "wxs" | "n25";
@@ -22,7 +22,7 @@ export const THEMES: ThemeInfo[] = [
 	{ id: "vs", name: "Virtual Singers", mode: "light", brand: "#33ccbb", background: "#ffffff", icon: "vs-miku" },
 	{ id: "ln", name: "Leo/need", mode: "dark", brand: "#5466ec", background: "#0a0d1c", icon: "ln-ichika" },
 	{ id: "mmj", name: "MORE MORE JUMP!", mode: "light", brand: "#88dd44", background: "#ffffff", icon: "mmj-minori" },
-	{ id: "vbs", name: "Vivid BAD SQUAD", mode: "dark", brand: "#ee1166", background: "#0c0a0b", icon: "vbs-kohane" },
+	{ id: "vbs", name: "Vivid BAD SQUAD", mode: "dark", brand: "#e0105f", background: "#0c0a0b", icon: "vbs-kohane" },
 	{
 		id: "wxs",
 		name: "Wonderlands×Showtime",

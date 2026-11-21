@@ -840,7 +840,7 @@ async function contextText(env: CommandEnv): Promise<string> {
 		...sections,
 		`• History: ${ctx.history.messages} messages, ${fmtTokens(ctx.history.tokens)}${ctx.history.summarizedMessages ? ` (+ a summary of ${ctx.history.summarizedMessages} older)` : ""}`,
 		`• Tools: ${ctx.tools.length}`,
-		env.adapter.subtext("The Brain tab in Sekai shows all of it."),
+		env.adapter.subtext("Chat details in Sekai show all of it."),
 	].join("\n");
 }
 

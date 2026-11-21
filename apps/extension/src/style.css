@@ -1,14 +1,23 @@
 @import "@sekai/ui/styles.css";
 @source "../../../packages/ui/src";
 
-html {
+html,
+body,
+#root {
+	height: 100%;
 	min-width: 320px;
-	min-height: 100%;
-	background: var(--surface);
-	color: var(--fg);
 }
 
 body {
 	margin: 0;
-	font-family: "Inter Variable", sans-serif;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--type-font);
+}
+
+/* Safari's popover takes its size from the page, which this full-height layout would collapse; give it one. A tab or
+   the pop-out window is bigger anyway. */
+html[data-target="safari"] {
+	min-width: 360px;
+	min-height: 600px;
 }

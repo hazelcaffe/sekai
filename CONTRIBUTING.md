@@ -15,8 +15,8 @@ You need [Bun](https://bun.sh) 1.4+ and Docker (for Postgres with pgvector).
 
 ```bash
 bun install
-cp .env.example .env     # set GATEWAY_URL and GATEWAY_API_KEY (or add a provider later in Admin → Models)
-bun run dev              # Postgres in Docker, the API (watch mode) on :7420, web on :5173, admin on /admin
+cp .env.example .env     # set GATEWAY_URL and GATEWAY_API_KEY (or add a provider later in Settings → Bots → Models)
+bun run dev              # Postgres in Docker, the API (watch mode) on :7420, the web app on :5173
 ```
 
 Open http://localhost:5173 and create the first account with the setup code from the server's log.
@@ -46,7 +46,7 @@ Before you open a pull request:
 
 ```bash
 bun run check            # lint, typecheck and tests
-bun run build:web && bun run build:admin
+bun run build:web
 ```
 
 Keep pull requests focused, and describe what changed and why (screenshots for UI changes help a lot).

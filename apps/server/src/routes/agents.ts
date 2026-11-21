@@ -4,7 +4,7 @@ import { generateAvatar } from "../agent/avatar.ts";
 import { buildAgentContext } from "../agent/context.ts";
 import { galleryFile } from "../agent/gallery.ts";
 import { ruleSets } from "../agent/permissions.ts";
-import { builtinCatalog, CATEGORY_LABELS, describeTool, mcpRisk, mcpToolName } from "../agent/tools/index.ts";
+import { CATEGORY_LABELS, describeTool, mcpRisk, mcpToolName, ruleCatalog } from "../agent/tools/index.ts";
 import { getServer, globalServers, toolsFor } from "../mcp/manager.ts";
 import {
 	createAgent,
@@ -63,7 +63,7 @@ export const agentRoutes = new Hono()
 		const agent = await requireOwnedAgent(c.req.param("id"));
 		return c.json(await buildAgentContext(agent, c.req.query("conversationId") || undefined));
 	})
-	/** Every tool this agent could have, with the rule that applies, for the Tools & approvals tab. */
+	/** Every tool this agent could have for its owner's role, with the rule that applies, for Tools & access. */
 	.get("/:id/tools", async (c) => {
 		const agent = await requireOwnedAgent(c.req.param("id"));
 		const conversationId = c.req.query("conversationId");
@@ -97,7 +97,7 @@ export const agentRoutes = new Hono()
 				});
 			}
 		}
-		return c.json({ builtin: builtinCatalog(rules), mcp, categories: CATEGORY_LABELS });
+		return c.json({ builtin: ruleCatalog(agent, rules), mcp, categories: CATEGORY_LABELS });
 	})
 	// Sharing: who else may chat with it.
 	.get("/:id/shares", async (c) => c.json(await listShares(c.req.param("id"))))

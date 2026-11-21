@@ -423,7 +423,7 @@ export async function runClaudeTurn(r: RunnerInput): Promise<RunnerResult> {
 		if (AUTH_ERROR.test(message)) {
 			await setProviderStatus(r.provider.id, { state: "auth_required", error: truncate(message, 300) });
 			throw new Error(
-				`Claude Code isn't signed in (${truncate(message, 200)}). Run \`claude auth login\` on the computer running Sekai, or add ANTHROPIC_API_KEY in Connect apps → Subscriptions.`,
+				`Claude Code isn't signed in (${truncate(message, 200)}). Run \`claude auth login\` on the computer running Sekai, or add ANTHROPIC_API_KEY in Settings → Subscriptions.`,
 			);
 		}
 		throw err;

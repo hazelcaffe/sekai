@@ -92,6 +92,10 @@ const app = agent({ name: "mock-acp" })
 	.onRequest("authenticate", () => ({}))
 	.onRequest("session/new", ({ params }) => {
 		if (process.env.MOCK_ACP_AUTH === "required") throw RequestError.authRequired();
+		if (process.env.MOCK_ACP_ONE_CHAT === "1") {
+			if (params.mcpServers.length) throw RequestError.invalidParams(undefined, "Expected no MCP servers");
+			sessions.clear();
+		}
 		const sessionId = `mock-${nextId++}`;
 		const http = params.mcpServers.find((m) => "type" in m && m.type === "http");
 		const s: Session = {

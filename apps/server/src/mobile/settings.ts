@@ -6,8 +6,9 @@ import { readKey, writeKey } from "../services/kv.ts";
 import { deviceCounts } from "./devices.ts";
 
 /**
- * Admin → Phone apps: Firebase (Android) and Apple push (iOS) for the phone apps. The service account key and the
- * .p8 key are sealed at rest and masked when read back; Firebase's client settings are public and go to the apps.
+ * The phone apps' push (PUT /api/admin/mobile; Settings → Server → Network & devices → Phone notifications):
+ * Firebase (Android) and Apple push (iOS). The service account key and the .p8 key are sealed at rest and masked
+ * when read back; Firebase's client settings are public and go to the apps.
  */
 
 const KEY = "push.mobile";

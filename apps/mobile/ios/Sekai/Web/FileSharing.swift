@@ -64,13 +64,16 @@ final class FileSharing: NSObject {
 		}
 	}
 
-	private func failed() {
+	private func failed(retry: (() -> Void)? = nil) {
 		let alert = UIAlertController(
 			title: "Couldn't download that file",
 			message: "Check you're online, then try again.",
 			preferredStyle: .alert
 		)
-		alert.addAction(UIAlertAction(title: "OK", style: .default))
+		if let retry {
+			alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+			alert.addAction(UIAlertAction(title: "Try again", style: .default) { _ in retry() })
+		} else { alert.addAction(UIAlertAction(title: "OK", style: .default)) }
 		shell?.presentOnTop(alert)
 	}
 }
@@ -92,12 +95,26 @@ extension FileSharing: WKDownloadDelegate {
 
 	func downloadDidFinish(_ download: WKDownload) {
 		guard let done = downloads.removeValue(forKey: ObjectIdentifier(download)), let file = done.file else { return }
+		guard download.webView === shell?.webView else { return }
+		UIAccessibility.post(notification: .announcement, argument: "Download ready.")
 		present(file, preview: done.preview)
 	}
 
 	func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-		downloads[ObjectIdentifier(download)] = nil
-		failed()
+		let preview = downloads.removeValue(forKey: ObjectIdentifier(download))?.preview ?? false
+		guard let webView = download.webView, webView === shell?.webView else { return }
+		let request = download.originalRequest
+		// Never repeat a form submission; WebKit's resume data or a same-server GET is safe to retry.
+		guard resumeData != nil || (request?.httpMethod == "GET" && shell?.origin?.contains(request?.url) == true) else {
+			failed()
+			return
+		}
+		failed { [weak self, weak webView] in
+			guard let webView, let self, webView === self.shell?.webView else { return }
+			let track: @MainActor @Sendable (WKDownload) -> Void = { [weak self] in self?.track($0, preview: preview) }
+			if let resumeData { webView.resumeDownload(fromResumeData: resumeData, completionHandler: track) }
+			else if let request { webView.startDownload(using: request, completionHandler: track) }
+		}
 	}
 }
 

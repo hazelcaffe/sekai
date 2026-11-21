@@ -95,7 +95,7 @@ export async function prepareContext(opts: {
 	};
 }
 
-/** The Brain view: exactly what the agent would see if you messaged it now. */
+/** Chat details' Context: exactly what the agent would see if you messaged it now. */
 export async function buildAgentContext(agent: Agent, conversationId?: string): Promise<AgentContext> {
 	const conversation = conversationId
 		? await requireConversation(conversationId)

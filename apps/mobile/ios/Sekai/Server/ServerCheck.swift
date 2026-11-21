@@ -4,11 +4,11 @@ import Foundation
 enum ServerCheck {
 	enum Failure: Error {
 		/// No answer at all (offline, wrong address, server down, not on the tailnet).
-		case unreachable
+		case offline, unreachable
 		/// The certificate isn't one this device trusts.
 		case untrusted
 		/// Something answered with an error, like a proxy whose Sekai is down.
-		case serverError(Int)
+		case serverError
 		/// Something answered, but it isn't Sekai.
 		case notSekai
 	}
@@ -30,37 +30,52 @@ enum ServerCheck {
 		do {
 			(data, response) = try await session.data(for: request)
 		} catch {
-			return isCertificateProblem(error) ? .untrusted : .unreachable
+			return failure(for: error)
 		}
 		let status = (response as? HTTPURLResponse)?.statusCode ?? 0
 		let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-		if json?["setupRequired"] is Bool { return nil }
-		return status >= 500 ? .serverError(status) : .notSekai
+		guard status < 500 else { return .serverError }
+		if origin.contains(response.url), (200..<300).contains(status), json?["setupRequired"] is Bool { return nil }
+		return .notSekai
 	}
 
-	private static func isCertificateProblem(_ error: Error) -> Bool {
+	static func failure(for error: Error) -> Failure {
 		let codes: Set<Int> = [
 			NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate,
 			NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid,
 			NSURLErrorClientCertificateRejected,
 		]
 		let nsError = error as NSError
-		return nsError.domain == NSURLErrorDomain && codes.contains(nsError.code)
+		guard nsError.domain == NSURLErrorDomain else { return .unreachable }
+		if nsError.code == NSURLErrorNotConnectedToInternet { return .offline }
+		return codes.contains(nsError.code) ? .untrusted : .unreachable
 	}
 }
 
 extension ServerCheck.Failure {
 	/// What to tell the person, in full sentences.
-	func message(for origin: Origin) -> String {
+	var title: String {
 		switch self {
+		case .offline: return "You're offline"
+		case .unreachable: return "Can't reach your server"
+		case .untrusted: return "Connection isn't secure"
+		case .notSekai: return "Not a Sekai server"
+		case .serverError: return "Server unavailable"
+		}
+	}
+
+	var message: String {
+		switch self {
+		case .offline:
+			return "Connect to Wi-Fi or cellular data, then try again."
 		case .unreachable:
-			return "Couldn't reach \(origin.string). Check you're online (and on Tailscale, if that's how you reach Sekai)."
+			return "Check the address and that the server is running. If you use Tailscale, check that it's on."
 		case .untrusted:
-			return "\(origin.string) has a certificate this device doesn't trust."
-		case let .serverError(status):
-			return "\(origin.string) answered with an error (\(status)). Check Sekai is running there."
+			return "This device doesn't trust the server's security certificate. Check the address, or ask whoever runs the server to fix it."
+		case .serverError:
+			return "Your server didn't finish loading. Check that Sekai is running, then try again."
 		case .notSekai:
-			return "That isn't a Sekai server."
+			return "That address didn't open Sekai. Check the address you use in your browser."
 		}
 	}
 }

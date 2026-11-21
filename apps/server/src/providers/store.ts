@@ -13,8 +13,8 @@ import {
 	THINKING_LEVELS,
 	type ThinkingLevel,
 } from "@sekai/shared";
-import { eq } from "drizzle-orm";
-import { db, schema } from "../db/index.ts";
+import { eq, sql } from "drizzle-orm";
+import { type Db, db, schema } from "../db/index.ts";
 import { bus } from "../events/bus.ts";
 import { badRequest, notFound, parse } from "../lib/errors.ts";
 import { newId } from "../lib/ids.ts";
@@ -68,7 +68,14 @@ export function onProviderChange(fn: (providerId: string, removed: boolean) => v
 	return () => listeners.delete(fn);
 }
 
+/** Upgrade old subscriptions in place, including when a backup predates the removal of the preset. */
+export function geminiSubscriptionMigration(database: Pick<Db, "update">) {
+	const providers = schema.providers;
+	return database.update(providers).set({ preset: "custom" }).where(sql`${providers.preset} = ${"gemini"}`);
+}
+
 export async function loadProviders(): Promise<void> {
+	await geminiSubscriptionMigration(db);
 	const rows = await db.select().from(schema.providers);
 	cache = new Map(rows.map((r) => [r.id, rowToProvider(r)]));
 	for (const r of rows) {
@@ -100,7 +107,7 @@ export async function createProvider(input: ProviderCreateInput): Promise<Provid
 	const data = parse(ProviderCreate, input);
 	const preset = PROVIDER_PRESETS[data.preset];
 	const command = (data.command ?? preset.command).trim();
-	if (preset.kind === "acp" && !command) throw badRequest("Enter the command that starts the agent");
+	if (preset.kind === "acp" && !command) throw badRequest("Enter the command that starts it");
 	const now = Date.now();
 	const provider: Provider = {
 		id: newId("prv"),

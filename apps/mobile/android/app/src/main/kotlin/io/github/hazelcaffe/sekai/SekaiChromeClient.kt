@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Message
 import android.webkit.GeolocationPermissions
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
@@ -65,6 +67,33 @@ internal class SekaiChromeClient(private val activity: MainActivity, private val
         filePathCallback: ValueCallback<Array<Uri>>,
         fileChooserParams: FileChooserParams,
     ) = files.show(filePathCallback, fileChooserParams)
+
+    // The page's alert, confirm and prompt (and "leave this page?") are Material 3 dialogs, only for the server's pages.
+    override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean =
+        dialog(url, result) { JsDialog.Alert(message, result) }
+
+    override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean =
+        dialog(url, result) { JsDialog.Confirm(message, result) }
+
+    override fun onJsBeforeUnload(view: WebView, url: String, message: String, result: JsResult): Boolean =
+        dialog(url, result) { JsDialog.Confirm(message.ifBlank { activity.getString(R.string.leave_page) }, result) }
+
+    override fun onJsPrompt(
+        view: WebView,
+        url: String,
+        message: String,
+        defaultValue: String?,
+        result: JsPromptResult,
+    ): Boolean = dialog(url, result) { JsDialog.Prompt(message, defaultValue.orEmpty(), result) }
+
+    private fun dialog(url: String, result: JsResult, make: () -> JsDialog): Boolean {
+        if (!isSameOrigin(url, activity.bridgeOrigin)) {
+            result.cancel()
+            return true
+        }
+        activity.showJsDialog(make())
+        return true
+    }
 
     /** The microphone and camera, for the server's own pages only, once Android's permission is given. */
     override fun onPermissionRequest(request: PermissionRequest) {

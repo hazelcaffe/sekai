@@ -151,7 +151,7 @@ export async function listHosts(): Promise<HostWithStatus[]> {
 
 async function requireHost(id: string): Promise<Host> {
 	const [row] = await db.select().from(schema.hosts).where(eq(schema.hosts.id, id));
-	if (!row) throw notFound("Host");
+	if (!row) throw notFound("Device");
 	return toHost(row);
 }
 
@@ -353,7 +353,7 @@ const tag = (agentId: string) => `sekai-agent:${agentId}`;
 
 async function keyLine(agentId: string): Promise<string> {
 	const agent = await getAgent(agentId);
-	if (!agent) throw notFound("Agent");
+	if (!agent) throw notFound("Bot");
 	const { publicKey } = await agentKeypair(agentId, agent.name);
 	const [type, blob] = publicKey.split(/\s+/);
 	return `${type} ${blob} ${tag(agentId)}`;
@@ -447,7 +447,7 @@ export async function findReachable(agentId: string, ref: string): Promise<Reach
 	const hit = all.find((x) => x.id === ref || x.name.toLowerCase() === r);
 	if (!hit) {
 		throw badRequest(
-			`There's no device or bot machine called "${ref}". Known: ${all.map((x) => x.name).join(", ") || "none yet (the user adds devices in Admin → Devices & access)"}.`,
+			`There's no device or bot's computer called "${ref}". Known: ${all.map((x) => x.name).join(", ") || "none yet (the user adds devices in Settings → Network & devices)"}.`,
 		);
 	}
 	return hit;
@@ -458,7 +458,7 @@ function pickAccount(h: Host, account: string | null | undefined): string {
 	const a = account?.trim() || h.user;
 	if (!accountsOf(h).includes(a)) {
 		throw badRequest(
-			`${h.name} has no account "${a}" for bots. Its accounts: ${accountsOf(h).join(", ")} (the user adds more in Admin → Tailscale).`,
+			`${h.name} has no account "${a}" for bots. Its accounts: ${accountsOf(h).join(", ")} (the user adds more in Settings → Network & devices).`,
 		);
 	}
 	return a;
@@ -487,7 +487,7 @@ export async function grantAccess(
 		return target;
 	} else {
 		const m = await getMachine(target.id);
-		if (!m) throw notFound("Machine");
+		if (!m) throw notFound("Computer");
 		if (m.status !== "running") throw badRequest(`${m.name} isn't running`);
 		// The owner's key logs in to its own machine.
 		await installKey(await sshTarget(m), agentId);
@@ -745,7 +745,7 @@ export async function tailnetDevices(): Promise<{
 	};
 }
 
-/** You took a bot's access away (from Admin). */
+/** You took a bot's access away (from Settings → Server → Network & devices). */
 export async function revokeGrant(grantId: string): Promise<void> {
 	const [g] = await db.select().from(schema.accessGrants).where(eq(schema.accessGrants.id, grantId));
 	if (!g) throw notFound("Access");
@@ -753,7 +753,7 @@ export async function revokeGrant(grantId: string): Promise<void> {
 	await revokeAccess(g.agentId, g.hostId ?? g.machineId ?? "", h ? grantAccount(h, g) : null);
 }
 
-/** Every grant (hosts and bots' machines), for Admin. */
+/** Every grant (hosts and bots' machines), for Settings → Server → Network & devices. */
 export async function listGrants(): Promise<AccessGrant[]> {
 	return db.select().from(schema.accessGrants);
 }

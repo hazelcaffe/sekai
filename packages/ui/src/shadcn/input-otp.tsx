@@ -2,6 +2,7 @@ import { OTPInput, OTPInputContext } from "input-otp";
 import { MinusIcon } from "lucide-react";
 import * as React from "react";
 import { cn } from "../lib/utils.ts";
+import { fieldEdge } from "./field-styles.ts";
 
 function InputOTP({
 	className,
@@ -32,7 +33,8 @@ function InputOTPSlot({ index, className, ...props }: React.ComponentProps<"div"
 			data-slot="input-otp-slot"
 			data-active={isActive}
 			className={cn(
-				"relative flex h-12 w-10 items-center justify-center rounded-xl border border-transparent bg-muted font-mono text-lg font-medium uppercase transition-[border-color,box-shadow,background-color] duration-150 aria-invalid:border-destructive/60 data-[active=true]:z-10 data-[active=true]:border-brand/60 data-[active=true]:bg-background data-[active=true]:ring-[3px] data-[active=true]:ring-ring/15",
+				fieldEdge,
+				"relative flex h-12 w-10 items-center justify-center rounded-md bg-surface-2 font-mono text-heading font-medium uppercase transition-[border-color,box-shadow,background-color] duration-fast aria-invalid:border-danger-ink data-[active=true]:z-10 data-[active=true]:border-ring data-[active=true]:bg-bg data-[active=true]:ring-[3px] data-[active=true]:ring-ring/15 android:rounded-lg",
 				className,
 			)}
 			{...props}
@@ -40,7 +42,7 @@ function InputOTPSlot({ index, className, ...props }: React.ComponentProps<"div"
 			{char}
 			{hasFakeCaret && (
 				<div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-					<div className="h-5 w-px animate-caret-blink bg-foreground" />
+					<div className="h-5 w-px animate-caret-blink bg-fg" />
 				</div>
 			)}
 		</div>

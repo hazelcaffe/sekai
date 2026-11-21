@@ -25,7 +25,7 @@ function SheetOverlay({ className, ...props }: React.ComponentProps<typeof Sheet
 	return (
 		<SheetPrimitive.Overlay
 			data-slot="sheet-overlay"
-			className={cn(overlayStyles, "z-[55]", className)}
+			className={cn(overlayStyles, "z-overlay", className)}
 			{...props}
 		/>
 	);
@@ -48,10 +48,10 @@ function SheetContent({
 				data-slot="sheet-content"
 				data-side={side}
 				className={cn(
-					"fixed z-[55] flex flex-col bg-background text-sm shadow-pop outline-none duration-300 ease-out-soft data-open:animate-in data-closed:animate-out data-closed:duration-200",
+					"fixed z-overlay flex flex-col bg-bg text-body shadow-pop outline-none duration-panel ease-standard data-open:animate-in data-closed:animate-out",
 					"data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:w-full data-[side=right]:md:w-[min(440px,92vw)] data-[side=right]:md:border-l data-[side=right]:data-open:slide-in-from-right data-[side=right]:data-closed:slide-out-to-right",
 					"data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:w-[min(320px,88vw)] data-[side=left]:border-r data-[side=left]:data-open:slide-in-from-left data-[side=left]:data-closed:slide-out-to-left",
-					"data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:rounded-t-[28px] data-[side=bottom]:border-t data-[side=bottom]:pb-safe data-[side=bottom]:data-open:slide-in-from-bottom data-[side=bottom]:data-closed:slide-out-to-bottom",
+					"data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:rounded-t-xl data-[side=bottom]:border-t data-[side=bottom]:pb-safe android:data-[side=bottom]:rounded-t-sheet data-[side=bottom]:data-open:slide-in-from-bottom data-[side=bottom]:data-closed:slide-out-to-bottom",
 					"data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:border-b data-[side=top]:data-open:slide-in-from-top data-[side=top]:data-closed:slide-out-to-top",
 					className,
 				)}
@@ -82,7 +82,7 @@ function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPr
 	return (
 		<SheetPrimitive.Title
 			data-slot="sheet-title"
-			className={cn("font-heading text-base font-semibold tracking-tight text-foreground", className)}
+			className={cn("font-heading text-heading font-semibold tracking-tight text-fg", className)}
 			{...props}
 		/>
 	);
@@ -92,7 +92,7 @@ function SheetDescription({ className, ...props }: React.ComponentProps<typeof S
 	return (
 		<SheetPrimitive.Description
 			data-slot="sheet-description"
-			className={cn("text-sm text-muted-foreground", className)}
+			className={cn("text-small text-fg-muted", className)}
 			{...props}
 		/>
 	);

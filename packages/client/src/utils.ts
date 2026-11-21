@@ -1,6 +1,6 @@
 import type { ModelInfo } from "@sekai/shared";
 
-export { cn } from "@sekai/ui";
+export { cn, copyText } from "@sekai/ui";
 
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto", style: "short" });
 
@@ -90,21 +90,4 @@ export function providerLabel(id: string): string {
 
 export function pluralize(n: number, word: string, plural = `${word}s`): string {
 	return `${n} ${n === 1 ? word : plural}`;
-}
-
-/** Copies text; on plain http (no clipboard API) it falls back to the old way. */
-export async function copyText(text: string): Promise<void> {
-	if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
-	const area = document.createElement("textarea");
-	area.value = text;
-	area.setAttribute("readonly", "");
-	area.style.position = "fixed";
-	area.style.opacity = "0";
-	document.body.append(area);
-	area.select();
-	try {
-		document.execCommand("copy");
-	} finally {
-		area.remove();
-	}
 }

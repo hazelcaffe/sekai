@@ -149,7 +149,7 @@ export class Desktop implements DesktopControl {
 			await sshText(this.target, installHelperScript(), { input: helperSource, timeoutMs: 60_000 });
 			r = await sshExec(this.target, `${COMMAND} ${args}`, opts);
 		}
-		if (r.code === MISSING) throw new Error("The desktop helper isn't on this machine and couldn't be installed");
+		if (r.code === MISSING) throw new Error("The desktop helper isn't on this computer and couldn't be installed");
 		return r;
 	}
 

@@ -14,7 +14,7 @@ export const compareRoutes = new Hono().post("/", async (c) => {
 	const req = await body(c, CompareRequest);
 	const models = [...new Set(req.models)];
 	if (models.some(isByosModel)) {
-		throw badRequest("Subscription models only run as a bot's brain, so they can't be compared here.");
+		throw badRequest("Subscription models only run as a bot's model, so they can't be compared here.");
 	}
 	const prices = await modelPrices();
 	return streamSSE(c, async (stream) => {

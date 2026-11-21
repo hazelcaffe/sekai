@@ -3,14 +3,11 @@ package io.github.hazelcaffe.sekai
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
-import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 
 /** The page's background color and whether it's dark (the bridge's `theme` message). */
 internal data class PageTheme(val color: Int, val dark: Boolean) {
@@ -22,7 +19,7 @@ internal data class PageTheme(val color: Int, val dark: Boolean) {
             return PageTheme(color.toColorInt(), dark)
         }
 
-        /** The web app's own default for the phone's light or dark mode (also the connect screen's). */
+        /** The web app's own default for the phone's light or dark mode (what shows before the page's own colors). */
         fun system(context: Context, config: Configuration = context.resources.configuration): PageTheme {
             val night = config.uiMode and Configuration.UI_MODE_NIGHT_MASK
             return if (night == Configuration.UI_MODE_NIGHT_YES) {
@@ -35,32 +32,25 @@ internal data class PageTheme(val color: Int, val dark: Boolean) {
 }
 
 /**
- * Edge to edge, done so nothing hides under the bars: the system bars, display cutouts and keyboard become padding
- * on [root] (so the web view, and the page's composer, always sit between them), and the bars are transparent
- * over [root]'s background, which is the page's color.
+ * Edge to edge: the app draws behind the status and navigation bars and nothing pads for them (the screens use the
+ * window insets, and the page gets them as CSS variables, see [CssInsets]). This only picks the bars' icon colors and
+ * the window color behind everything.
  */
-internal class SystemBars(private val activity: ComponentActivity, private val root: View) {
-    init {
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val types = WindowInsetsCompat.Type.systemBars() or
-                WindowInsetsCompat.Type.displayCutout() or
-                WindowInsetsCompat.Type.ime()
-            val bars = insets.getInsets(types)
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            // Consumed: the page mustn't add safe-area padding of its own on top.
-            WindowInsetsCompat.CONSUMED
-        }
-    }
+internal class SystemBars(private val activity: ComponentActivity) {
+    /** The page's colors: its background behind the bars, light or dark icons to match. */
+    fun apply(theme: PageTheme) = style(theme.dark, theme.color)
 
-    fun apply(theme: PageTheme) {
-        val style = if (theme.dark) {
+    /** A native screen: the phone's light or dark mode, over the screen's own [surface] color. */
+    fun applyNative(dark: Boolean, surface: Int) = style(dark, surface)
+
+    private fun style(dark: Boolean, background: Int) {
+        val style = if (dark) {
             SystemBarStyle.dark(Color.TRANSPARENT)
         } else {
             SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
         }
-        // Light or dark icons to match; no scrim behind three-button navigation (the page color shows instead).
+        // No scrim behind three-button navigation: the screen's color shows through instead.
         activity.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
-        root.setBackgroundColor(theme.color)
-        activity.window.setBackgroundDrawable(theme.color.toDrawable())
+        activity.window.setBackgroundDrawable(background.toDrawable())
     }
 }

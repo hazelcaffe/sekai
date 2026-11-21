@@ -60,11 +60,14 @@ export const Conversation = z.object({
 });
 export type Conversation = z.infer<typeof Conversation>;
 
+/** The most bots a group chat can have. */
+export const MAX_GROUP_MEMBERS = 8;
+
 export const ConversationCreate = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("direct"), agentId: z.string().min(1), title: z.string().max(200).optional() }),
 	z.object({
 		kind: z.literal("group"),
-		memberIds: z.array(z.string().min(1)).min(2).max(8),
+		memberIds: z.array(z.string().min(1)).min(2).max(MAX_GROUP_MEMBERS),
 		title: z.string().max(200).optional(),
 		settings: ConversationSettings.partial().optional(),
 	}),
@@ -74,7 +77,7 @@ export type ConversationCreate = z.input<typeof ConversationCreate>;
 export const ConversationUpdate = z
 	.object({
 		title: z.string().max(200),
-		memberIds: z.array(z.string().min(1)).min(2).max(8),
+		memberIds: z.array(z.string().min(1)).min(2).max(MAX_GROUP_MEMBERS),
 		settings: ConversationSettingsPatch,
 		pinned: z.boolean(),
 		archived: z.boolean(),

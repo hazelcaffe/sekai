@@ -75,6 +75,11 @@ export const Settings = z.object({
 });
 export type Settings = z.infer<typeof Settings>;
 
+/** Read-only setup signal, including when the connection details are hidden for a member. */
+export interface PublicSettings extends Settings {
+	machines: MachineSettings & { configured: boolean };
+}
+
 export const SettingsUpdate = Settings.partial();
 export type SettingsUpdate = z.input<typeof SettingsUpdate>;
 

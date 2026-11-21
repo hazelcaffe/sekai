@@ -77,7 +77,7 @@ export async function checkHealth(): Promise<HealthReport> {
 				id: "backup-failed",
 				level: "danger",
 				title: "The last automatic backup failed",
-				detail: b.lastError.error ?? "See Admin → Backups.",
+				detail: b.lastError.error ?? "See Settings → Backups.",
 			});
 		} else if (b.config.schedule !== "off") {
 			const period = (b.config.schedule === "daily" ? 1 : 7) * 86_400_000;
@@ -90,8 +90,8 @@ export async function checkHealth(): Promise<HealthReport> {
 					level: "warning",
 					title: "Backups are overdue",
 					detail: newest
-						? `The newest is from ${new Date(newest.createdAt).toLocaleDateString()}. Make one now in Admin → Backups.`
-						: "There isn't one yet. Make one now in Admin → Backups.",
+						? `The newest is from ${new Date(newest.createdAt).toLocaleDateString()}. Make one now in Settings → Backups.`
+						: "There isn't one yet. Make one now in Settings → Backups.",
 				});
 			}
 		}
@@ -172,7 +172,7 @@ export async function watchHealth(): Promise<void> {
 				body: issue.detail,
 				agentId: null,
 				conversationId: null,
-				url: "/admin",
+				url: "/settings/status",
 			});
 		}
 		// Problems that went away are forgotten, so a new one notifies again.

@@ -14,6 +14,6 @@
 
 The apps ask for your server's address on first start. The desktop app updates itself from your server after
 that (`bun run --cwd apps/desktop publish:local`). For notifications on phones while the app is closed, set up
-**Admin → Phone apps**.
+**Settings → Server → Network & devices → Phone notifications**.
 
 `SHA256SUMS.txt` has every file's checksum (`sha256sum -c SHA256SUMS.txt`).

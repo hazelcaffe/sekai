@@ -2,6 +2,7 @@ import {
 	DEFAULT_COMPUTER_SPECS,
 	DEFAULT_DEVBOX_SPECS,
 	type MachineSettings,
+	type PublicSettings,
 	type Settings,
 	type SettingsUpdate,
 	SettingsUpdate as SettingsUpdateSchema,
@@ -119,19 +120,27 @@ export function maskSecret(secret: string): string {
  * Settings safe to send to clients. People who aren't admins don't see how the server is wired up. The default
  * models are the ones new bots would get (models on offer stand in for defaults that aren't).
  */
-export async function getPublicSettings(): Promise<Settings> {
+export async function getPublicSettings(): Promise<PublicSettings> {
 	const { availableModels, defaultModels } = await import("../agent/models.ts");
 	const settings = await getSettings();
 	const { primary, fast } = await defaultModels(settings, await availableModels(4000));
-	const s = { ...settings, defaultModel: primary, defaultFastModel: fast };
-	const actor = currentActor();
-	if (actor && !actor.admin) {
+	return publicSettings(
+		{ ...settings, defaultModel: primary, defaultFastModel: fast },
+		currentActor()?.admin ?? true,
+	);
+}
+
+export function publicSettings(s: Settings, admin: boolean): PublicSettings {
+	const px = s.machines.proxmox;
+	const configured = Boolean(px.url && px.node && px.tokenId);
+	if (!admin) {
 		return {
 			...s,
 			gatewayUrl: "",
 			gatewayApiKey: "",
 			machines: {
 				...s.machines,
+				configured,
 				proxmox: { ...s.machines.proxmox, url: "", tokenId: "", tokenSecret: "", node: "" },
 				tailscaleAuthKey: "",
 			},
@@ -142,6 +151,7 @@ export async function getPublicSettings(): Promise<Settings> {
 		gatewayApiKey: maskSecret(s.gatewayApiKey),
 		machines: {
 			...s.machines,
+			configured,
 			proxmox: { ...s.machines.proxmox, tokenSecret: maskSecret(s.machines.proxmox.tokenSecret) },
 			tailscaleAuthKey: maskSecret(s.machines.tailscaleAuthKey),
 		},
@@ -159,6 +169,12 @@ export async function updateSettings(input: SettingsUpdate): Promise<Settings> {
 		if (patch.timezone !== undefined && patch.timezone !== "auto" && !isValidTimezone(patch.timezone)) {
 			throw badRequest(`Unknown time zone: ${patch.timezone}`);
 		}
+		const server = Object.fromEntries(
+			Object.entries(patch).filter(([k, v]) => v !== undefined && !PERSONAL.has(k as keyof Settings)),
+		) as SettingsUpdate;
+		// All or nothing: a change that includes the server's settings is refused whole for non-admins, before
+		// any of your own is written.
+		if (Object.keys(server).length) requirePermission("admin");
 		if (patch.userName !== undefined) {
 			const name = patch.userName.trim().slice(0, 80);
 			if (name) {
@@ -173,14 +189,10 @@ export async function updateSettings(input: SettingsUpdate): Promise<Settings> {
 			approvalMode: patch.approvalMode,
 			toolRules: patch.toolRules,
 		});
-		const server = Object.fromEntries(
-			Object.entries(patch).filter(([k, v]) => v !== undefined && !PERSONAL.has(k as keyof Settings)),
-		) as SettingsUpdate;
 		if (!Object.keys(server).length) {
 			bus.emit({ type: "settings.changed" });
 			return getPublicSettings();
 		}
-		requirePermission("admin");
 		return saveServerSettings(server);
 	}
 	return saveServerSettings(patch);

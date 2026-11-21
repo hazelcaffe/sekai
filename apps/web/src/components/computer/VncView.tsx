@@ -7,6 +7,7 @@ import {
 	DropdownItem,
 	DropdownMenu,
 	DropdownTrigger,
+	IconButton,
 	Input,
 	Spinner,
 	Textarea,
@@ -91,29 +92,26 @@ function Tool({
 	children: ReactNode;
 }) {
 	return (
-		<Tooltip content={label} side="bottom">
-			<button
-				type="button"
-				aria-label={label}
-				aria-pressed={active}
-				onClick={onClick}
-				disabled={disabled}
-				className={cn(
-					"flex size-9 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-35 coarse:size-11 [&_svg]:size-[18px]",
-					active && "bg-white/12 text-white",
-				)}
-			>
-				{children}
-			</button>
-		</Tooltip>
+		<IconButton
+			label={label}
+			aria-pressed={active}
+			onClick={onClick}
+			disabled={disabled}
+			className={cn(
+				"flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-fg/10 hover:text-fg disabled:pointer-events-none disabled:opacity-35 coarse:size-11 [&_svg]:size-5",
+				active && "bg-fg/12 text-fg",
+			)}
+		>
+			{children}
+		</IconButton>
 	);
 }
 
 /** Centered message over the screen: connecting, a password, or why it dropped. */
 function Notice({ children }: { children: ReactNode }) {
 	return (
-		<div className="absolute inset-0 flex items-center justify-center bg-neutral-950/70 p-6 backdrop-blur-sm">
-			<div className="flex w-[min(360px,100%)] flex-col items-center gap-3 rounded-3xl bg-neutral-900 px-6 py-7 text-center shadow-2xl ring-1 ring-white/10">
+		<div className="absolute inset-0 flex items-center justify-center bg-screen/70 p-6 backdrop-blur-sm">
+			<div className="flex w-[min(360px,100%)] flex-col items-center gap-3 rounded-xl bg-surface-raised px-6 py-7 text-center shadow-pop ring-1 ring-fg/10">
 				{children}
 			</div>
 		</div>
@@ -171,9 +169,10 @@ export function VncView({
 		let cancelled = false;
 		setState("connecting");
 		setError(null);
-		void api.machines.takeover(machine.id, true, agentId);
 		(async () => {
 			try {
+				await api.machines.takeover(machine.id, true, agentId);
+				if (cancelled) return;
 				const [{ default: RFB }, access] = await Promise.all([
 					import("@novnc/novnc"),
 					api.machines.access(machine.id, agentId).catch(() => null),
@@ -184,7 +183,7 @@ export function VncView({
 					shared: true,
 				});
 				client.scaleViewport = true;
-				client.background = "#000";
+				client.background = "var(--screen)";
 				client.qualityLevel = 8;
 				client.addEventListener("connect", () => {
 					setState("connected");
@@ -203,7 +202,6 @@ export function VncView({
 					const text = (e as CustomEvent<{ text: string }>).detail?.text ?? "";
 					if (!text.trim()) return;
 					toast("Copied on the computer", {
-						description: text.length > 90 ? `${text.slice(0, 90)}…` : text,
 						action: {
 							label: "Copy here",
 							onClick: () => void navigator.clipboard?.writeText(text).catch(() => {}),
@@ -211,8 +209,9 @@ export function VncView({
 					});
 				});
 				rfb.current = client;
-			} catch (err) {
-				setError(err instanceof Error ? err.message : String(err));
+			} catch {
+				if (cancelled) return;
+				setError("Check the computer’s connection to Sekai, then try again.");
 				setState("closed");
 			}
 		})();
@@ -220,7 +219,9 @@ export function VncView({
 			cancelled = true;
 			rfb.current?.disconnect();
 			rfb.current = null;
-			void api.machines.takeover(machine.id, false, agentId);
+			void api.machines
+				.takeover(machine.id, false, agentId)
+				.catch(() => toast.error("Couldn’t hand back the screen. Check the connection and reopen it."));
 		};
 	}, [open, machine.id, agentId, attempt]);
 
@@ -256,7 +257,8 @@ export function VncView({
 
 	const toggleFullscreen = () => {
 		if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-		else void root.current?.requestFullscreen().catch(() => {});
+		// Include portal-based menus and Teach dialogs in browser full screen.
+		else void document.documentElement.requestFullscreen().catch(() => {});
 	};
 
 	/** Pastes on the computer: sets its clipboard, then presses Ctrl+V where its cursor is. */
@@ -302,7 +304,7 @@ export function VncView({
 
 	const status = recording ? (
 		<>
-			<span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-red-500" />
+			<span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-danger" />
 			<span className="truncate">
 				Recording{phone ? "" : ` for ${botName}`} · {teaching.count} step{teaching.count === 1 ? "" : "s"}
 				{teaching.startedAt && (
@@ -315,7 +317,7 @@ export function VncView({
 		</>
 	) : connected ? (
 		<>
-			<span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-violet-400" />
+			<span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-info" />
 			<span className="truncate">
 				You're in control{phone ? "" : ` · ${botName} is waiting`}
 				{since && (
@@ -328,26 +330,28 @@ export function VncView({
 		</>
 	) : state === "closed" ? (
 		<>
-			<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red-400" />
+			<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-danger" />
 			<span className="truncate">Disconnected</span>
 		</>
 	) : (
 		<>
-			<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-amber-400" />
+			<span aria-hidden className="size-1.5 shrink-0 rounded-full bg-warning" />
 			<span className="truncate">Connecting…</span>
 		</>
 	);
 
 	const tools = (
-		<div className="flex shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] p-1 ring-1 ring-white/10">
+		<div className="flex shrink-0 items-center gap-0.5 rounded-full bg-fg/[0.06] p-1 ring-1 ring-fg/10">
 			{canTeach && !recording && (
-				<Tool
-					label={`Teach ${botName} how to do something`}
+				<Button
+					variant="ghost"
+					size="sm"
+					aria-label={`Teach ${botName}`}
 					onClick={teaching.begin}
 					disabled={!connected || teaching.phase !== "idle"}
 				>
-					<GraduationCap />
-				</Tool>
+					<GraduationCap /> Teach
+				</Button>
 			)}
 			{!phone && (
 				<Tool label="Paste text on the computer" onClick={() => void startPaste()} disabled={!connected}>
@@ -366,13 +370,13 @@ export function VncView({
 							type="button"
 							aria-label="Keys"
 							disabled={!connected}
-							className="flex size-9 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-35 coarse:size-11 [&_svg]:size-[18px]"
+							className="flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-fg/10 hover:text-fg disabled:pointer-events-none disabled:opacity-35 coarse:size-11 [&_svg]:size-5"
 						>
 							<Command />
 						</button>
 					</DropdownTrigger>
 				</Tooltip>
-				<DropdownContent className="dark min-w-52 text-popover-foreground">
+				<DropdownContent className="dark min-w-52 text-fg">
 					<DropdownItem
 						onSelect={() => {
 							rfb.current?.sendCtrlAltDel();
@@ -409,20 +413,22 @@ export function VncView({
 			<DialogPrimitive.Portal>
 				<DialogPrimitive.Content
 					ref={root}
-					className="dark fixed inset-0 z-[58] flex flex-col bg-neutral-950 text-white outline-none animate-in fade-in-0 duration-200"
+					className="dark fixed inset-0 z-takeover flex flex-col bg-screen text-fg outline-none animate-in fade-in-0 duration-200"
 					// Escape belongs to the computer (closing apps, menus…); Hand back is the way out.
-					onEscapeKeyDown={(e) => e.preventDefault()}
+					onEscapeKeyDown={(e) => {
+						if (e.isTrusted || !phone) e.preventDefault();
+					}}
 				>
 					<DialogPrimitive.Title className="sr-only">{machine.name}</DialogPrimitive.Title>
 					<DialogPrimitive.Description className="sr-only">
 						You're using {botName}'s {agentId ? "screen" : "computer"}. It waits until you hand it back.
 					</DialogPrimitive.Description>
 
-					<header className="flex shrink-0 items-center gap-3 px-3 pt-[max(env(safe-area-inset-top),0.625rem)] pb-2.5 md:px-4">
+					<header className="flex shrink-0 items-center gap-3 px-3 pt-safe-3 pb-2.5 md:px-4">
 						{agent && <AgentAvatar avatar={agent.avatar} size={phone ? 30 : 34} />}
 						<div className="min-w-0 flex-1">
-							<div className="truncate text-sm font-semibold tracking-tight">{machine.name}</div>
-							<div className="flex items-center gap-1.5 text-xs text-neutral-400">{status}</div>
+							<div className="truncate text-body font-semibold tracking-tight">{machine.name}</div>
+							<div className="flex items-center gap-1.5 text-small text-fg-muted">{status}</div>
 						</div>
 
 						{!phone && tools}
@@ -431,7 +437,7 @@ export function VncView({
 							<Button
 								onClick={teaching.stop}
 								size={phone ? "sm" : "md"}
-								className="shrink-0 rounded-full bg-red-500 px-4 text-white hover:bg-red-500/90"
+								className="shrink-0 rounded-full bg-danger px-4 text-danger-foreground hover:bg-danger/90"
 							>
 								<Check /> Done
 							</Button>
@@ -439,47 +445,42 @@ export function VncView({
 						<Button
 							onClick={handBack}
 							size={phone ? "sm" : "md"}
-							className="shrink-0 rounded-full bg-white px-4 text-neutral-950 hover:bg-white/90"
+							className="shrink-0 rounded-full bg-fg px-4 text-bg hover:bg-fg/90"
 						>
 							<Undo2 /> {phone ? "Hand back" : `Hand back to ${botName}`}
 						</Button>
 					</header>
 
-					<div
-						className={cn(
-							"relative min-h-0 flex-1 px-2 md:px-4 md:pb-4",
-							phone ? "pb-2" : "pb-[max(env(safe-area-inset-bottom),0.5rem)]",
-						)}
-					>
-						<div className="relative h-full overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-white/10">
+					<div className={cn("relative min-h-0 flex-1 px-2 md:px-4 md:pb-4", phone ? "pb-2" : "pb-safe-2")}>
+						<div className="relative h-full overflow-hidden rounded-lg bg-screen shadow-pop ring-1 ring-fg/10">
 							<div ref={screen} className="absolute inset-0" />
 							{state === "connecting" && (
 								<Notice>
 									{agent ? <AgentAvatar avatar={agent.avatar} size={56} /> : null}
-									<div className="flex items-center gap-2 text-[15px] font-medium">
-										<Spinner className="text-white" /> Connecting to {machine.name}
+									<div className="flex items-center gap-2 text-body font-medium">
+										<Spinner className="text-fg" /> Connecting to {machine.name}
 									</div>
-									<p className="text-[13px] leading-5 text-neutral-400">
-										{botName} stops using it while you're in control, and picks up again when you
-										hand it back.
+									<p className="text-body text-fg-muted">
+										{botName} waits until you hand the screen back.
 									</p>
 								</Notice>
 							)}
 							{state === "password" && (
 								<Notice>
-									<div className="text-[15px] font-medium">This computer wants its VNC password</div>
+									<div className="text-body font-medium">Enter the screen password</div>
 									<form
 										className="flex w-full flex-col gap-2"
 										onSubmit={(e) => {
 											e.preventDefault();
 											rfb.current?.sendCredentials({ password });
+											setPassword("");
 											setState("connecting");
 										}}
 									>
 										<Input
 											autoFocus
 											type="password"
-											aria-label="VNC password"
+											aria-label="Screen password (VNC)"
 											value={password}
 											onChange={(e) => setPassword(e.target.value)}
 										/>
@@ -491,26 +492,26 @@ export function VncView({
 							)}
 							{state === "closed" && (
 								<Notice>
-									<span className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.06] text-neutral-300 [&_svg]:size-6">
+									<span className="flex size-12 items-center justify-center rounded-lg bg-fg/[0.06] text-fg-muted [&_svg]:size-6">
 										<MonitorX />
 									</span>
-									<div className="text-[15px] font-medium">
+									<div className="text-body font-medium">
 										{error ? "Lost the connection" : "Disconnected"}
 									</div>
-									<p className="text-[13px] leading-5 text-neutral-400">
+									<p className="text-body text-fg-muted">
 										{error ?? "The computer closed the connection."}
 									</p>
 									<div className="mt-1 flex gap-2">
 										<Button
 											onClick={() => setAttempt((n) => n + 1)}
-											className="rounded-full bg-white px-4 text-neutral-950 hover:bg-white/90"
+											className="rounded-full bg-fg px-4 text-bg hover:bg-fg/90"
 										>
 											<RotateCw /> Try again
 										</Button>
 										<Button
 											variant="ghost"
 											onClick={handBack}
-											className="rounded-full text-neutral-300 hover:bg-white/10 hover:text-white"
+											className="rounded-full text-fg-muted hover:bg-fg/10 hover:text-fg"
 										>
 											Close
 										</Button>
@@ -520,11 +521,7 @@ export function VncView({
 						</div>
 					</div>
 
-					{phone && (
-						<div className="flex shrink-0 justify-center pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-							{tools}
-						</div>
-					)}
+					{phone && <div className="flex shrink-0 justify-center pb-safe-3">{tools}</div>}
 
 					{/* A phone's keyboard types here, and each key goes to the computer. */}
 					<input

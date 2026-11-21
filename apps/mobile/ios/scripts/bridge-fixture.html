@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="theme-color" content="#ffffff" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<title>Bridge test</title>
+		<style>
+			:root { color-scheme: light dark; font: 17px system-ui, sans-serif; }
+			body { padding: max(16px, env(safe-area-inset-top)) 16px; }
+			button { font: inherit; padding: 12px; }
+			input { position: fixed; inset: auto 16px max(8px, env(safe-area-inset-bottom)); font: inherit; padding: 12px; }
+		</style>
+	</head>
+	<body>
+		<p id="draft">Bridge test</p>
+		<button id="settings" type="button">Server settings</button>
+		<button id="sheet" type="button">Open a sheet</button>
+		<button id="appearance" type="button">Use dark appearance</button>
+		<p id="style"></p>
+		<input type="text" aria-label="Message" />
+		<script>
+			const systemDark = matchMedia("(prefers-color-scheme: dark)");
+			function appearance() {
+				const dark = localStorage.getItem("sekai.theme") === "n25" || systemDark.matches;
+				document.documentElement.classList.toggle("dark", dark);
+				document.querySelector('meta[name="theme-color"]').content = dark ? "#0d0a10" : "#ffffff";
+				document.getElementById("style").textContent = systemDark.matches ? "Native dark" : "Native light";
+			}
+			document.getElementById("appearance").onclick = () => {
+				localStorage.setItem("sekai.theme", "n25");
+				appearance();
+			};
+			systemDark.addEventListener("change", appearance);
+			appearance();
+			const draft = document.getElementById("draft");
+			// Only with the bridge, which marks the platform before the page runs.
+			const inApp = () => ["ios", "android"].includes(document.documentElement.dataset.platform);
+			document.getElementById("settings").onclick = () => {
+				if (!inApp()) return;
+				draft.textContent = "Draft preserved";
+				history.pushState({}, "", "#draft");
+				let overlay = true;
+				window.__sekaiBack = () => {
+					if (!overlay) return false;
+					overlay = false;
+					draft.textContent = "Overlay closed";
+					return true;
+				};
+				window.onpopstate = () => {
+					draft.textContent = "Returned in history";
+				};
+				window.sekaiMobile.openSettings();
+			};
+			// A page that reports its back state: once its sheet is closed, back has nothing to do, so the app leaves
+			// the edge swipe alone even with history behind the page.
+			document.getElementById("sheet").onclick = () => {
+				if (!inApp()) return;
+				history.pushState({}, "", "#sheet");
+				window.onpopstate = () => {
+					draft.textContent = "Returned in history";
+				};
+				draft.textContent = "Sheet open";
+				window.__sekaiBack = () => {
+					draft.textContent = "Sheet closed";
+					window.__sekaiBack = () => {
+						draft.textContent = "Back reached the page";
+						return true;
+					};
+					window.sekaiMobile.backState({ overlay: false, canGoBack: false });
+					return true;
+				};
+				window.sekaiMobile.backState({ overlay: true, canGoBack: false });
+			};
+		</script>
+	</body>
+</html>

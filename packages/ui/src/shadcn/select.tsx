@@ -29,14 +29,14 @@ function SelectTrigger({
 			data-size={size}
 			className={cn(
 				fieldStyles,
-				"group flex items-center justify-between gap-2 text-left whitespace-nowrap data-placeholder:text-fg-subtle data-[size=default]:h-10 data-[size=default]:coarse:h-11 data-[size=sm]:h-8 data-[size=sm]:rounded-[10px] data-[size=sm]:px-2.5 data-[size=sm]:text-[13px] data-[size=sm]:coarse:h-10 data-open:border-brand/60 data-open:bg-background data-open:ring-[3px] data-open:ring-ring/15 *:data-[slot=select-value]:truncate [&_svg]:pointer-events-none [&_svg]:shrink-0",
+				"group hit-area relative flex items-center justify-between gap-2 text-left whitespace-nowrap data-placeholder:text-fg-subtle data-[size=default]:h-10 data-[size=default]:coarse:h-11 data-[size=sm]:h-8 data-[size=sm]:px-2.5 data-[size=sm]:text-small data-[size=sm]:coarse:h-10 data-open:border-ring data-open:bg-bg data-open:ring-[3px] data-open:ring-ring/15 *:data-[slot=select-value]:truncate [&_svg]:pointer-events-none [&_svg]:shrink-0",
 				className,
 			)}
 			{...props}
 		>
 			{children}
 			<SelectPrimitive.Icon asChild>
-				<ChevronDownIcon className="size-4 text-fg-subtle transition-transform duration-200 group-data-open:rotate-180" />
+				<ChevronDownIcon className="size-4 text-fg-subtle transition-transform duration-panel group-data-open:rotate-180" />
 			</SelectPrimitive.Icon>
 		</SelectPrimitive.Trigger>
 	);
@@ -56,7 +56,7 @@ function SelectContent({
 				position={position}
 				sideOffset={sideOffset}
 				className={cn(
-					"relative z-[80] max-h-[min(var(--radix-select-content-available-height),420px)] max-w-[min(var(--radix-select-content-available-width),28rem)] min-w-[max(var(--radix-select-trigger-width),8rem)] overflow-hidden rounded-2xl border border-border bg-popover p-1 text-popover-foreground shadow-pop",
+					"relative z-menu max-h-[min(var(--radix-select-content-available-height),420px)] max-w-[min(var(--radix-select-content-available-width),28rem)] min-w-[max(var(--radix-select-trigger-width),8rem)] overflow-hidden rounded-lg border border-border bg-surface-raised p-1 text-fg shadow-pop",
 					floatingMotion,
 					className,
 				)}
@@ -76,7 +76,7 @@ function SelectLabel({ className, ...props }: React.ComponentProps<typeof Select
 	return (
 		<SelectPrimitive.Label
 			data-slot="select-label"
-			className={cn("px-3 pt-2 pb-1 text-xs font-medium text-fg-subtle", className)}
+			className={cn("px-3 pt-2 pb-1 text-caption font-medium text-fg-subtle", className)}
 			{...props}
 		/>
 	);
@@ -92,13 +92,13 @@ function SelectItem({
 		<SelectPrimitive.Item
 			data-slot="select-item"
 			className={cn(
-				"relative flex w-full cursor-pointer flex-col rounded-[10px] py-2 pr-9 pl-3 text-sm outline-none select-none transition-colors duration-100 data-disabled:pointer-events-none data-disabled:opacity-40 data-highlighted:bg-muted coarse:py-3",
+				"relative flex w-full cursor-pointer flex-col rounded-md py-2 pr-9 pl-3 text-body outline-none select-none transition-colors duration-fast data-disabled:pointer-events-none data-disabled:opacity-40 data-highlighted:bg-surface-2 coarse:py-3",
 				className,
 			)}
 			{...props}
 		>
 			<SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-			{description && <span className="text-xs leading-5 text-fg-subtle">{description}</span>}
+			{description && <span className="text-small text-fg-subtle">{description}</span>}
 			<span className="pointer-events-none absolute top-2.5 right-3 flex size-4 items-center justify-center coarse:top-3.5">
 				<SelectPrimitive.ItemIndicator>
 					<CheckIcon className="size-4 text-brand-ink" />

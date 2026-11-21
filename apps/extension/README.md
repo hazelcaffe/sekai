@@ -38,16 +38,16 @@ The extension expects the matching Sekai server changes. Nothing connects to a h
 
 ## Connect and share
 
-1. In the main Sekai app, open **Settings → Browser extension**. Make a browser token (you may need to confirm
+1. In the main Sekai app, open **Settings → You → Browser extension**. Make a browser token (you may need to confirm
    it's you). Copy the server address and token into the extension. Use HTTPS except for localhost development.
-2. Choose one of **your own bots**, then an existing direct chat or **New**. The same chat is visible in Sekai.
-3. Click **Choose tabs to share**. Grant site access when asked, then share only the intended tabs. Tab titles
+2. Choose one of **your own bots**, then open **Past chats** or click **New chat**. The same chat is visible in Sekai.
+3. Click **Share tabs**. Grant site access when asked, then share only the intended tabs. Tab titles
    in this picker stay local; only shared tabs are returned to the bot. Private windows and non-web pages are excluded.
 4. Give your bot a task. It loads the built-in **Using the user's browser** skill and uses `extension_browsers`
    and `extension_browser`. Regular `browser_open` tools remain separate; they never silently use your browser.
-5. Allow or deny action requests in the sidebar. Every mutation asks you even in YOLO. Opening and sharing a new
-   tab needs a second, local **Open and share** click and the new site's permission. Scroll follows the ordinary
-   approval policy. Read-only mode still prevents changes.
+5. **Approve** or **Deny** action requests in the sidebar. Every mutation asks you, even when your approvals rule is
+   **Don't ask**. Opening and sharing a new tab needs a second, local **Open and share** click and the new site's
+   permission. Scroll follows the ordinary approval policy. Read-only mode still prevents changes.
 6. **Stop sharing**, **Unshare**, switch bot/chat, disconnect or close the panel to end access. No sharing grant
    is ever saved or restored. If the panel loses contact, the server lease expires after 12 seconds. In-flight
    browser operations may already have happened; check before retrying. The server never replays a delivered command.
@@ -56,7 +56,7 @@ The extension expects the matching Sekai server changes. Nothing connects to a h
 activation (`activeTab`) to capture the viewport. The extension will not request all-sites access for screenshots.
 Hide sensitive material first: screenshots can include visible personal information, including nested frames.
 
-Revoke any browser token in **Settings → Browser extension → Connected browser tokens**. Disconnect removes the
+Revoke any browser token in **Settings → You → Browser extension → Tokens**. Disconnect removes the
 saved token from this browser profile; it doesn't revoke it on the server. Treat it like a password.
 
 ## Tools and boundaries

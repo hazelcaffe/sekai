@@ -5,4 +5,8 @@
         <ignore path="src/main/res/drawable-*/splash_icon.png" />
         <ignore path="src/main/res/mipmap-*/ic_launcher_foreground.png" />
     </issue>
+    <!-- Held back on purpose: the later releases need compileSdk 37 (see gradle/libs.versions.toml). -->
+    <issue id="GradleDependency">
+        <ignore regexp="compose-bom|activity|lifecycle" />
+    </issue>
 </lint>

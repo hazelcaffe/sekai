@@ -48,6 +48,7 @@ logged() {
 shot 1-connect-light light
 shot 2-connect-dark dark
 shot 3-unreachable-light light -serverUrl https://sekai.invalid
+shot 3-unreachable-dark dark -serverUrl https://sekai.invalid
 if [ -n "$SERVER" ]; then
 	WAIT=12 shot 4-server-light light -serverUrl "$SERVER"
 	WAIT=10 shot 5-server-dark dark -serverUrl "$SERVER"

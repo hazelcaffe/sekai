@@ -101,7 +101,7 @@ export interface WebSetup {
 	summary: string | null;
 }
 
-/** What Admin's "Try a page" gets back. */
+/** What Web reading's "Test a page" gets back. */
 export interface WebEngineCheck {
 	url: string;
 	title: string;

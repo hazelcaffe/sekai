@@ -6,12 +6,26 @@ import {
 	type VoiceModelInfo,
 	type VoiceSettings,
 } from "@sekai/shared";
-import { Button, Dialog, Field, Input, Section, Select, type SelectOption, Spinner } from "@sekai/ui";
+import {
+	Button,
+	Callout,
+	Dialog,
+	ErrorState,
+	Field,
+	IconButton,
+	Input,
+	Section,
+	Select,
+	type SelectOption,
+	SkeletonRows,
+	Spinner,
+	Tooltip,
+} from "@sekai/ui";
 import { useQuery } from "@tanstack/react-query";
-import { Play, Search, Square, Volume2, Wand2 } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { AudioLines, Play, Search, Square, Volume2, Wand2 } from "lucide-react";
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { api } from "../api.ts";
-import { useVoiceModels } from "../data.ts";
+import { useAccess, useVoiceModels } from "../data.ts";
 import { qk } from "../query.ts";
 import { cn } from "../utils.ts";
 import { MakeVoiceDialog } from "./MakeVoice.tsx";
@@ -72,7 +86,7 @@ function usePreview(key: string): "idle" | "loading" | "playing" {
 
 // ---------------------------------------------------------------- voices
 
-const TINTS = ["#14b8a6", "#6366f1", "#f43f5e", "#f59e0b", "#0ea5e9", "#a855f7", "#22c55e", "#ec4899"];
+const TINTS = Array.from({ length: 8 }, (_, i) => `var(--series-${((i + 4) % 8) + 1})`);
 const tint = (s: string) => TINTS[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % TINTS.length];
 
 function VoiceCard({
@@ -98,52 +112,53 @@ function VoiceCard({
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 items-center gap-2.5 rounded-2xl border p-1.5 pl-2 transition-[background-color,border-color,box-shadow] duration-150",
+				"flex min-w-0 items-center gap-2.5 rounded-lg border p-1.5 pl-2 transition-[background-color,border-color,box-shadow] duration-150",
 				selected
-					? "border-brand/50 bg-brand/6 ring-[3px] ring-ring/10"
-					: "border-border bg-card hover:bg-muted/60",
+					? "border-brand/50 bg-brand/6 ring-[3px] ring-brand-ink/10"
+					: "border-border bg-surface hover:bg-surface-2/60",
 			)}
 		>
-			{/* biome-ignore lint/a11y/useSemanticElements: a voice card with its own play button */}
-			<button
-				type="button"
-				role="radio"
-				aria-checked={selected}
-				disabled={disabled}
-				onClick={onSelect}
-				title={[voice.name, voice.description].filter(Boolean).join(" · ")}
-				className="flex min-w-0 flex-1 items-center gap-2.5 py-0.5 text-left disabled:opacity-60"
-			>
-				{voice.image && !broken ? (
-					<img
-						src={voice.image}
-						alt=""
-						loading="lazy"
-						onError={() => setBroken(true)}
-						className="size-9 shrink-0 rounded-xl object-cover"
-					/>
-				) : (
-					<span
-						aria-hidden
-						className="flex size-9 shrink-0 items-center justify-center rounded-xl text-sm font-semibold text-white"
-						style={{ background: tint(voice.id) }}
-					>
-						{voice.name.trim()[0]?.toUpperCase() ?? "?"}
-					</span>
-				)}
-				<span className="min-w-0">
-					<span className="block truncate text-sm font-medium">{voice.name}</span>
-					{(voice.description || voice.language) && (
-						<span className="block truncate text-xs text-fg-subtle">
-							{[voice.language?.toUpperCase(), voice.description].filter(Boolean).join(" · ")}
+			<Tooltip content={[voice.name, voice.description].filter(Boolean).join(" · ")}>
+				{/* biome-ignore lint/a11y/useSemanticElements: a voice card with its own play button */}
+				<button
+					type="button"
+					role="radio"
+					aria-checked={selected}
+					disabled={disabled}
+					onClick={onSelect}
+					className="flex min-w-0 flex-1 items-center gap-2.5 py-0.5 text-left disabled:opacity-60"
+				>
+					{voice.image && !broken ? (
+						<img
+							src={voice.image}
+							alt=""
+							loading="lazy"
+							onError={() => setBroken(true)}
+							className="size-9 shrink-0 rounded-md object-cover"
+						/>
+					) : (
+						<span
+							aria-hidden
+							className="flex size-9 shrink-0 items-center justify-center rounded-md text-body font-semibold text-paper"
+							style={{ background: tint(voice.id) }}
+						>
+							{voice.name.trim()[0]?.toUpperCase() ?? "?"}
 						</span>
 					)}
-				</span>
-			</button>
-			<Button
+					<span className="min-w-0">
+						<span className="block truncate text-body font-medium">{voice.name}</span>
+						{(voice.description || voice.language) && (
+							<span className="block truncate text-small text-fg-subtle">
+								{[voice.language?.toUpperCase(), voice.description].filter(Boolean).join(" · ")}
+							</span>
+						)}
+					</span>
+				</button>
+			</Tooltip>
+			<IconButton
 				variant="ghost"
 				size="icon-sm"
-				aria-label={state === "playing" ? `Stop ${voice.name}` : `Hear ${voice.name}`}
+				label={state === "playing" ? `Stop ${voice.name}` : `Hear ${voice.name}`}
 				disabled={disabled}
 				onClick={() =>
 					void playPreview(
@@ -161,7 +176,7 @@ function VoiceCard({
 				) : (
 					<Play className="fill-current" />
 				)}
-			</Button>
+			</IconButton>
 		</div>
 	);
 }
@@ -208,7 +223,7 @@ export function VoiceGrid({
 		value && !voices.some((v) => v.id === value)
 			? [{ id: value, name: valueName || value, description: "Your pick" }, ...voices]
 			: voices;
-	if (!enabled) return <p className="text-[13px] text-fg-subtle">Pick a model to see its voices.</p>;
+	if (!enabled) return <p className="text-small text-fg-subtle">Pick a model to see its voices.</p>;
 	return (
 		<div className="@container flex flex-col gap-2">
 			{searchable && (
@@ -227,13 +242,13 @@ export function VoiceGrid({
 				</div>
 			)}
 			{isLoading ? (
-				<div className="flex items-center gap-2 py-3 text-[13px] text-fg-subtle">
+				<div className="flex items-center gap-2 py-3 text-small text-fg-subtle">
 					<Spinner /> Loading voices…
 				</div>
 			) : error ? (
-				<p className="text-[13px] text-destructive">{error instanceof Error ? error.message : String(error)}</p>
+				<p className="text-body text-danger-ink">{error instanceof Error ? error.message : String(error)}</p>
 			) : shown.length === 0 ? (
-				<p className="py-2 text-[13px] text-fg-subtle">
+				<p className="py-2 text-small text-fg-subtle">
 					{query ? "No voices match." : "This model has no voices to pick."}
 				</p>
 			) : (
@@ -296,7 +311,7 @@ function VoiceFace({
 				alt=""
 				loading="lazy"
 				onError={() => setBroken(true)}
-				className="shrink-0 rounded-xl object-cover"
+				className="shrink-0 rounded-lg object-cover"
 				style={{ width: size, height: size }}
 			/>
 		);
@@ -304,7 +319,7 @@ function VoiceFace({
 	return (
 		<span
 			aria-hidden
-			className="flex shrink-0 items-center justify-center rounded-xl text-sm font-semibold text-white"
+			className="flex shrink-0 items-center justify-center rounded-lg text-body font-semibold text-paper"
 			style={{ width: size, height: size, background: tint(voice.id || voice.name) }}
 		>
 			{voice.name.trim()[0]?.toUpperCase() ?? "?"}
@@ -355,16 +370,16 @@ function VoiceRow({
 			<button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
 				<VoiceFace voice={shown} />
 				<span className="min-w-0">
-					<span className="block text-xs text-fg-subtle">{label}</span>
+					<span className="block text-small text-fg-subtle">{label}</span>
 					<span className="flex items-baseline gap-1.5">
-						<span className="truncate text-sm font-medium">{voice?.name ?? "Pick a voice"}</span>
+						<span className="truncate text-body font-medium">{voice?.name ?? "Pick a voice"}</span>
 						{isDefault && (
-							<span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px] leading-5 text-fg-subtle">
+							<span className="shrink-0 rounded-full bg-surface-2 px-1.5 text-caption text-fg-subtle">
 								default
 							</span>
 						)}
 					</span>
-					<span className="block truncate text-xs text-fg-subtle">
+					<span className="block truncate text-small text-fg-subtle">
 						{[modelName, voice?.description].filter(Boolean).join(" · ")}
 					</span>
 				</span>
@@ -401,7 +416,7 @@ function VoiceRow({
 
 /**
  * How bots sound and listen: the speaking voice (calls, reading aloud, voice messages) and the speech-to-text
- * model (calls, dictation, your voice messages). For the defaults (Admin → Voice), or one bot's own choices on
+ * model (calls, dictation, your voice messages). For the defaults (Settings → Voice), or one bot's own choices on
  * top of them.
  */
 export function VoiceSettingsEditor({
@@ -410,6 +425,7 @@ export function VoiceSettingsEditor({
 	defaults,
 	onChange,
 	onError,
+	setup,
 }: {
 	/** What's in effect. */
 	value: VoiceSettings;
@@ -418,8 +434,11 @@ export function VoiceSettingsEditor({
 	defaults?: VoiceSettings;
 	onChange: (patch: Partial<AgentVoice>) => void;
 	onError: (message: string) => void;
+	/** Where to connect a voice service, said while there's none (Settings → Voice has them above). */
+	setup?: ReactNode;
 }) {
-	const { data: models = [], isLoading } = useVoiceModels();
+	const { data: models = [], isLoading, isError, error, refetch } = useVoiceModels();
+	const { admin } = useAccess();
 	const [picking, setPicking] = useState(false);
 	const [making, setMaking] = useState(false);
 	const agent = Boolean(own);
@@ -428,7 +447,20 @@ export function VoiceSettingsEditor({
 			? [{ value: DEFAULT, label: `Default (${nameOf(models, id ?? "", cap) || "none picked"})` }, ...opts]
 			: opts;
 	const info = (id: string, cap: VoiceCap) => models.find((m) => m.id === id && m.cap === cap);
-	if (isLoading) return <Spinner />;
+	if (isLoading) return <SkeletonRows count={3} leading={false} />;
+	if (isError) return <ErrorState size="sm" error={error} onRetry={() => void refetch()} />;
+	// Nothing to pick from: say what to do instead of showing empty pickers.
+	if (models.length === 0) {
+		return (
+			<Callout icon={<AudioLines />} title="No voice service yet">
+				{setup ??
+					(admin
+						? "Connect ElevenLabs or Fish Audio in Settings → Voice, then pick voices here."
+						: "Calls, reading aloud and dictation need a voice service. Ask an admin to connect one.")}
+			</Callout>
+		);
+	}
+	const sttOptions = modelOptions(models, "stt");
 
 	const ttsModel = agent ? (own?.ttsModel ?? DEFAULT) : value.ttsModel;
 	const sttModel = agent ? (own?.sttModel ?? DEFAULT) : value.sttModel;
@@ -438,7 +470,7 @@ export function VoiceSettingsEditor({
 			<button
 				type="button"
 				onClick={() => onChange(patch)}
-				className="self-start text-xs font-medium text-brand-ink hover:underline"
+				className="self-start text-small font-medium text-brand-ink hover:underline"
 			>
 				{label}
 			</button>
@@ -447,7 +479,7 @@ export function VoiceSettingsEditor({
 	return (
 		<div className="flex flex-col gap-6">
 			<Section title="Speaking" description="Talks on calls, reads messages aloud and sends voice messages.">
-				<div className="flex flex-col divide-y divide-border rounded-2xl border border-border bg-card">
+				<div className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
 					<VoiceRow
 						label="Speaking voice"
 						model={value.ttsModel}
@@ -464,21 +496,37 @@ export function VoiceSettingsEditor({
 
 			<Section title="Listening" description="Hears you on calls, writes down dictation and your voice messages.">
 				<div className="@container">
-					<div className="grid gap-3 @[20rem]:grid-cols-[1fr_110px]">
-						<Field label="Speech to text">
-							<Select
-								value={sttModel}
-								onValueChange={(id) => onChange({ sttModel: id === DEFAULT ? null : id })}
-								options={withDefault(modelOptions(models, "stt"), "stt", defaults?.sttModel)}
-								placeholder="Pick a model"
-							/>
+					<div className="grid gap-3 @[24rem]:grid-cols-[minmax(0,1fr)_7rem]">
+						<Field
+							label="Speech to text"
+							hint={
+								sttOptions.length === 0
+									? "None of your voice services has one yet. ElevenLabs and Fish Audio do."
+									: undefined
+							}
+						>
+							{sttOptions.length === 0 ? (
+								<Select
+									value=""
+									onValueChange={() => {}}
+									options={[]}
+									placeholder="None yet"
+									disabled
+								/>
+							) : (
+								<Select
+									value={sttModel}
+									onValueChange={(id) => onChange({ sttModel: id === DEFAULT ? null : id })}
+									options={withDefault(sttOptions, "stt", defaults?.sttModel)}
+									placeholder="Pick a model"
+								/>
+							)}
 						</Field>
-						<Field label="Language">
+						<Field label="Language" hint="A code like en or ja.">
 							<Input
 								key={value.language}
 								defaultValue={agent ? (own?.language ?? "") : value.language}
 								placeholder={agent ? defaults?.language || "Detect" : "Detect"}
-								title="A language code like en or ja. Empty: detect it"
 								maxLength={20}
 								onBlur={(e) => {
 									const v = e.target.value.trim();

@@ -27,14 +27,14 @@ function Preview({ theme, className }: { theme: ThemeInfo; className?: string })
 export function ThemePicker({ value, onChange }: { value: ThemeChoice; onChange: (t: ThemeChoice) => void }) {
 	const card = (selected: boolean) =>
 		cn(
-			"group relative flex flex-col overflow-hidden rounded-2xl border bg-card text-left outline-none transition-[border-color,box-shadow] focus-visible:ring-[3px] focus-visible:ring-ring/40",
+			"group relative flex flex-col overflow-hidden rounded-lg border bg-surface text-left outline-none transition-[border-color,box-shadow] focus-visible:ring-[3px] focus-visible:ring-brand-ink/40",
 			selected ? "border-brand ring-2 ring-brand/30" : "border-border hover:border-border-strong",
 		);
 	const label = (title: string, detail: string, selected: boolean) => (
 		<span className="flex items-center gap-2 px-3 py-2">
 			<span className="min-w-0 flex-1">
-				<span className="block truncate text-[13px] font-medium">{title}</span>
-				<span className="block truncate text-xs text-fg-subtle">{detail}</span>
+				<span className="block truncate text-body font-medium">{title}</span>
+				<span className="block truncate text-small text-fg-subtle">{detail}</span>
 			</span>
 			{selected && <Check className="size-4 shrink-0 text-brand-ink" />}
 		</span>

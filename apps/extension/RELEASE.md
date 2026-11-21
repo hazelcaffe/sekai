@@ -14,7 +14,7 @@
   your.reverse.domain.sekai`. Open the generated project in Xcode, choose your signing team, build and enable the
   extension in Safari Settings → Extensions. Use its popover or Pop out; Safari has no equivalent sidebar API.
 
-In Sekai, open **Settings → Browser extension**, make a browser token and paste it and your server address into
+In Sekai, open **Settings → You → Browser extension**, make a browser token and paste it and your server address into
 the extension. Choose your bot and chat, then explicitly share tabs. No tabs are shared automatically. Stop
 sharing or close the panel to end control. The server must include the matching browser-extension support.
 

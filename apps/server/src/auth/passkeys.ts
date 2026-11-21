@@ -8,17 +8,30 @@ import {
 	verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { APP_NAME } from "../config.ts";
 import { db, schema } from "../db/index.ts";
 import { HttpError } from "../lib/errors.ts";
 import { randomSecret } from "./request.ts";
 import { getUserRow } from "./service.ts";
 
+type PasskeyRow = typeof schema.passkeys.$inferSelect;
+/** register: adding one; login: signing in (or proving it's you); step: the second step of a waiting sign-in. */
+type Ceremony = "register" | "login" | "step";
+
 /** Pending ceremonies, keyed by an id the browser sends back. They expire after five minutes. */
 const challenges = new Map<
 	string,
-	{ challenge: string; origin: string; rpId: string; kind: "register" | "login"; userId?: string; until: number }
+	{
+		challenge: string;
+		origin: string;
+		rpId: string;
+		kind: Ceremony;
+		userId?: string;
+		/** step: the waiting sign-in it's for. */
+		ticketId?: string;
+		until: number;
+	}
 >();
 const CHALLENGE_MS = 5 * 60_000;
 
@@ -30,7 +43,7 @@ function keepChallenge(entry: Omit<Parameters<typeof challenges.set>[1], "until"
 	return id;
 }
 
-function takeChallenge(id: string, kind: "register" | "login") {
+function takeChallenge(id: string, kind: Ceremony) {
 	const c = challenges.get(id);
 	challenges.delete(id);
 	if (!c || c.kind !== kind || c.until < Date.now()) {
@@ -160,8 +173,28 @@ export async function renamePasskey(userId: string, id: string, name: string): P
 		.where(and(eq(schema.passkeys.userId, userId), eq(schema.passkeys.id, id)));
 }
 
+/**
+ * Removes one of your passkeys. While your sign-ins require a passkey, the last one can't go (turn that off first);
+ * the account row is locked meanwhile, so this and turning the requirement on can't cross.
+ */
 export async function deletePasskey(userId: string, id: string): Promise<void> {
-	await db.delete(schema.passkeys).where(and(eq(schema.passkeys.userId, userId), eq(schema.passkeys.id, id)));
+	await db.transaction(async (tx) => {
+		const [u] = await tx
+			.select({ requirePasskey: schema.users.requirePasskey })
+			.from(schema.users)
+			.where(eq(schema.users.id, userId))
+			.for("update");
+		if (u?.requirePasskey) {
+			const [n] = await tx.select({ n: count() }).from(schema.passkeys).where(eq(schema.passkeys.userId, userId));
+			if (Number(n?.n ?? 0) <= 1) {
+				throw new HttpError(
+					400,
+					"That's your last passkey, and your sign-ins require one. Turn off “Require a passkey to sign in” first, or add another passkey.",
+				);
+			}
+		}
+		await tx.delete(schema.passkeys).where(and(eq(schema.passkeys.userId, userId), eq(schema.passkeys.id, id)));
+	});
 }
 
 /** Options for signing in with any passkey saved for this site (no username needed). */
@@ -173,14 +206,13 @@ export async function loginOptions(origin: string) {
 	return { challengeId, options };
 }
 
-/** Verifies a passkey sign-in. Returns the account, and whether the device checked it was them (face, PIN…). */
-export async function finishLogin(
-	challengeId: string,
+/** Checks a passkey's answer to a challenge, and notes its use (the counter guards against cloned keys). */
+async function verifyAssertion(
+	c: ReturnType<typeof takeChallenge>,
+	p: PasskeyRow,
 	response: AuthenticationResponseJSON,
-): Promise<{ userId: string; userVerified: boolean }> {
-	const c = takeChallenge(challengeId, "login");
-	const [p] = await db.select().from(schema.passkeys).where(eq(schema.passkeys.id, response.id));
-	if (!p) throw new HttpError(401, "This passkey isn't registered here. Sign in with your password instead.");
+	what: string,
+): Promise<{ userVerified: boolean }> {
 	const result = await verifyAuthenticationResponse({
 		response,
 		expectedChallenge: c.challenge,
@@ -194,10 +226,7 @@ export async function finishLogin(
 		},
 		requireUserVerification: false,
 	}).catch((err: unknown) => {
-		throw new HttpError(
-			401,
-			`Couldn't sign in with the passkey: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		throw new HttpError(401, `${what}: ${err instanceof Error ? err.message : String(err)}`);
 	});
 	if (!result.verified) throw new HttpError(401, "Couldn't verify the passkey");
 	await db
@@ -208,5 +237,74 @@ export async function finishLogin(
 			lastUsedAt: Date.now(),
 		})
 		.where(eq(schema.passkeys.id, p.id));
-	return { userId: p.userId, userVerified: result.authenticationInfo.userVerified };
+	return { userVerified: result.authenticationInfo.userVerified };
+}
+
+/** Verifies a passkey sign-in. Returns the account, and whether the device checked it was them (face, PIN…). */
+export async function finishLogin(
+	challengeId: string,
+	response: AuthenticationResponseJSON,
+): Promise<{ userId: string; userVerified: boolean }> {
+	const c = takeChallenge(challengeId, "login");
+	const [p] = await db.select().from(schema.passkeys).where(eq(schema.passkeys.id, response.id));
+	if (!p) throw new HttpError(401, "This passkey isn't registered here. Sign in with your password instead.");
+	const { userVerified } = await verifyAssertion(c, p, response, "Couldn't sign in with the passkey");
+	return { userId: p.userId, userVerified };
+}
+
+// ---------------------------------------------------------------- a passkey as the second step
+
+/** The addresses (relying party ids) someone's passkeys are for. */
+export async function passkeyHostsOf(userId: string): Promise<string[]> {
+	const rows = await db
+		.select({ rpId: schema.passkeys.rpId })
+		.from(schema.passkeys)
+		.where(eq(schema.passkeys.userId, userId));
+	return [...new Set(rows.map((r) => r.rpId))].sort();
+}
+
+/** Why someone can't use a passkey here: which addresses theirs are for. */
+export function elsewhereMessage(hosts: string[]): string {
+	if (!hosts.length) return "You have no passkeys. Use a recovery code, or ask an admin.";
+	const list = hosts.length === 1 ? hosts[0] : `${hosts.slice(0, -1).join(", ")} or ${hosts.at(-1)}`;
+	return `Your passkeys are for ${list}. Sign in there, or use a recovery code.`;
+}
+
+/**
+ * Options for the second step of a waiting sign-in: only that account's passkeys for this address may answer
+ * (allowCredentials), and the challenge is bound to the waiting sign-in.
+ */
+export async function stepOptions(userId: string, ticketId: string, origin: string) {
+	const rpId = new URL(origin).hostname;
+	const mine = await db
+		.select()
+		.from(schema.passkeys)
+		.where(and(eq(schema.passkeys.userId, userId), eq(schema.passkeys.rpId, rpId)));
+	if (!mine.length) throw new HttpError(400, elsewhereMessage(await passkeyHostsOf(userId)));
+	const options = await generateAuthenticationOptions({
+		rpID: rpId,
+		userVerification: "preferred",
+		allowCredentials: mine.map((p) => ({ id: p.id, transports: p.transports })),
+	});
+	const challengeId = keepChallenge({ challenge: options.challenge, origin, rpId, kind: "step", userId, ticketId });
+	return { challengeId, options };
+}
+
+/** Verifies the second step: the passkey must be the waiting sign-in's account's (never someone else's). */
+export async function finishStep(
+	userId: string,
+	ticketId: string,
+	challengeId: string,
+	response: AuthenticationResponseJSON,
+): Promise<void> {
+	const c = takeChallenge(challengeId, "step");
+	if (c.userId !== userId || c.ticketId !== ticketId) {
+		throw new HttpError(400, "That passkey request belongs to another sign-in. Start again.");
+	}
+	const [p] = await db
+		.select()
+		.from(schema.passkeys)
+		.where(and(eq(schema.passkeys.id, response.id), eq(schema.passkeys.userId, userId)));
+	if (!p) throw new HttpError(401, "That passkey isn't one of this account's.");
+	await verifyAssertion(c, p, response, "That passkey didn't work");
 }

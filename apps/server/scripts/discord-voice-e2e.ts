@@ -2,7 +2,7 @@
  * Discord voice end to end: a tester bot sits in a voice channel, asks a Sekai bot to join ("join vc"), hears its
  * greeting, asks a question out loud and checks the spoken answer, then asks it to leave.
  *
- * The Sekai bot needs a speaking voice and a speech-to-text model (Admin → Voice).
+ * The Sekai bot needs a speaking voice and a speech-to-text model (Settings → Voice).
  *
  *   DISCORD_BOT_B_TOKEN, DISCORD_TESTER_TOKEN, DISCORD_CHANNEL_ID, DISCORD_VOICE_CHANNEL_ID, SEKAI_AUTH_TOKEN
  *   VOICE_STT_MODEL: a batch speech-to-text model to check what the bot said (e.g. api_xxx::scribe_v2)

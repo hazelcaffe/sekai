@@ -114,14 +114,14 @@ function runTitle(req: RunRequest, agent: Agent): string {
  */
 export async function enqueueRun(req: RunRequest): Promise<Run> {
 	const ownerId = await conversationOwner(req.conversationId);
-	if (!ownerId) throw notFound("Conversation");
+	if (!ownerId) throw notFound("Chat");
 	const actor = await actorFor(ownerId);
 	return runAs(actor, () => enqueueAs(req, actor));
 }
 
 async function enqueueAs(req: RunRequest, actor: Actor): Promise<Run> {
 	const agent = await getAgent(req.agentId);
-	if (!agent) throw notFound("Agent");
+	if (!agent) throw notFound("Bot");
 	const run = await createRun({
 		userId: actor.userId,
 		agentId: agent.id,
@@ -594,7 +594,7 @@ export async function retryMessage(messageId: string, input: MessageRetry = {}):
 	const opts = parse(MessageRetrySchema, input);
 	const message = await getMessage(messageId);
 	if (!message) throw notFound("Message");
-	if (message.sender !== "agent" || !message.agentId) throw badRequest("Only agent replies can be retried");
+	if (message.sender !== "agent" || !message.agentId) throw badRequest("Only a bot's replies can be retried");
 	if (message.status === "streaming") throw badRequest("This reply is still being written");
 	const history = await listMessages(message.conversationId);
 	const index = history.findIndex((m) => m.id === messageId);

@@ -1,8 +1,21 @@
 import Foundation
 import Testing
+import UserNotifications
 @testable import Sekai
 
 struct ValidationTests {
+	@Test func approvalRepliesReplaceTheRequestAndNeedItsActionCategory() {
+		let content = UNMutableNotificationContent()
+		content.userInfo = ["url": "/c/test", "toolCallId": "test"]
+		func payload() -> NotificationPayload {
+			NotificationPayload(UNNotificationRequest(identifier: "from-apns", content: content, trigger: nil))
+		}
+		#expect(payload().toolCallId == nil)
+		content.categoryIdentifier = Notifications.approvalCategory
+		#expect(payload().toolCallId == "test")
+		#expect(payload().identifier == "from-apns")
+	}
+
 	@Test func appPaths() {
 		#expect(Router.isAppPath("/"))
 		#expect(Router.isAppPath("/c/conv_123"))
@@ -26,6 +39,16 @@ struct ValidationTests {
 	}
 
 	@Test func bridgeValues() {
+		#expect(Validate.explicitFalse(false))
+		#expect(!Validate.explicitFalse(true))
+		#expect(!Validate.explicitFalse(nil))
+		#expect(!Validate.explicitFalse("false"))
+		#expect(!Validate.explicitFalse(NSNumber(value: 0)))
+		#expect(Validate.bool(true) == true)
+		#expect(Validate.bool(false) == false)
+		#expect(Validate.bool(NSNumber(value: 1)) == nil)
+		#expect(Validate.bool("true") == nil)
+		#expect(Validate.bool(nil) == nil)
 		#expect(Validate.id("call_abc-123") == "call_abc-123")
 		#expect(Validate.id("../etc") == nil)
 		#expect(Validate.id(42) == nil)

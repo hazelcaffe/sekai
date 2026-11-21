@@ -37,11 +37,27 @@ contextBridge.exposeInMainWorld("sekaiDesktop", {
 	},
 });
 
-/** Only the bundled connect screen (a file:// page) can switch servers; the server's own pages can't. */
+/** Only bundled file:// screens (connect.html and about.html) get server-switching and about controls. */
 if (location.protocol === "file:") {
 	contextBridge.exposeInMainWorld("sekaiConnect", {
 		getServerUrl: () => serverUrl,
+		getContext: () => ipcRenderer.invoke("sekai:connect-context"),
 		connect: (url: string) =>
 			ipcRenderer.invoke("sekai:connect", String(url)) as Promise<{ ok: boolean; error?: string }>,
+		cancel: () => ipcRenderer.send("sekai:connect-cancel"),
+	});
+
+	contextBridge.exposeInMainWorld("sekaiAbout", {
+		getInfo: () => ipcRenderer.invoke("sekai:about-info"),
+		onUpdate: (callback: (state: unknown) => void) => {
+			const listener = (_e: IpcRendererEvent, state: unknown) => callback(state);
+			ipcRenderer.on("sekai:update-state", listener);
+			return () => ipcRenderer.removeListener("sekai:update-state", listener);
+		},
+		checkUpdates: () => ipcRenderer.invoke("sekai:about-check-updates"),
+		installUpdate: () => ipcRenderer.send("sekai:about-install-update"),
+		changeServer: () => ipcRenderer.send("sekai:about-change-server"),
+		openThisComputer: () => ipcRenderer.send("sekai:about-open-local"),
+		close: () => ipcRenderer.send("sekai:about-close"),
 	});
 }

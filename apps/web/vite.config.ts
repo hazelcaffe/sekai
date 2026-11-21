@@ -13,14 +13,12 @@ export default defineConfig({
 		port: 5173,
 		proxy: {
 			"/api": { target: apiTarget, changeOrigin: false },
-			// The admin app's dev server (bun run dev:admin), so both apps share this origin and its sign-in.
-			"/admin": { target: "http://127.0.0.1:5174", changeOrigin: false, ws: true },
 		},
 	},
 	preview: { host: true, port: 4173, proxy: { "/api": { target: apiTarget } } },
 	build: {
 		outDir: "dist",
 		sourcemap: true,
-		chunkSizeWarningLimit: 2000,
+		chunkSizeWarningLimit: 1000,
 	},
 });

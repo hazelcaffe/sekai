@@ -60,7 +60,7 @@ internal class PushError(message: String) : Exception(message)
  */
 internal object Push {
     private const val TAG = "SekaiPush"
-    const val NOT_SET_UP = "Push isn't set up on this server yet. An admin can add Firebase in Admin → Phone apps."
+    const val NOT_SET_UP = "Push isn't set up on this server yet. An admin can add Firebase in Settings → Server → Network & devices → Phone notifications."
     const val NOTIFICATIONS_OFF = "Notifications are off for Sekai. Turn them on in Android settings, then try again."
 
     /** From Application.onCreate. */
@@ -140,7 +140,7 @@ internal object Push {
         try {
             firebase(context, config)
         } catch (e: RuntimeException) {
-            throw PushError("Firebase didn't start (${e.message}). Check the Firebase settings in Admin → Phone apps.")
+            throw PushError("Firebase didn't start (${e.message}). Check the Firebase settings in Settings → Server → Network & devices → Phone notifications.")
         }
         store.fcmConfig = config
         val token = try {
@@ -174,7 +174,7 @@ internal object Push {
             "MISSING_INSTANCEID_SERVICE" in reason -> "Push needs Google Play services, which this phone doesn't have."
             else ->
                 "Firebase didn't give this phone a push address ($reason). " +
-                    "Check the Firebase settings in Admin → Phone apps."
+                    "Check the Firebase settings in Settings → Server → Network & devices → Phone notifications."
         }
     }
 

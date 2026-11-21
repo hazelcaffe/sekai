@@ -9,7 +9,7 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 	return (
 		<CommandPrimitive
 			data-slot="command"
-			className={cn("flex size-full flex-col overflow-hidden text-popover-foreground", className)}
+			className={cn("flex size-full flex-col overflow-hidden text-fg", className)}
 			{...props}
 		/>
 	);
@@ -30,11 +30,11 @@ function CommandDialog({
 	return (
 		<DialogPrimitive.Root {...props}>
 			<DialogPrimitive.Portal>
-				<DialogPrimitive.Overlay className={cn(overlayStyles, "z-[70]")} />
+				<DialogPrimitive.Overlay className={cn(overlayStyles, "z-dialog")} />
 				<DialogPrimitive.Content
 					data-slot="command-dialog"
 					className={cn(
-						"fixed top-[max(env(safe-area-inset-top),8px)] left-1/2 z-[70] w-[min(620px,calc(100vw-16px))] -translate-x-1/2 overflow-hidden rounded-3xl border border-border bg-popover shadow-pop outline-none duration-200 ease-spring data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-top-2 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-100 md:top-[14vh]",
+						"fixed top-safe-2 left-1/2 z-dialog w-[min(620px,calc(100vw-16px))] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-surface-raised shadow-pop outline-none duration-panel ease-out-soft data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-top-2 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:duration-fast md:top-[14vh] android:rounded-sheet",
 						className,
 					)}
 				>
@@ -50,11 +50,11 @@ function CommandDialog({
 function CommandInput({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Input>) {
 	return (
 		<div data-slot="command-input-wrapper" className="flex items-center gap-3 border-b border-border px-5">
-			<SearchIcon className="size-[18px] shrink-0 text-fg-subtle" />
+			<SearchIcon className="size-5 shrink-0 text-fg-subtle" />
 			<CommandPrimitive.Input
 				data-slot="command-input"
 				className={cn(
-					"h-14 w-full bg-transparent text-[15px] outline-none placeholder:text-fg-subtle disabled:cursor-not-allowed disabled:opacity-50",
+					"h-14 w-full bg-transparent text-body outline-none placeholder:text-fg-subtle disabled:cursor-not-allowed disabled:opacity-50",
 					className,
 				)}
 				{...props}
@@ -77,7 +77,7 @@ function CommandEmpty({ className, ...props }: React.ComponentProps<typeof Comma
 	return (
 		<CommandPrimitive.Empty
 			data-slot="command-empty"
-			className={cn("px-3 py-10 text-center text-sm text-fg-subtle", className)}
+			className={cn("px-3 py-10 text-center text-body text-fg-subtle", className)}
 			{...props}
 		/>
 	);
@@ -88,7 +88,7 @@ function CommandGroup({ className, ...props }: React.ComponentProps<typeof Comma
 		<CommandPrimitive.Group
 			data-slot="command-group"
 			className={cn(
-				"overflow-hidden **:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-fg-subtle",
+				"overflow-hidden **:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1.5 **:[[cmdk-group-heading]]:text-caption **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-fg-subtle",
 				className,
 			)}
 			{...props}
@@ -111,7 +111,7 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
 		<CommandPrimitive.Item
 			data-slot="command-item"
 			className={cn(
-				"group/command-item relative flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-muted coarse:py-3 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground data-[selected=true]:[&>svg]:text-brand-ink",
+				"group/command-item relative flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-body outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-surface-2 coarse:py-3 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-fg-muted data-[selected=true]:[&>svg]:text-brand-ink",
 				className,
 			)}
 			{...props}
@@ -123,7 +123,7 @@ function CommandShortcut({ className, ...props }: React.ComponentProps<"span">) 
 	return (
 		<span
 			data-slot="command-shortcut"
-			className={cn("ml-auto truncate text-xs text-fg-subtle", className)}
+			className={cn("ml-auto truncate text-caption text-fg-subtle", className)}
 			{...props}
 		/>
 	);

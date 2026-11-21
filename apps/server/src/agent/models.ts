@@ -29,7 +29,7 @@ function firstOffered(models: ModelInfo[] | null): ModelRef | null {
 }
 
 /**
- * A default from Admin → Models as it can be used: itself when it's on offer, otherwise the first chat model that
+ * A default from Settings → Models as it can be used: itself when it's on offer, otherwise the first chat model that
  * is (a fresh install's defaults name models every gateway may not have). Kept as it is when nothing is known.
  */
 export function resolveModel(ref: ModelRef, models: ModelInfo[] | null): ModelRef {
@@ -37,7 +37,7 @@ export function resolveModel(ref: ModelRef, models: ModelInfo[] | null): ModelRe
 }
 
 /**
- * The models new bots start with: the defaults from Admin → Models, or models on offer when they aren't. The
+ * The models new bots start with: the defaults from Settings → Models, or models on offer when they aren't. The
  * background model falls back to the default model.
  */
 export async function defaultModels(

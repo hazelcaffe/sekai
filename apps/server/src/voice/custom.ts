@@ -123,7 +123,7 @@ async function elevenLabsError(res: Response, label: string): Promise<Error> {
 	const err = await voiceError(res, label);
 	if (/paid plan|paid_plan|upgrade your plan|feature_not_available|can_not_use/i.test(err.message)) {
 		return new Error(
-			`${label}: making voices needs a paid ElevenLabs plan. Fish Audio can make them on any plan (add it in Admin → Voice).`,
+			`${label}: making voices needs a paid ElevenLabs plan. Fish Audio can make them on any plan (add it in Settings → Voice).`,
 		);
 	}
 	return err;

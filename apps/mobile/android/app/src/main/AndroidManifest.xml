@@ -3,7 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- A bot calling you shows as a call (Answer and Decline) even with the phone in use or locked. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Calls, dictation and voice messages; the camera for video and photos to upload. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -63,6 +66,9 @@
 
         <receiver
             android:name=".ApprovalReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".CallReceiver"
             android:exported="false" />
 
         <service

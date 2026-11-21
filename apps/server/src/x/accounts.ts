@@ -100,7 +100,7 @@ async function resolveIds(client: Emusks, handles: string[]): Promise<string[]> 
 /** A signed-in client for a bot's account (signs in again after a restart or a failure). */
 export async function xClient(agentId: string): Promise<{ client: Emusks; account: Stored }> {
 	const s = await stored(agentId);
-	if (!s) throw badRequest("This bot has no X account. Connect one in its panel: Tools → X.");
+	if (!s) throw badRequest("This bot has no X account. Connect one in the bot's Accounts → X.");
 	const live = clients.get(agentId);
 	if (live) return { client: live.client, account: s };
 	try {

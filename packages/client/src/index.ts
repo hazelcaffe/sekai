@@ -1,4 +1,4 @@
-export { adminUrl, api, assetUrl, getToken, setToken } from "./api.ts";
+export { api, assetUrl, getToken, type SettingsSectionId, setToken, settingsUrl } from "./api.ts";
 export { AgentAvatar, AvatarStack, GroupAvatar, type Presence } from "./components/AgentAvatar.tsx";
 export {
 	AppIcon,
@@ -10,11 +10,11 @@ export {
 	redirectAddress,
 } from "./components/AppStore.tsx";
 export { BrandGlyph, BrandTile, presetBrand, ssoBrand, vendorBrand } from "./components/BrandLogo.tsx";
+export { ChatImage } from "./components/ChatImage.tsx";
+export { Markdown } from "./components/LazyMarkdown.tsx";
 export type { Brand } from "./components/logos.ts";
 export { MakeVoiceDialog } from "./components/MakeVoice.tsx";
-export { ChatImage, Markdown } from "./components/Markdown.tsx";
 export {
-	ApprovalModePill,
 	ComposerModelPill,
 	MODE_ICONS,
 	ModelList,
@@ -29,10 +29,12 @@ export { VoiceGrid, VoiceSettingsEditor } from "./components/VoiceSettings.tsx";
 export * from "./data.ts";
 export { desktop, isDesktop, isMac, type LocalComputerInfo, type SekaiDesktop } from "./desktop.ts";
 export { joinArgs, kvText, parseKv, splitArgs } from "./forms.ts";
-export { isMobileApp, mobile, type SekaiMobile } from "./mobile.ts";
+export { runningAsApp } from "./installed.ts";
+export { type HapticKind, haptic, isMobileApp, mobile, type SekaiMobile } from "./mobile.ts";
 export {
 	cancelPasskeyPrompt,
 	passkeyAutofill,
+	passkeySecondStep,
 	passkeysSupported,
 	registerPasskey,
 	signInWithPasskey,

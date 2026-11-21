@@ -1,15 +1,16 @@
 import { api } from "@sekai/client";
-import { PASSWORD_MIN, type SignInResult } from "@sekai/shared";
-import { Button, Callout, Field, PasswordInput, Spinner } from "@sekai/ui";
+import { ApiError, PASSWORD_MIN, type SignInResult } from "@sekai/shared";
+import { Button, Callout, ErrorState, Field, PasswordInput, Skeleton, Spinner } from "@sekai/ui";
 import { useQuery } from "@tanstack/react-query";
 import { CircleAlert } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { AuthLayout } from "./AuthLayout.tsx";
-import { MfaStep } from "./MfaStep.tsx";
+import { MfaStep, mfaSubtitle } from "./MfaStep.tsx";
 import type { SignedIn } from "./SignInPage.tsx";
 
-/** /welcome/invite/:token and /welcome/reset/:token, if this is one. */
-export function ticketFromPath(path = location.pathname): { kind: "invite" | "reset"; token: string } | null {
+/** /welcome/invite/:token and /welcome/reset/:token, if this is one (pass the router's path). */
+export function ticketFromPath(path: string): { kind: "invite" | "reset"; token: string } | null {
 	const m = path.match(/^\/welcome\/(invite|reset)\/([A-Za-z0-9]{20,100})\/?$/);
 	return m?.[1] && m[2] ? { kind: m[1] as "invite" | "reset", token: m[2] } : null;
 }
@@ -24,11 +25,13 @@ export function TicketPage({
 	token: string;
 	onSignedIn: (result: SignedIn) => void;
 }) {
+	const navigate = useNavigate();
 	const info = useQuery({
 		queryKey: ["ticket", kind, token],
 		queryFn: () => api.auth.ticket(kind, token),
 		retry: false,
 	});
+	const toStart = () => navigate("/", { replace: true });
 	const [password, setPassword] = useState("");
 	const [again, setAgain] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -36,7 +39,7 @@ export function TicketPage({
 	const [mfa, setMfa] = useState<Extract<SignInResult, { status: "mfa" }> | null>(null);
 
 	const done = (result: SignedIn) => {
-		history.replaceState(null, "", "/");
+		toStart();
 		onSignedIn(result);
 	};
 	const submit = async () => {
@@ -55,36 +58,49 @@ export function TicketPage({
 
 	if (mfa) {
 		return (
-			<AuthLayout title="One more step" subtitle="Your account has two-factor sign-in.">
-				<MfaStep
-					methods={mfa.methods}
-					hints={mfa.hints}
-					onSignedIn={done}
-					onBack={() => location.assign("/")}
-				/>
+			<AuthLayout title="One more step" subtitle={mfaSubtitle(mfa)}>
+				<MfaStep challenge={mfa} onSignedIn={done} onBack={toStart} />
 			</AuthLayout>
 		);
 	}
 	if (info.isLoading) {
 		return (
-			<div className="flex h-dvh items-center justify-center">
-				<Spinner className="size-6" />
-			</div>
+			<AuthLayout title="Checking the link" subtitle="One moment.">
+				<div className="flex flex-col gap-4" role="status" aria-label="Loading">
+					<Skeleton className="h-16 rounded-md" />
+					<Skeleton className="h-16 rounded-md" />
+					<Skeleton className="h-11 rounded-md" />
+				</div>
+			</AuthLayout>
+		);
+	}
+	// Only a link the server doesn't know is one that "doesn't work"; anything else (offline, the server's own
+	// trouble) can be tried again.
+	if (info.isError && !(info.error instanceof ApiError && info.error.status === 404)) {
+		return (
+			<AuthLayout title={kind === "invite" ? "Your invite" : "Your new password"}>
+				<ErrorState
+					size="sm"
+					title="Couldn't check this link"
+					error={info.error}
+					onRetry={() => void info.refetch()}
+				/>
+			</AuthLayout>
 		);
 	}
 	if (!info.data) {
 		return (
-			<AuthLayout title="This link doesn't work" subtitle="It expired or was already used.">
-				<div className="flex flex-col gap-3">
-					<p className="text-sm text-fg-muted">
-						{kind === "invite"
-							? "Ask the admin who invited you for a new link."
-							: "Ask for a new one, or ask an admin to reset your password."}
-					</p>
-					<Button variant="secondary" onClick={() => location.assign("/")}>
-						Go to sign in
-					</Button>
-				</div>
+			<AuthLayout
+				title="This link doesn't work"
+				subtitle={
+					kind === "invite"
+						? "It expired or was already used. Ask for a new invite."
+						: "It expired or was already used. Ask for a new reset link."
+				}
+			>
+				<Button variant="primary" className="w-full" onClick={toStart}>
+					Go to sign in
+				</Button>
 			</AuthLayout>
 		);
 	}
@@ -128,7 +144,7 @@ export function TicketPage({
 					</Callout>
 				)}
 				<Button type="submit" variant="primary" size="lg" className="mt-1 w-full" disabled={!ready || busy}>
-					{busy && <Spinner className="text-primary-foreground" />}
+					{busy && <Spinner />}
 					{kind === "invite" ? "Start using Sekai" : "Save and sign in"}
 				</Button>
 			</form>

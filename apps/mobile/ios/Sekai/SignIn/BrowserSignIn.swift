@@ -13,9 +13,10 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
 
 	private var session: ASWebAuthenticationSession?
 	private var anchor: UIWindow?
+	private var attempt: UUID?
 
 	/// Opens `<server>/api/auth/app/start` in the browser sheet (with Safari's sign-ins, not a private one).
-	func start(server: Origin, provider: String?, anchor: UIWindow?) throws {
+	func start(server: Origin, provider: String?, anchor: UIWindow?, failed: @escaping () -> Void) throws {
 		guard let anchor else { throw BridgeError("Sekai isn't on screen, so it can't open the browser.") }
 		let verifier = try Self.randomVerifier()
 		let challenge = Self.base64url(Data(SHA256.hash(data: Data(verifier.utf8))))
@@ -28,21 +29,41 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
 		]
 		guard let url = components.url else { throw BridgeError("Couldn't open the browser to sign in.") }
 
+		cancel()
+		let attempt = UUID()
+		self.attempt = attempt
 		UserDefaults.standard.set(verifier, forKey: Self.verifierKey)
 		UserDefaults.standard.set(server.string, forKey: Self.serverKey)
-		session?.cancel()
-		let session = ASWebAuthenticationSession(url: url, callbackURLScheme: AppInfo.linkScheme) { callback, _ in
-			// Closing the sheet (or the page's Cancel, sekai://signed-in?error=cancelled) changes nothing.
+		let session = ASWebAuthenticationSession(url: url, callbackURLScheme: AppInfo.linkScheme) { callback, error in
 			Task { @MainActor [weak self] in
-				self?.session = nil
-				if let callback { Router.shared.handle(link: callback) }
+				guard let self, self.attempt == attempt else { return }
+				self.session = nil
+				self.anchor = nil
+				if let callback, case .signedIn = Router.parse(callback) { Router.shared.handle(link: callback) }
+				else {
+					let cancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin ||
+						callback.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }?
+							.contains { $0.name == "error" && $0.value == "cancelled" } == true
+					if !cancelled { failed() }
+				}
+				self.cancel()
 			}
 		}
 		session.prefersEphemeralWebBrowserSession = false
 		session.presentationContextProvider = self
 		self.anchor = anchor
-		guard session.start() else { throw BridgeError("Couldn't open the browser to sign in.") }
+		guard session.start() else { cancel(); throw BridgeError("Couldn't open the browser to sign in. Try again.") }
 		self.session = session
+	}
+
+	/// Discard callbacks and saved verifiers for a cancelled attempt or a server the person left.
+	func cancel() {
+		attempt = nil
+		session?.cancel()
+		session = nil
+		anchor = nil
+		UserDefaults.standard.removeObject(forKey: Self.verifierKey)
+		UserDefaults.standard.removeObject(forKey: Self.serverKey)
 	}
 
 	/// The request that trades a code for a session in the web view: a form POST to the server that started it,

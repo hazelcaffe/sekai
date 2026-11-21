@@ -1,22 +1,23 @@
-import { api, qk, queryClient, useMachinePorts } from "@sekai/client";
+import { api, qk, queryClient, useAccess, useMachinePorts } from "@sekai/client";
 import type { Machine, MachinePort } from "@sekai/shared";
-import { Badge, Button, IconButton, Spinner } from "@sekai/ui";
+import { Badge, Button, Confirm, IconButton, Link, SkeletonRows, Spinner } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
 import { Check, Copy, ExternalLink, Globe, Lock, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { LoadProblem } from "./LoadProblem.tsx";
 
 /** A link to open (in a new tab) or copy. */
 function LinkRow({ url, icon }: { url: string; icon: React.ReactNode }) {
 	const [done, setDone] = useState(false);
 	return (
-		<div className="flex items-center gap-2 text-[13px]">
-			<span className="shrink-0 text-fg-subtle [&_svg]:size-3.5">{icon}</span>
+		<div className="flex items-center gap-2 text-body">
+			<span className="shrink-0 text-fg-subtle [&_svg]:size-4">{icon}</span>
 			<a
 				href={url}
 				target="_blank"
 				rel="noreferrer"
-				className="min-w-0 flex-1 truncate font-mono text-[12px] text-info underline-offset-2 hover:underline"
+				className="min-w-0 flex-1 truncate font-mono text-small text-info-ink underline-offset-2 hover:underline"
 			>
 				{url}
 			</a>
@@ -45,20 +46,22 @@ function PortRow({
 	p,
 	onShare,
 	busy,
+	canShare,
 }: {
 	machine: Machine;
 	p: MachinePort;
 	onShare: (https: boolean) => void;
 	busy: boolean;
+	canShare: boolean;
 }) {
 	return (
 		<div className="flex flex-col gap-1 py-2">
 			<div className="flex items-center gap-2">
-				<span className="font-mono text-[13px] font-medium">:{p.port}</span>
-				{p.process && <span className="truncate text-xs text-fg-subtle">{p.process}</span>}
+				<span className="font-mono text-body font-medium">:{p.port}</span>
+				{p.process && <span className="truncate text-small text-fg-subtle">{p.process}</span>}
 				{!p.running && <Badge>Not running</Badge>}
 				<span className="flex-1" />
-				<Button variant="ghost" size="xs" disabled={busy} onClick={() => onShare(!p.httpsUrl)}>
+				<Button variant="ghost" size="sm" disabled={busy || !canShare} onClick={() => onShare(!p.httpsUrl)}>
 					{busy ? <Spinner /> : p.httpsUrl ? <X /> : <Lock />}
 					{p.httpsUrl ? "Stop HTTPS link" : "HTTPS link"}
 				</Button>
@@ -66,7 +69,7 @@ function PortRow({
 			{p.ipUrl && <LinkRow url={p.ipUrl} icon={<Globe />} />}
 			{p.httpsUrl && <LinkRow url={p.httpsUrl} icon={<Lock />} />}
 			{p.running && !p.ipUrl && !p.httpsUrl && (
-				<p className="text-xs leading-5 text-fg-subtle">
+				<p className="text-small text-fg-subtle">
 					It only listens inside {machine.name} (on 127.0.0.1). Make an HTTPS link, or start it on 0.0.0.0.
 				</p>
 			)}
@@ -79,52 +82,38 @@ function PortRow({
  * app's port, or over HTTPS at its tailnet name). Checked every few seconds while it's open.
  */
 export function WebApps({ machine }: { machine: Machine }) {
-	const [open, setOpen] = useState(false);
-	const { data, isLoading, error } = useMachinePorts(machine.id, open);
+	const { admin } = useAccess();
+	const [stop, setStop] = useState<number | null>(null);
+	const { data, isLoading, error, refetch } = useMachinePorts(machine.id, true);
 	const share = useMutation({
 		mutationFn: (p: { port: number; https: boolean }) => api.machines.sharePort(machine.id, p),
 		onSuccess: (view) => queryClient.setQueryData(qk.machinePorts(machine.id), view),
-		onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
+		onError: () => toast.error("Couldn’t change the link. Check the computer’s network and try again."),
 	});
 
-	if (!open) {
-		return (
-			<Button variant="ghost" size="sm" className="self-start" onClick={() => setOpen(true)}>
-				<Globe /> Web apps
-			</Button>
-		);
-	}
 	return (
-		<div className="flex flex-col gap-1 rounded-2xl bg-surface-2/60 p-3">
-			<div className="flex items-center gap-2">
-				<span className="min-w-0 flex-1">
-					<span className="block text-[13px] font-medium">Web apps</span>
-					<span className="block text-xs leading-5 text-fg-subtle">
-						What's running on {machine.name}, with links that work on your tailnet, not the internet.
-					</span>
-				</span>
-				<IconButton size="icon-sm" label="Close" onClick={() => setOpen(false)}>
-					<X />
-				</IconButton>
-			</div>
+		<div className="flex flex-col gap-3">
 			{isLoading ? (
-				<div className="flex justify-center py-2">
-					<Spinner />
-				</div>
+				<SkeletonRows count={2} />
 			) : error ? (
-				<p className="text-xs text-danger">{error instanceof Error ? error.message : String(error)}</p>
+				<LoadProblem what="web apps" retry={refetch} />
 			) : data ? (
 				<>
 					{!data.tailscale && (
-						<p className="text-xs leading-5 text-warning">
-							{machine.name} isn't on your tailnet, so its links use its home network address and there's
-							no HTTPS link. Add a Tailscale auth key in Admin → Tailscale for new machines.
+						<p className="text-small text-warning-ink">
+							Only local links are available.{" "}
+							{admin ? (
+								<Link className="text-brand-ink underline" href="/settings/network/connection">
+									Set up private links for new computers
+								</Link>
+							) : (
+								"Ask an admin to set up private links for new computers."
+							)}
 						</p>
 					)}
 					{data.ports.length === 0 ? (
-						<p className="py-1 text-xs leading-5 text-fg-subtle">
-							Nothing's running yet. Dev servers show up here once they start (on 0.0.0.0, e.g.{" "}
-							<code className="font-mono">vite --host 0.0.0.0</code>).
+						<p className="py-1 text-small text-fg-subtle">
+							Start a web app on this computer to see its link here.
 						</p>
 					) : (
 						<div className="flex flex-col divide-y divide-border">
@@ -134,13 +123,24 @@ export function WebApps({ machine }: { machine: Machine }) {
 									machine={machine}
 									p={p}
 									busy={share.isPending && share.variables?.port === p.port}
-									onShare={(https) => share.mutate({ port: p.port, https })}
+									canShare={Boolean(data.tailscale)}
+									onShare={(https) =>
+										https ? share.mutate({ port: p.port, https }) : setStop(p.port)
+									}
 								/>
 							))}
 						</div>
 					)}
 				</>
 			) : null}
+			<Confirm
+				open={stop !== null}
+				onOpenChange={(o) => !o && setStop(null)}
+				title="Stop sharing this link?"
+				description="The secure link will stop working. The web app stays on the computer."
+				confirmLabel="Stop sharing"
+				onConfirm={() => stop !== null && share.mutate({ port: stop, https: false })}
+			/>
 		</div>
 	);
 }

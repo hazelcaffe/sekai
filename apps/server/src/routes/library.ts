@@ -105,7 +105,7 @@ export const mcpRoutes = new Hono()
 	})
 	// Apps send the browser back here after you approve.
 	.get("/oauth/callback", async (c) => {
-		const back = (q: string) => c.redirect(`/admin/apps?tab=mcp&${q}`, 302);
+		const back = (q: string) => c.redirect(`/settings/apps?tab=mcp&${q}`, 302);
 		const error = c.req.query("error");
 		if (error) return back(`signin_error=${encodeURIComponent(c.req.query("error_description") ?? error)}`);
 		const code = c.req.query("code");

@@ -30,7 +30,7 @@ export const extensionTools = [
 		name: "extension_browser",
 		category: "browser",
 		description:
-			"Control the user's actual signed-in browser through the Sekai extension. Only explicitly shared tabs are accessible. Get connectionId from extension_browsers; action tabs lists shared tab IDs, snapshot gives pageId and element refs. Always use fresh pageId/refs and explicit tabId. Screenshot is the visible viewport only. Never guess refs or use this for passwords. Mutations always ask the user, even in YOLO.",
+			"Control the user's actual signed-in browser through the Sekai extension. Only explicitly shared tabs are accessible. Get connectionId from extension_browsers; action tabs lists shared tab IDs, snapshot gives pageId and element refs. Always use fresh pageId/refs and explicit tabId. Screenshot is the visible viewport only. Never guess refs or use this for passwords. Mutations always ask the user, even when the approvals rule is “Don't ask”.",
 		parameters: z.object({ connectionId: z.string().min(1).max(80), input: ExtensionAction }),
 		risk: "external",
 		riskFor: (args) => (["tabs", "snapshot", "screenshot"].includes(args.input.action) ? "read" : "external"),

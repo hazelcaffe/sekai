@@ -1,7 +1,7 @@
 # Architecture
 
-Sekai is a Bun monorepo: one server (API, live events, WebSockets, background work) and web, admin, desktop, mobile
-and browser-extension clients that talk to it.
+Sekai is a Bun monorepo: one server (API, live events, WebSockets, background work) and web, desktop, mobile and
+browser-extension clients that talk to it.
 For the rules every change must keep (who owns what, how requests become a person, events, permissions), read
 [AGENTS.md](../AGENTS.md) and the `AGENTS.md` next to the code.
 
@@ -31,8 +31,8 @@ apps/server      Bun + Hono API, Postgres (Drizzle), SSE event bus
   src/auth         accounts, sessions, roles, two-factor sign-in, single sign-on, the actor (who a request runs as)
   src/events       the live event bus, and who gets each event
   src/scheduler    routines and reminders (croner)
-apps/web         React 19, Vite, Tailwind 4, TanStack Query, Radix; service worker for offline start and push
-apps/admin       the admin app (overview, models, apps, voice, approvals, computers, Tailscale, account)
+apps/web         React 19, Vite, Tailwind 4, TanStack Query, Radix: chats, bots' pages, Settings (the server's setup
+                 too, for admins); service worker for offline start and push
 apps/desktop     Electron shell (sandboxed renderer, minimal preload bridge, auto-update from your server); src/local
                  lends the computer to bots (bridge client, Windows/macOS/Linux helpers, browser, commands, files)
 apps/extension   Manifest V3, React panel, isolated DOM bridge; explicit per-tab and per-origin local grants;
@@ -40,8 +40,8 @@ apps/extension   Manifest V3, React panel, isolated DOM bridge; explicit per-tab
 apps/mobile      iOS (Swift, WKWebView, XcodeGen) and Android (Kotlin, WebView) shells around the web app, with a shared
                  bridge (push, sign-in through the browser, downloads, links) and connect screen
 packages/shared  zod schemas, event types and the typed API client used by every app
-packages/client  React hooks and components shared by the web and admin apps
-packages/ui      the design system (shadcn/ui based)
+packages/client  React hooks and components for the apps (data hooks, model and voice pickers, the bridges)
+packages/ui      the design system (shadcn/ui based; packages/ui/DESIGN.md)
 ```
 
 A message creates a **run** in its chat's queue, so replies never interleave. The runtime builds the bot's context, then either runs the gateway tool loop (with the chosen strategy) or hands the turn to the bot's subscription agent. Message parts (text, reasoning, tool calls, plans and notices) stream to every client over `/api/events`.
@@ -60,7 +60,7 @@ in-memory lease and executes commands only against its local allowlist. Closing 
 restart restores nothing. Commands aren't replayed, refs stay in an isolated world, and page URLs/origins are checked
 again before acting. There is no externally callable page-to-extension channel or general JavaScript evaluator.
 
-- **A built-in tool:** add a `defineTool({ name, category, description, parameters, risk, title, execute })` to a module in `apps/server/src/agent/tools/` and list it in `BUILTIN_TOOLS`. Approvals, the Brain view, the Tools tab and the BYOS bridge pick it up automatically.
+- **A built-in tool:** add a `defineTool({ name, category, description, parameters, risk, title, execute })` to a module in `apps/server/src/agent/tools/` and list it in `BUILTIN_TOOLS`. Approvals, the chat details, a bot's Tools & access and the BYOS bridge pick it up automatically.
 - **A model strategy:** extend `ModelStrategy` in `packages/shared/src/agent.ts` and add a case to `apps/server/src/agent/strategies.ts`.
 - **A chat platform:** implement `ChannelAdapter` in `apps/server/src/channels/` (connect, send/edit/remove messages, buttons and menus, typing, publishing commands), register it with `registerAdapter`, add its type to `CHANNEL_TYPES` and describe its setup in `CHANNEL_DEFINITIONS`. Access, pairing, commands, streaming, group links and approvals are shared, so a new platform gets all of them.
 - **A subscription agent:** most need only a preset in `packages/shared/src/provider.ts` (any ACP agent works as _Custom_). A new protocol needs a runner with the `RunnerInput → RunnerResult` shape in `apps/server/src/providers/`.
