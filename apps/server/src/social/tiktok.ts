@@ -21,32 +21,38 @@ function toPublic(agentId: string, s: SocialStored): TtAccount {
 }
 
 /**
- * Validate a sessionid and learn the account. TikTok's web API signs most reads, so this uses the
- * session's own user-info endpoint, which still answers to a plain session cookie.
+ * Validate a sessionid and learn the account: TikTok's sign-in service answers who a session is, with a plain
+ * session cookie (its web API signs most other reads).
  */
 async function whoami(sessionId: string): Promise<{ userId: string; handle: string; name: string }> {
-	const res = await fetch("https://www.tiktok.com/api/user/detail/?aid=1988", {
+	const res = await fetch("https://www.tiktok.com/passport/web/account/info/?aid=1459", {
 		headers: {
-			cookie: `sessionid=${sessionId}`,
+			cookie: `sessionid=${sessionId.trim()}`,
 			"user-agent":
-				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
 			referer: "https://www.tiktok.com/",
 		},
 	});
-	const data = (await res.json().catch(() => null)) as {
-		userInfo?: { user?: { id?: string; uniqueId?: string; nickname?: string } };
-		statusCode?: number;
-		statusMsg?: string;
+	const body = (await res.json().catch(() => null)) as {
+		message?: string;
+		data?: {
+			user_id?: number | string;
+			user_id_str?: string;
+			username?: string;
+			screen_name?: string;
+			name?: string;
+		};
 	} | null;
-	const u = data?.userInfo?.user;
-	if (!res.ok || !u?.id) {
-		throw badRequest(
-			/login|expired|permission/i.test(data?.statusMsg ?? "") || res.status === 403
-				? "TikTok rejected that sessionid: it's wrong, expired, or the account was logged out."
-				: "Couldn't read the account with that sessionid. TikTok may want the browser instead — but the account still works there.",
-		);
+	const d = body?.data;
+	const id = d?.user_id_str ?? d?.user_id;
+	if (body?.message === "success" && id && d?.username) {
+		return { userId: String(id), handle: String(d.username), name: String(d.screen_name || d.username) };
 	}
-	return { userId: String(u.id), handle: String(u.uniqueId), name: String(u.nickname ?? u.uniqueId) };
+	if (res.ok && body?.message === "error") {
+		throw badRequest("TikTok rejected that sessionid: it's wrong, expired, or the account was logged out.");
+	}
+	log.warn(`tiktok sign-in: ${res.status} ${(body?.message ?? "").slice(0, 80)}`);
+	throw badRequest("Couldn't reach TikTok just now. Try again in a minute.");
 }
 
 export async function getTtAccount(agentId: string): Promise<TtAccount | null> {

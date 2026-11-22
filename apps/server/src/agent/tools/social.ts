@@ -2,6 +2,7 @@ import { z } from "zod";
 import { type BrowserSession, browserFor, describePage, settle } from "../../browser/engine.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { log } from "../../lib/log.ts";
+import { igWeb } from "../../social/instagram.ts";
 import { type SocialPlatform, socialSessionCookie, storedSocial } from "../../social/store.ts";
 import { defineTool, type ToolContext, ToolError } from "./types.ts";
 
@@ -89,15 +90,7 @@ interface IgThread {
 }
 
 async function igApi<T>(sessionId: string, path: string, init?: RequestInit): Promise<T> {
-	const res = await fetch(`https://i.instagram.com/api/v1${path}`, {
-		...init,
-		headers: {
-			cookie: `sessionid=${sessionId}`,
-			"user-agent": "Instagram 219.0.0.12.117 Android",
-			"x-ig-app-id": "936619743392459",
-			...(init?.headers ?? {}),
-		},
-	});
+	const res = await igWeb(sessionId, path, init);
 	const data = (await res.json().catch(() => null)) as (T & { message?: string; status?: string }) | null;
 	if (!res.ok) {
 		const err = new Error(data?.message ?? res.statusText) as Error & { status?: number };
@@ -108,11 +101,11 @@ async function igApi<T>(sessionId: string, path: string, init?: RequestInit): Pr
 }
 
 async function igUserId(sessionId: string, username: string): Promise<string> {
-	const r = await igApi<{ user?: { pk?: number | string } }>(
+	const r = await igApi<{ data?: { user?: { id?: string } }; user?: { pk?: number | string } }>(
 		sessionId,
 		`/users/web_profile_info/?username=${encodeURIComponent(username)}`,
 	);
-	const id = r?.user?.pk;
+	const id = r?.data?.user?.id ?? r?.user?.pk;
 	if (!id) throw new ToolError(`No Instagram account @${username}.`);
 	return String(id);
 }
@@ -254,11 +247,16 @@ export const socialTools = [
 			}
 			const uploadId = String(Date.now());
 			try {
-				const res = await fetch(`https://i.instagram.com/rupload_igphoto/fb_uplink_${uploadId}`, {
+				// The web's upload endpoint, like the rest (the session is the website's).
+				const res = await fetch(`https://www.instagram.com/rupload_igphoto/fb_uplink_${uploadId}`, {
 					method: "POST",
 					headers: {
 						cookie: `sessionid=${account.sessionId}`,
 						"x-ig-app-id": "936619743392459",
+						"user-agent":
+							"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+						referer: "https://www.instagram.com/",
+						origin: "https://www.instagram.com",
 						"x-instagram-rupload-params": JSON.stringify({
 							media_type: 1,
 							upload_id: uploadId,

@@ -7,6 +7,7 @@ import { config } from "../config.ts";
 import { db, schema } from "../db/index.ts";
 import { badRequest, notFound } from "../lib/errors.ts";
 import { ID } from "../lib/ids.ts";
+import { imageMime } from "../lib/mime.ts";
 import { checkStorage } from "./limits.ts";
 
 type UploadRow = typeof schema.uploads.$inferSelect;
@@ -61,7 +62,10 @@ export async function saveUpload(
 	const safeName = name.replace(/[^\w.\- ()]/g, "_").slice(0, 200) || "file";
 	const ext = EXT_BY_MIME[mime] ?? (safeName.includes(".") ? safeName.slice(safeName.lastIndexOf(".")) : "");
 	// "image/SVG+xml; charset=utf-8" is still an SVG: compare and serve the bare, lower-case type.
-	const cleanMime = (mime.split(";")[0] ?? "").trim().toLowerCase();
+	const labelled = (mime.split(";")[0] ?? "").trim().toLowerCase();
+	const cleanMime = labelled.startsWith("image/")
+		? imageMime(new Uint8Array(await blob.slice(0, 16).arrayBuffer()), labelled)
+		: labelled;
 	const path = join(config.dataDir, "uploads", `${id}${ext.slice(0, 12)}`);
 	await Bun.write(path, blob);
 	const row: UploadRow = {
@@ -137,7 +141,10 @@ export function isTextFile(a: Pick<Attachment, "mime" | "name">): boolean {
 export async function readUploadBase64(id: string): Promise<{ mime: string; base64: string }> {
 	const row = await getUploadRow(id);
 	const buf = Buffer.from(await Bun.file(row.path).arrayBuffer());
-	return { mime: row.mime, base64: buf.toString("base64") };
+	return {
+		mime: row.mime.startsWith("image/") ? imageMime(buf, row.mime) : row.mime,
+		base64: buf.toString("base64"),
+	};
 }
 
 export async function readUploadText(id: string, maxChars = 100_000): Promise<string> {
