@@ -1,0 +1,260 @@
+name: Mobile
+
+on:
+  push:
+    # Branches only: a release tag builds the apps through the release workflow instead.
+    branches: ["**"]
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, like 0.2.0 (leave empty for the one in apps/mobile/version.xcconfig)"
+        type: string
+        required: false
+      build:
+        description: "Build number, with a version (leave empty to keep the file's)"
+        type: number
+        required: false
+  # The release workflow builds the apps with this, for a version and with the signing secrets (secrets: inherit).
+  workflow_call:
+    inputs:
+      version:
+        description: "Version, like 0.2.0 (empty: the one in apps/mobile/version.xcconfig)"
+        type: string
+        required: false
+        default: ""
+      build:
+        description: "Build number, with a version (empty: the file's)"
+        type: number
+        required: false
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+
+permissions:
+  contents: read
+
+# Its own group name, so it never shares one with a workflow that calls it; release builds are never cancelled.
+concurrency:
+  group: mobile-${{ github.ref }}-${{ inputs.version || 'ci' }}
+  cancel-in-progress: ${{ !inputs.version }}
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Look for the Android app
+        id: app
+        run: |
+          if [ -f apps/mobile/android/gradlew ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::There's no apps/mobile/android yet, so there's nothing to build."
+          fi
+      # Both apps read their version only from apps/mobile/version.xcconfig.
+      - name: Set the version
+        if: inputs.version
+        working-directory: apps/mobile
+        env:
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          build=$BUILD
+          if [ -z "$build" ] || [ "$build" = "0" ]; then
+            build=$(sed -n 's/^CURRENT_PROJECT_VERSION *= *//p' version.xcconfig | tr -d '[:space:]')
+          fi
+          if ! [[ $VERSION =~ ^[0-9]+(\.[0-9]+){0,2}$ && $build =~ ^[0-9]+$ ]]; then
+            echo "::error::The version must look like 0.2.0, and the build must be a whole number."
+            exit 1
+          fi
+          perl -pi -e "s/^MARKETING_VERSION *=.*/MARKETING_VERSION = $VERSION/; s/^CURRENT_PROJECT_VERSION *=.*/CURRENT_PROJECT_VERSION = $build/" version.xcconfig
+          echo "Building version $VERSION ($build)"
+      - uses: actions/setup-java@v6
+        if: steps.app.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            apps/mobile/android/**/*.gradle*
+            apps/mobile/android/**/gradle-wrapper.properties
+            apps/mobile/android/gradle/libs.versions.toml
+      # With the release keystore (a secret) a signed release APK, else a debug one.
+      - name: Build the APK
+        id: apk
+        if: steps.app.outputs.present == 'true'
+        working-directory: apps/mobile/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SEKAI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SEKAI_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SEKAI_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          version=$(sed -n 's/^MARKETING_VERSION *= *//p' ../version.xcconfig | tr -d '[:space:]')
+          out="$RUNNER_TEMP/sekai-android"
+          mkdir -p "$out"
+          chmod +x gradlew
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            # The keystore exists only in this job's temp folder, and only while Gradle signs.
+            export SEKAI_KEYSTORE="$RUNNER_TEMP/sekai-release.keystore"
+            trap 'rm -f "$SEKAI_KEYSTORE"' EXIT
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$SEKAI_KEYSTORE"
+            ./gradlew assembleRelease --no-daemon
+            kind=release
+            name="Sekai-$version.apk"
+          else
+            ./gradlew assembleDebug --no-daemon
+            kind=debug
+            name="Sekai-$version-debug.apk"
+          fi
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/"$kind"/*.apk)
+          if [ "${#apks[@]}" -ne 1 ]; then
+            echo "::error::Expected one $kind APK, found ${#apks[@]}."
+            exit 1
+          fi
+          cp "${apks[0]}" "$out/$name"
+          echo "file=$out/$name" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        if: steps.app.outputs.present == 'true'
+        with:
+          name: sekai-android
+          path: ${{ steps.apk.outputs.file }}
+          if-no-files-found: error
+
+  ios:
+    name: iOS
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      XCODEGEN_VERSION: "2.47.0"
+      SEKAI_CI_DIR: /tmp/sekai-ci
+    defaults:
+      run:
+        working-directory: apps/mobile/ios
+    steps:
+      - uses: actions/checkout@v7
+      # Both apps read their version only from apps/mobile/version.xcconfig.
+      - name: Set the version
+        if: inputs.version
+        working-directory: apps/mobile
+        env:
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          build=$BUILD
+          if [ -z "$build" ] || [ "$build" = "0" ]; then
+            build=$(sed -n 's/^CURRENT_PROJECT_VERSION *= *//p' version.xcconfig | tr -d '[:space:]')
+          fi
+          if ! [[ $VERSION =~ ^[0-9]+(\.[0-9]+){0,2}$ && $build =~ ^[0-9]+$ ]]; then
+            echo "::error::The version must look like 0.2.0, and the build must be a whole number."
+            exit 1
+          fi
+          perl -pi -e "s/^MARKETING_VERSION *=.*/MARKETING_VERSION = $VERSION/; s/^CURRENT_PROJECT_VERSION *=.*/CURRENT_PROJECT_VERSION = $build/" version.xcconfig
+          echo "Building version $VERSION ($build)"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      # A real Sekai server for the smoke test, set up while the app builds (it isn't needed for the build).
+      - name: Start a Sekai server in the background
+        run: nohup bash scripts/ci-server.sh > /tmp/sekai-ci-setup.log 2>&1 &
+      - name: Boot a simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available --json | jq -r '
+            [.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))]
+            | (map(select(.name == "iPhone 17 Pro")) + .) | first | .udid')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid"
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o /tmp/xcodegen.zip "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          unzip -q /tmp/xcodegen.zip -d /tmp
+          echo "/tmp/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Generate the Xcode project
+        run: xcodegen generate
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild build-for-testing -project Sekai.xcodeproj -scheme Sekai -configuration Debug \
+            -destination "platform=iOS Simulator,arch=arm64,id=${{ steps.sim.outputs.udid }}" -derivedDataPath build/sim \
+            CODE_SIGNING_ALLOWED=NO | tee build/sim.log | xcbeautify --renderer github-actions
+      - name: Smoke test
+        run: |
+          server=""
+          for _ in $(seq 1 240); do
+            if [ -f "$SEKAI_CI_DIR/ready" ]; then server="http://127.0.0.1:7420"; break; fi
+            if [ -f "$SEKAI_CI_DIR/failed" ]; then echo "::warning::The test server didn't start; testing without it."; break; fi
+            sleep 1
+          done
+          bash scripts/smoke-test.sh "${{ steps.sim.outputs.udid }}" \
+            build/sim/Build/Products/Debug-iphonesimulator/Sekai.app build/screenshots "$server"
+      - name: Unit and interface tests
+        run: |
+          set -o pipefail
+          bash scripts/serve-bridge-fixture.sh > /tmp/sekai-ui-test.log 2>&1 &
+          fixture=$!
+          trap 'kill "$fixture" 2>/dev/null || true' EXIT
+          xcodebuild test-without-building -project Sekai.xcodeproj -scheme Sekai -configuration Debug \
+            -destination "platform=iOS Simulator,arch=arm64,id=${{ steps.sim.outputs.udid }}" -derivedDataPath build/sim \
+            -parallel-testing-enabled NO -resultBundlePath build/tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify --renderer github-actions
+      - name: Collect interface screenshots
+        if: always() && hashFiles('apps/mobile/ios/build/tests.xcresult/Info.plist') != ''
+        run: |
+          xcrun xcresulttool export attachments --path build/tests.xcresult --output-path build/attachments
+          mkdir -p build/screenshots
+          jq -r '.[] | .attachments[] | select(.exportedFileName | endswith(".png")) | [.exportedFileName,.suggestedHumanReadableName] | @tsv' \
+            build/attachments/manifest.json | while IFS=$'\t' read -r file name; do
+            cp "build/attachments/$file" "build/screenshots/${name##*/}"
+          done
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p build/logs
+          cp /tmp/sekai-ci-setup.log "$SEKAI_CI_DIR"/*.log build/logs/ 2>/dev/null || true
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 10m --style compact \
+            --predicate 'process == "Sekai"' > build/logs/app.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-screenshots
+          path: |
+            apps/mobile/ios/build/screenshots
+            apps/mobile/ios/build/logs
+            apps/mobile/ios/build/sim.log
+          if-no-files-found: ignore
+      # For people to sign with their own certificate (see apps/mobile/AGENTS.md).
+      - name: Build the unsigned IPA
+        id: ipa
+        run: |
+          set -o pipefail
+          xcodebuild build -project Sekai.xcodeproj -scheme Sekai -configuration Release \
+            -destination "generic/platform=iOS" -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify --renderer github-actions
+          version=$(sed -n 's/^MARKETING_VERSION *= *//p' ../version.xcconfig | tr -d '[:space:]')
+          mkdir -p build/ipa/Payload
+          cp -R build/device/Build/Products/Release-iphoneos/Sekai.app build/ipa/Payload/
+          (cd build/ipa && zip -qry "../Sekai-$version-unsigned.ipa" Payload)
+          echo "file=apps/mobile/ios/build/Sekai-$version-unsigned.ipa" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sekai-ios
+          path: ${{ steps.ipa.outputs.file }}
+          if-no-files-found: error

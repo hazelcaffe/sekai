@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Photos taken for an upload. -->
+    <cache-path name="camera" path="camera/" />
+    <!-- Files saved to Downloads on Android 9 (newer versions use MediaStore). -->
+    <external-path name="downloads" path="Download/" />
+</paths>

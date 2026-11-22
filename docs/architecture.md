@@ -1,6 +1,6 @@
 # Architecture
 
-Sekai is a Bun monorepo: one server (API, live events, WebSockets, background work) and web, desktop and
+Sekai is a Bun monorepo: one server (API, live events, WebSockets, background work) and web, desktop, mobile and
 browser-extension clients that talk to it.
 For the rules every change must keep (who owns what, how requests become a person, events, permissions), read
 [AGENTS.md](../AGENTS.md) and the `AGENTS.md` next to the code.
@@ -37,6 +37,8 @@ apps/desktop     Electron shell (sandboxed renderer, minimal preload bridge, aut
                  lends the computer to bots (bridge client, Windows/macOS/Linux helpers, browser, commands, files)
 apps/extension   Manifest V3, React panel, isolated DOM bridge; explicit per-tab and per-origin local grants;
                  native Chromium/Firefox sidebars, Safari popover or companion window; optional site permissions
+apps/mobile      iOS (Swift, WKWebView, XcodeGen) and Android (Kotlin, WebView) shells around the web app, with a shared
+                 bridge (push, sign-in through the browser, downloads, links) and connect screen
 packages/shared  zod schemas, event types and the typed API client used by every app
 packages/client  React hooks and components for the apps (data hooks, model and voice pickers, the bridges)
 packages/ui      the design system (shadcn/ui based; packages/ui/DESIGN.md)

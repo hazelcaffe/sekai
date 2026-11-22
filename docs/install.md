@@ -108,6 +108,18 @@ Docker: `docker compose exec app bun run reset-password`.
   results to that device, even when Sekai is closed. Browsers only allow push and passkeys on HTTPS (or localhost): host
   Sekai on the internet with a domain, or use your tailnet's HTTPS address (**Private HTTPS address** in **Settings →
   Server → Network & devices** runs `tailscale serve` for you). On iPhone and iPad, add Sekai to the Home Screen first.
+- **Phone apps** (iOS and Android): native apps that show your Sekai and add what a browser tab can't: push
+  notifications with **Approve** and **Deny** buttons, signing in through your phone's browser (so passkeys and
+  Google sign-in work), the mic for calls, file uploads and downloads, and `sekai://c/<chat>` links. On first start
+  they ask for your server's address; **Settings → You → Server address** opens the app's own screen to switch or
+  forget it (and About), and when the server can't be reached they say why, with **Try again**. Back works the way
+  your phone does: it closes what's open first and leaves the app from the first screen. Build Android with
+  `cd apps/mobile/android && ./gradlew assembleDebug`. Build iOS on a Mac with XcodeGen
+  (`cd apps/mobile/ios && xcodegen`), or let the Mobile apps workflow on GitHub build it, including an unsigned
+  `.ipa` you sign with your own certificate. For notifications while the app is closed, an admin adds Firebase
+  (Android) and an Apple push key (iOS) in **Settings → Server → Network & devices → Phone notifications**; without
+  them the apps notify only while open. As in a browser, the mic needs the HTTPS address. More in
+  [apps/mobile/AGENTS.md](../apps/mobile/AGENTS.md).
 - **Get the apps** (your menu at the bottom of the sidebar, and Settings → You) lists the desktop installers (Mac,
   Windows, Linux), the Android APK, the iPhone and iPad app (unsigned, so it needs a sideloading tool) and the browser
   extensions from your server's [GitHub release](https://github.com/hazelcaffe/sekai/releases), with the download for

@@ -270,9 +270,10 @@ try {
 	const web = await context.newPage();
 	const [name = "", value = ""] = cookie.split("=");
 	await context.addCookies([{ name, value, url: base, httpOnly: true, sameSite: "Lax" }]);
-	await web.goto(`${base}/settings?tab=browser`);
-	await web.getByRole("button", { name: "Make browser token", exact: true }).click();
-	await web.getByText("Browser token (shown once)", { exact: true }).waitFor();
+	await web.goto(`${base}/settings/browser-extension`);
+	await web.getByLabel("Browser name", { exact: true }).fill("Test browser");
+	await web.getByRole("button", { name: "Make a token", exact: true }).click();
+	await web.getByText("Browser token", { exact: true }).waitFor();
 	for (const width of [390, 1280]) {
 		await web.setViewportSize({ width, height: 844 });
 		for (const dark of [false, true]) {
@@ -288,8 +289,10 @@ try {
 			);
 		}
 	}
-	await web.getByRole("button", { name: "Revoke token", exact: true }).click();
-	await web.getByRole("button", { name: "Make browser token", exact: true }).waitFor();
+	// Revoke it from the list (resizing between the phone and desktop layouts shows the section afresh).
+	await web.getByRole("button", { name: "Revoke", exact: true }).first().click();
+	await web.getByRole("alertdialog").getByRole("button", { name: "Revoke", exact: true }).click();
+	await web.getByText("Test browser", { exact: true }).waitFor({ state: "detached" });
 
 	// Firefox's DOM implementation is checked too; Playwright cannot install Firefox WebExtensions.
 	if (process.env.SEKAI_EXTENSION_TEST_FIREFOX === "1") {

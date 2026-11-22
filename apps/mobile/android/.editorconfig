@@ -1,0 +1,11 @@
+# Kotlin style (ktlint, Android Studio): Android Studio's code style, with the repo's 120-column lines and
+# trailing commas.
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+ktlint_code_style = android_studio
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ktlint_standard_blank-line-between-when-conditions = disabled
+ktlint_standard_filename = disabled

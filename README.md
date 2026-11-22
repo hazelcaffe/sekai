@@ -25,8 +25,8 @@ OpenAI-compatible gateway or API provider (OpenAI, Anthropic, Gemini, OpenRouter
 subscriptions you already pay for (Codex, Claude Code, Grok, OpenCode, Pi…) as a bot's model.
 
 Sekai runs on [Bun](https://bun.sh) and Postgres, with a responsive web app you can install on your phone (its
-Settings hold the server's setup too), a browser extension, and an optional desktop app. It's free software under the
-[GNU AGPL v3](LICENSE).
+Settings hold the server's setup too), iOS and Android apps, a browser extension, and an optional desktop app. It's
+free software under the [GNU AGPL v3](LICENSE).
 
 ## Highlights
 
@@ -74,7 +74,7 @@ Settings hold the server's setup too), a browser extension, and an optional desk
 |                                                                      |                                                                 |
 | -------------------------------------------------------------------- | --------------------------------------------------------------- |
 | <img src="docs/images/group.png" alt="A group chat with three bots"> | <img src="docs/images/brain.png" alt="A bot's memory">          |
-| Group chats: bots answer when mentioned and build on each other.     | What a bot remembers, and everything it reads on its next turn. |
+| Group chats: bots answer when mentioned and build on each other.     | What a bot remembers about its work and about you.              |
 | <img src="docs/images/usage.png" alt="Usage charts">                 | <img src="docs/images/people.png" alt="People and their roles"> |
 | Usage: tokens and cost over time, by model, bot and person.          | People and roles: accounts, permissions and limits.             |
 

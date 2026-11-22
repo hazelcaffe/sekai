@@ -3,7 +3,8 @@ name: Release
 # Push a tag like v0.2.0 (or v0.2.0-beta.1 for a pre-release) and this:
 # - checks everything, as CI does;
 # - publishes the server's Docker image to GitHub's container registry (ghcr.io/<owner>/<repo>, amd64 and arm64);
-# - builds the desktop app for Windows, macOS and Linux, and the browser extensions (Chromium, Firefox, Safari);
+# - builds the desktop app for Windows, macOS and Linux, the phone apps (a signed Android APK, an unsigned
+#   iOS .ipa) and the browser extensions (Chromium, Firefox, Safari);
 # - makes a GitHub release with all of them, their SHA-256 checksums, and notes.
 # Run it by hand (Actions → Release → Run workflow) to build everything without publishing: the files are then
 # the run's artifacts.
@@ -51,7 +52,7 @@ jobs:
           fi
           {
             echo "version=$version"
-            # The browser extensions take plain numbers: 1.2.3 (and the phone apps, on dev, a build number too).
+            # The phone apps take plain numbers: 1.2.3, and a build number that only goes up.
             echo "base=${BASH_REMATCH[1]}"
             echo "build=$RUN"
             echo "publish=$publish"
@@ -176,6 +177,15 @@ jobs:
             apps/desktop/release/*.deb
           if-no-files-found: error
 
+  mobile:
+    name: Phone apps
+    needs: version
+    uses: ./.github/workflows/mobile.yml
+    with:
+      version: ${{ needs.version.outputs.base }}
+      build: ${{ fromJSON(needs.version.outputs.build) }}
+    secrets: inherit
+
   extension:
     name: Browser extensions
     needs: version
@@ -185,7 +195,7 @@ jobs:
 
   release:
     name: GitHub release
-    needs: [version, image, desktop, extension]
+    needs: [version, image, desktop, mobile, extension]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -198,6 +208,14 @@ jobs:
           pattern: desktop-*
           path: files
           merge-multiple: true
+      - uses: actions/download-artifact@v7
+        with:
+          name: sekai-android
+          path: files
+      - uses: actions/download-artifact@v7
+        with:
+          name: sekai-ios
+          path: files
       - uses: actions/download-artifact@v7
         with:
           pattern: sekai-browser-extensions*

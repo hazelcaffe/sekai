@@ -22,6 +22,7 @@ export const ADMIN_TABS: Record<string, string> = {
 	signin: "/settings/sign-in-options",
 	computers: "/settings/computers",
 	tailscale: "/settings/network",
+	mobile: "/settings/network/notifications",
 	account: "/settings/sign-in-security",
 	devices: "/settings/sign-in-security#sessions",
 	backups: "/settings/backups",

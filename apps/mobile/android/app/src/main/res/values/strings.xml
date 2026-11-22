@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sekai</string>
+
+    <string name="channel_messages">Messages</string>
+    <string name="channel_messages_about">Replies and updates from your bots</string>
+    <string name="channel_approvals">Needs you</string>
+    <string name="channel_approvals_about">Approvals and requests waiting for your answer</string>
+    <string name="channel_calls">Calls</string>
+    <string name="channel_calls_about">When a bot calls you</string>
+    <string name="channel_files">Files</string>
+    <string name="channel_files_about">Files you saved from Sekai</string>
+
+    <string name="answer">Answer</string>
+    <string name="decline">Decline</string>
+    <string name="approve">Approve</string>
+    <string name="deny">Deny</string>
+    <string name="approving">Approving…</string>
+    <string name="denying">Denying…</string>
+    <string name="approved">Approved</string>
+    <string name="denied">Denied</string>
+    <string name="already_answered">Already answered, or it timed out.</string>
+    <string name="answer_failed">Couldn\'t send your answer. Open the chat to try again.</string>
+    <string name="answer_other_server">This request is from a server you\'ve left. Open Sekai to see your chats.</string>
+    <string name="hidden_message">New message</string>
+    <string name="hidden_approval">A bot needs you</string>
+    <string name="hidden_call">A bot is calling</string>
+
+    <string name="saved_to_downloads">Saved to Downloads</string>
+    <string name="saved_tap_to_open">%1$s. Tap to open it.</string>
+    <string name="saved_named">Saved %1$s</string>
+    <string name="open">Open</string>
+    <string name="downloading">Downloading %1$s…</string>
+    <string name="download_failed">Couldn\'t download that file.</string>
+    <string name="save_failed">Couldn\'t save that file.</string>
+    <string name="storage_needed">Sekai needs storage access to save files on this version of Android.</string>
+    <string name="try_again">Try again</string>
+
+    <string name="no_browser">There\'s no browser on this phone to open that link.</string>
+    <string name="no_app_for_link">No app on this phone can open that link.</string>
+    <string name="no_file_picker">No app on this phone can pick files.</string>
+    <string name="leave_page">Leave this page? Changes you made may not be saved.</string>
+    <string name="no_settings_app">This phone can\'t open its notification settings from here.</string>
+
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+
+    <string name="connect_title">Connect to Sekai</string>
+    <string name="connect_intro">Use the address that opens Sekai in your browser.</string>
+    <string name="change_server_title">Change server</string>
+    <string name="address_label">Server address</string>
+    <string name="address_placeholder">https://sekai.example.com</string>
+    <string name="address_hint">Like https://sekai.example.com, or http://192.168.1.20:7420 on your own network.</string>
+    <string name="address_empty">Enter your server\'s address first.</string>
+    <string name="address_invalid">That address doesn\'t look right. Try https://sekai.example.com.</string>
+    <string name="clear_address">Clear address</string>
+    <string name="connect">Connect</string>
+    <string name="checking">Checking…</string>
+    <string name="recent_servers">Recent servers</string>
+    <string name="remove_recent">Remove %1$s from recent servers</string>
+    <string name="version_footer">Sekai %1$s</string>
+
+    <string name="server_title">Server</string>
+    <string name="server_current">Current server</string>
+    <string name="server_not_connected">Not connected</string>
+    <string name="server_change">Change server</string>
+    <string name="server_forget">Forget this server</string>
+    <string name="forget_title">Forget this server?</string>
+    <string name="forget_text">This removes the saved address and signs you out on this phone. Your chats stay on the server.</string>
+    <string name="forget">Forget</string>
+
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_connecting_slow">Still connecting. A slow connection or a server that\'s starting up can take a moment.</string>
+    <string name="status_trying">Trying…</string>
+    <string name="offline_title">You\'re offline</string>
+    <string name="offline_text">Connect to Wi-Fi or mobile data, then try again.</string>
+    <string name="unreachable_title">Can\'t reach your server</string>
+    <string name="unreachable_text">Check the address and that the server is running. If you use Tailscale, check that it\'s on.</string>
+    <string name="untrusted_title">Connection isn\'t secure</string>
+    <string name="untrusted_text">This phone doesn\'t trust the server\'s security certificate. Check the address, or ask whoever runs the server to fix it.</string>
+    <string name="server_error_title">Server unavailable</string>
+    <string name="server_error_text">The server answered with an error (%1$d). It may be restarting, so try again in a moment.</string>
+    <string name="not_sekai_title">Not a Sekai server</string>
+    <string name="not_sekai_text">That address didn\'t open Sekai. Use the address you open Sekai at in your browser.</string>
+
+    <string name="about">About</string>
+    <string name="about_version">Version %1$s (%2$d)</string>
+    <string name="about_server">Server</string>
+    <string name="about_credits">Credits</string>
+    <string name="about_licence">Software licence</string>
+    <string name="about_licence_text">Sekai is free software under the GNU Affero General Public License.</string>
+    <string name="about_credit_title">HATSUNE MIKU: COLORFUL STAGE!</string>
+    <string name="about_credit_what">Logo and character art</string>
+    <string name="about_credit_line">© SEGA / © Colorful Palette / © Crypton Future Media, INC. www.piapro.net</string>
+    <string name="notification_settings">Notification settings</string>
+    <string name="share_details">Share app details</string>
+    <string name="app_details">Sekai %1$s (%2$d) · Android %3$s\n%4$s</string>
+
+    <string name="webview_title">Sekai needs a newer web view</string>
+    <string name="webview_text">Update Android System WebView (or Chrome) from the Play Store, then open Sekai again.</string>
+    <string name="webview_update">Update</string>
+</resources>

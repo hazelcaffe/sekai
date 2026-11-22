@@ -28,6 +28,7 @@ describe("old addresses", () => {
 			["/admin/devices", "/settings/sign-in-security#sessions"],
 			["/admin/backups", "/settings/backups"],
 			["/admin/about", "/settings/about"],
+			["/admin/mobile", "/settings/network/notifications"],
 			["/admin/no-such-page", "/settings/status"],
 			["/admin/models/", "/settings/models"],
 		];

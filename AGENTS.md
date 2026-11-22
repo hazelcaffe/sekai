@@ -13,6 +13,7 @@ Read this file first, then the one next to the code you're changing:
 | Web app (chats, bots' pages, Settings)                          | [apps/web/AGENTS.md](apps/web/AGENTS.md)             |
 | Desktop app (Electron)                                          | [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md)     |
 | Browser extension (Chromium, Firefox, Safari)                   | [apps/extension/AGENTS.md](apps/extension/AGENTS.md) |
+| Phone apps (iOS, Android)                                       | [apps/mobile/AGENTS.md](apps/mobile/AGENTS.md)       |
 | Shared packages (`@sekai/shared`, `@sekai/client`, `@sekai/ui`) | [packages/AGENTS.md](packages/AGENTS.md)             |
 
 The user-facing docs are [README.md](README.md) (overview, quick start) and [docs/](docs/): `install.md` (installing,
@@ -49,6 +50,7 @@ apps/server     API + SSE event bus + WebSockets (VNC, voice, desktop bridge); s
 apps/web        React 19 + Vite app: chats, bots' pages, Settings (the server's setup too), PWA service worker
 apps/desktop    Electron shell; src/local lends the user's computer to bots
 apps/extension  WebExtension sidebar/popover, local per-tab sharing and a scoped server bridge
+apps/mobile     iOS and Android shells around the web app (shared bridge.js and connect screen)
 packages/shared zod schemas, TypeScript types, ServerEvent union, and the typed API client (createApiClient)
 packages/client React hooks/components for the apps (TanStack Query data hooks, ModelPicker, voice, the bridges)
 packages/ui     design system (shadcn/ui restyled) + Sekai building blocks (Page, SectionLayout, List/Row, ContextMenu…)

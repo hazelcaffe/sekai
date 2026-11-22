@@ -176,7 +176,7 @@ Settings → Bots → Voice.
 
 - **`message_user`** sends you a message on the bot's own initiative: a Slack or Discord DM from its bot when it has one, otherwise in its chat in the app, optionally as audio. Choose `via: "slack"`, `"discord"`, `"app"` or `"auto"`. Reminders and routines use it when you asked to be told.
 - **`call_user`** rings the app (a full-screen ring on phones). If you're in a Discord voice channel its bot can see, it joins you there. No answer in 40 seconds (or Decline) sends its message as a voice message instead.
-- **Notifications** for approvals, calls, outreach and finished routines show in the browser and the desktop app, and as [push notifications](install.md#on-your-devices) on devices that turned them on. Approval requests can be answered right from the notification.
+- **Notifications** for approvals, calls, outreach and finished routines show in the browser, the desktop app and the phone apps, and as [push notifications](install.md#on-your-devices) on devices that turned them on. Approval requests can be answered right from the notification.
 
 ## Bots on Slack
 
