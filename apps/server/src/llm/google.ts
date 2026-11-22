@@ -1,5 +1,6 @@
 import type { ThinkingSetting, Usage } from "@sekai/shared";
 import { log } from "../lib/log.ts";
+import { imageMimeBase64 } from "../lib/mime.ts";
 import { readError } from "./openai.ts";
 import { type ChatContentPart, type ChatMessage, type ChatRequest, ProviderError, type StreamEvent } from "./types.ts";
 
@@ -41,7 +42,8 @@ const BUDGET: Partial<Record<ThinkingSetting, number>> = {
 
 function dataUrl(url: string): { mimeType: string; data: string } | null {
 	const m = url.match(/^data:([^;,]+);base64,(.*)$/s);
-	return m?.[1] && m[2] !== undefined ? { mimeType: m[1], data: m[2] } : null;
+	if (!m?.[1] || m[2] === undefined) return null;
+	return { mimeType: m[1].startsWith("image/") ? imageMimeBase64(m[2], m[1]) : m[1], data: m[2] };
 }
 
 function userParts(content: string | ChatContentPart[]): Part[] {

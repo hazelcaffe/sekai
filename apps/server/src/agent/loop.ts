@@ -1,6 +1,7 @@
 import type { ApprovalScope, ModelRef, RunStatus, ToolApproval, ToolRisk, Usage } from "@sekai/shared";
 import { bus } from "../events/bus.ts";
 import { errorMessage, isAbortError } from "../lib/errors.ts";
+import { imageMime } from "../lib/mime.ts";
 import { truncate } from "../lib/text.ts";
 import { getModelInfo } from "../llm/catalog.ts";
 import { streamChat } from "../llm/gateway.ts";
@@ -185,7 +186,9 @@ export async function runToolLoop(input: LoopInput): Promise<LoopResult> {
 						{ type: "text" as const, text: s.title },
 						...s.images.map((img) => ({
 							type: "image_url" as const,
-							image_url: { url: `data:${img.mime};base64,${Buffer.from(img.data).toString("base64")}` },
+							image_url: {
+								url: `data:${imageMime(img.data, img.mime)};base64,${Buffer.from(img.data).toString("base64")}`,
+							},
 						})),
 					]),
 				],
