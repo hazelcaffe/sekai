@@ -39,6 +39,7 @@ function DialogContent({
 	className,
 	children,
 	showCloseButton = true,
+	onOpenAutoFocus,
 	...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }) {
 	return (
@@ -54,6 +55,18 @@ function DialogContent({
 					className,
 				)}
 				{...props}
+				onOpenAutoFocus={(e) => {
+					onOpenAutoFocus?.(e);
+					if (e.defaultPrevented) return;
+					// A form's first field, else the dialog itself: never a button (Close, or a download) wearing a focus ring
+					// the moment it opens. Screen readers start at the title either way.
+					e.preventDefault();
+					const content = e.currentTarget as HTMLElement;
+					const field = content.querySelector<HTMLElement>(
+						"input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled])",
+					);
+					(field ?? content).focus({ preventScroll: true });
+				}}
 			>
 				<div
 					aria-hidden
