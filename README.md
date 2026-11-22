@@ -74,7 +74,7 @@ free software under the [GNU AGPL v3](LICENSE).
 |                                                                      |                                                                 |
 | -------------------------------------------------------------------- | --------------------------------------------------------------- |
 | <img src="docs/images/group.png" alt="A group chat with three bots"> | <img src="docs/images/brain.png" alt="A bot's memory">          |
-| Group chats: bots answer when mentioned and build on each other.     | What a bot remembers, and everything it reads on its next turn. |
+| Group chats: bots answer when mentioned and build on each other.     | What a bot remembers about its work and about you.              |
 | <img src="docs/images/usage.png" alt="Usage charts">                 | <img src="docs/images/people.png" alt="People and their roles"> |
 | Usage: tokens and cost over time, by model, bot and person.          | People and roles: accounts, permissions and limits.             |
 
