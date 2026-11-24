@@ -183,6 +183,12 @@ try {
 		},
 	});
 	const storedSlack = await db.query.channels.findFirst({ where: eq(schema.channels.id, String(slack.data.id)) });
+	report.email = {
+		owner: (await call("GET", `/api/email/accounts/${adminBot.id}`, { jar: admin })).status,
+		shared: (await call("GET", `/api/email/accounts/${adminBot.id}`, { jar: member })).status,
+		sharedMail: (await call("GET", `/api/email/accounts/${adminBot.id}/mail`, { jar: member })).status,
+		mailcow: (await call("GET", "/api/email/mailcow", { jar: member })).status,
+	};
 	await db.insert(schema.channelBindings).values({
 		id: "cb_slack_access",
 		channelId: String(slack.data.id),
@@ -218,7 +224,47 @@ try {
 			async () => (await bindingsForChat("slack:T1:C1:100.000001")).length,
 		),
 	};
+	// Someone else's Signal account: its page, profile, safety numbers, and connecting one for their bot.
+	const signal = await call("POST", "/api/channels", {
+		jar: admin,
+		body: {
+			agentId: adminBot.id,
+			type: "signal",
+			enabled: false,
+			config: { account: "11111111-1111-4111-8111-111111111111", number: "+15550100000", mode: "linked" },
+		},
+	});
+	report.signal = {
+		created: signal.status,
+		otherAccount: (await call("GET", `/api/signal/accounts/${signal.data.id}`, { jar: member })).status,
+		otherProfile: (
+			await call("POST", `/api/signal/accounts/${signal.data.id}/profile`, {
+				jar: member,
+				body: { name: "Intruder" },
+			})
+		).status,
+		otherTrust: (
+			await call("POST", `/api/signal/accounts/${signal.data.id}/trust`, {
+				jar: member,
+				body: { id: "22222222-2222-4222-8222-222222222222" },
+			})
+		).status,
+		// The admin's bot is shared with the member: they see it, but can't give it accounts.
+		sharedBotLink: (await call("POST", "/api/signal/link", { jar: member, body: { agentId: adminBot.id } })).status,
+		sharedBotRegister: (
+			await call("POST", "/api/signal/register", {
+				jar: member,
+				body: { agentId: adminBot.id, number: "+15550100001" },
+			})
+		).status,
+		memberInstall: (await call("POST", "/api/signal/install", { jar: member })).status,
+		memberSeesStatus: (await call("GET", "/api/signal/status", { jar: member })).status,
+	};
 	await call("PATCH", "/api/admin/roles/role_member", { jar: admin, body: { permissions: memberRole.permissions } });
+	report.signal = {
+		...(report.signal as Record<string, unknown>),
+		withoutAccounts: (await call("GET", "/api/signal/status", { jar: member })).status,
+	};
 	await db.insert(schema.messages).values({
 		id: "msg_admin_secret",
 		conversationId: String(adminChat.data.id),

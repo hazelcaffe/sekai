@@ -62,6 +62,16 @@ export async function reachOf(url: URL): Promise<Reach> {
 	return (await resolve(url)).reach;
 }
 
+/** Pin a mail connection to an address we checked; TLS still verifies the original hostname. */
+export async function mailServerIp(host: string, configured = false): Promise<string> {
+	const { reach, ips } = await resolve(new URL(`https://${host}`));
+	if (reach === "local" || (reach === "private" && !configured && !currentActor()?.admin))
+		throw new Error("That mail server address isn't allowed from here.");
+	const ip = ips.find((ip) => isIP(ip) === 4) ?? ips[0];
+	if (!ip) throw new Error("Couldn't find the mail server. Check its name.");
+	return ip;
+}
+
 const reachCache = new Map<string, { reach: Reach; until: number }>();
 
 /** reachOf, remembered for a minute per host (for checking every request a browser page makes). */

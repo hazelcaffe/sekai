@@ -33,8 +33,11 @@ src/components/agent/     what a bot's sections show, a file per part: ProfileFo
                           ModelSettings, VoiceSettings (Model & voice); Memories, Notes (+ the note page),
                           CodeIndexes (Memory); AccessSettings, AppsAccess, SkillsAccess, ToolRules (Tools &
                           access); AccountsHome, PlatformPage, ChannelAccount, ConnectChannel, SocialAccount,
-                          SlackSetup (Accounts); RoutinesList (Routines). Shared bits: MoreMenu, RiskBadge, ToolRule,
-                          AccountMark
+                          SlackSetup, SignalSetup (connecting Signal: install, link a phone by QR, register a
+                          number), SignalAccount (a Signal account's own part of its page) (Accounts); RoutinesList
+                          (Routines). Shared bits: MoreMenu, RiskBadge, ToolRule, AccountMark
+                          EmailPage and EmailConnect handle the bot's mailbox; settings/bots/Email is the admin
+                          mailcow connection. Email chats carry settings.emailPeer and stay out of the bot's main chat.
 src/components/routines/  RoutineRow (a Row for a List; RoutineList is that List), RoutineDialog (the editor); the
                           bot's Routines section and Activity → Scheduled both use them
 src/components/computer/  ComputerPanel (ComputerBody: the Computer section and the panel beside a chat), VncView
@@ -56,6 +59,7 @@ src/lib/hooks.ts          useLayout (phone < 768px / tablet / desktop / touch / 
                           useLongPress, useStickToBottom…
 src/lib/forms.ts          saving and "Confirm it's you": saveForm (a FormGroup's save), actionError (a mutation's
                           toast), cancelledReauth, useAfterSave (navigate once a saved form is clean)
+src/lib/avatarPng.ts      a bot's avatar drawn whole as a PNG (a Slack app icon, a Signal profile picture)
 src/stores/ui.ts          zustand, persisted as "sekai.ui": sidebar, side panel, folded sections, last chat, drafts,
                           active runs, which dialog is open
 src/stores/seen.ts        zustand, persisted as "sekai.seen": last-seen time per chat (unread dots, mark read)

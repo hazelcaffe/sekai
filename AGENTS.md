@@ -129,7 +129,7 @@ has their own workspace. The rules every change must keep:
 - Colorful Stage art (the character icons, and the logo: the Virtual Singer Miku icon) ships with Sekai and is shown
   unmodified: resize it, never crop, recolor, redraw or overlay it. Keep its © line, and the credit in Settings → Server → About.
 - Brand logos (subscriptions, providers, sign-in providers) come from LobeHub Icons (MIT) in
-  `packages/client/src/components/logos.ts` (Discord's and Slack's, which LobeHub lacks, from Simple Icons, CC0).
+  `packages/client/src/components/logos.ts` (Discord's, Slack's and Signal's, which LobeHub lacks, from Simple Icons, CC0).
 - Root on a user's device always asks the user, whatever the approval mode (`askFirst` in `agent/tools/hosts.ts`).
 
 ## Working in this repo

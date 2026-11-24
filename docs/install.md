@@ -21,12 +21,13 @@
     [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), vLLM…;
   - **API providers**: OpenAI-, Anthropic- and Gemini-compatible APIs with your key (OpenAI, Anthropic, Google,
     xAI, Groq, Mistral, DeepSeek, Together, OpenRouter…);
-  - **subscriptions** you're signed in to on the server: Codex, Claude Code, Grok, OpenCode, Pi and other
-    [Agent Client Protocol](https://agentclientprotocol.com) agents (see the
+  - **subscriptions** you pay for, installed and signed in to from your browser: Codex, Claude Code, Grok, OpenCode, Pi
+    and other [Agent Client Protocol](https://agentclientprotocol.com) agents (see the
     [user guide](guide.md#subscriptions-as-models)).
 - **Optional:** [ElevenLabs](https://elevenlabs.io) or [Fish Audio](https://fish.audio) for voice, a
   [Proxmox VE](https://www.proxmox.com) server for bots' computers, [Tailscale](https://tailscale.com) for reaching your
-  devices, an SMTP server for email, and Twilio (or a webhook) for text messages.
+  devices, an SMTP server for email, Twilio (or a webhook) for text messages, mailcow or email accounts for bots' own
+  addresses, and [signal-cli](https://github.com/AsamK/signal-cli) for bots' Signal accounts (Sekai can install it).
 
 About 1 GB of RAM is plenty for Sekai itself; bots' browsers and computers need more.
 
@@ -43,8 +44,10 @@ Sekai is now on http://127.0.0.1:7420 (only this machine: set `SEKAI_BIND=0.0.0.
 Data lives in two Docker volumes: `pgdata` (Postgres) and `appdata` (files, keys and bots' workspaces).
 
 The image includes Chromium (bots browse on the server), Node and npx (for MCP apps and subscription agents) and the
-SSH client (bots' computers). Subscription agents keep their sign-in in the container: sign in with
-`docker compose exec app <agent> login`, or uncomment the mounts in `docker-compose.yml` to share yours.
+SSH client (bots' computers). Install subscription agents and sign in to them from **Settings → Bots → Subscriptions**:
+each new subscription keeps its sign-in in its own folder in `appdata`, so it survives restarts. Older ones keep it in
+the container: sign in with `docker compose exec app <agent> login`, or uncomment the mounts in `docker-compose.yml`
+to share yours.
 
 ## From source
 
@@ -203,6 +206,7 @@ instead (Settings).
 | `SEKAI_LOG_LEVEL`                                                                                                                       | `info`                                        | `debug`, `info`, `warn` or `error`.                                                                                                 |
 | `SEKAI_BROWSER_PATH`                                                                                                                    | Chrome or Chromium, if installed              | The browser for bots without a computer.                                                                                            |
 | `SEKAI_FIRECRAWL_PATH`                                                                                                                  | `~/.cargo/bin/firecrawl-local`, or `$PATH`    | The Firecrawl Local binary for [web reading](guide.md#web-reading).                                                                 |
+| `SIGNAL_CLI`                                                                                                                            | Sekai's own install, or `$PATH`               | The signal-cli to run for bots' [Signal accounts](guide.md#a-bots-own-signal-account).                                              |
 | `SEKAI_DEPLOY_HOST`                                                                                                                     | unset                                         | `user@host` that `bun run deploy` deploys to.                                                                                       |
 | `PROXMOX_URL`, `PROXMOX_TOKEN_ID`, `PROXMOX_TOKEN_SECRET`, `PROXMOX_NODE`, `PROXMOX_STORAGE`, `PROXMOX_IMAGE_STORAGE`, `PROXMOX_BRIDGE` | unset                                         | Defaults for Settings → Server → Computers.                                                                                         |
 | `TAILSCALE_AUTH_KEY`                                                                                                                    | unset                                         | Default Tailscale key for bots' new machines.                                                                                       |
@@ -211,8 +215,8 @@ instead (Settings).
 ## Backups
 
 **Settings → Server → Backups** keeps everything Sekai can't get back by itself in one `.tar.gz`: the database (people,
-bots, chats, memory, routines, settings, usage, sign-ins) and the data folder (the secret key, SSH keys, uploads and
-bots' workspaces). Caches and browser profiles are left out: they come back by themselves.
+bots, chats, memory, routines, settings, usage, sign-ins) and the data folder (the secret key, SSH keys, uploads,
+bots' workspaces and bots' Signal accounts). Caches and browser profiles are left out: they come back by themselves.
 
 - **Automatic backups** run every night or every Sunday at 3:30. The newest 7 are kept (you choose how many), and the
   ones you make stay until you delete them.

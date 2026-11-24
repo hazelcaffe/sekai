@@ -77,6 +77,7 @@ export const TOOL_CATEGORIES = {
 	memory: "Memory",
 	notes: "Notes",
 	routines: "Routines & reminders",
+	jobs: "Coding jobs",
 	skills: "Skills",
 	agents: "Team",
 	web: "Web",
@@ -87,6 +88,7 @@ export const TOOL_CATEGORIES = {
 	library: "Library",
 	media: "Images",
 	contact: "Messages & calls",
+	email: "Email",
 	x: "X (Twitter)",
 	system: "System",
 } as const;

@@ -69,6 +69,7 @@ export const router = createBrowserRouter([
 					{ path: "c/:conversationId", element: <Screen name="ConversationPage" /> },
 					{ path: "inbox", element: <Screen name="InboxPage" /> },
 					{ path: "activity", element: <Screen name="ActivityPage" /> },
+					{ path: "jobs/:jobId", element: <Screen name="JobPage" /> },
 					{ path: "library", element: <Screen name="LibraryPage" /> },
 					{ path: "bots/:agentId/:section?/*", element: <Screen name="BotPage" /> },
 					{ path: "settings/*", element: <Screen name="Settings" /> },

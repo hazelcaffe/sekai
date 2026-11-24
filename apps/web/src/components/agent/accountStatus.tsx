@@ -23,7 +23,7 @@ export function StatusLine({ state }: { state: AccountState }) {
 	);
 }
 
-/** How one bot account on Discord or Slack is doing. */
+/** How one account on Discord, Slack or Signal is doing. */
 export function channelState(c: ChannelWithStatus): AccountState {
 	const s = c.status;
 	if (!c.enabled) return { tone: "neutral", label: "Off", text: "Off" };
@@ -35,8 +35,14 @@ export function channelState(c: ChannelWithStatus): AccountState {
 		};
 	}
 	if (s.state === "starting") return { tone: "neutral", label: "Connecting", text: "Connecting…" };
+	if (s.state === "error" && signedOutOf(c)) return { tone: "danger", label: "Signed out", text: "Signed out" };
 	if (s.state === "error") return { tone: "danger", label: "Problem", text: "Can't connect" };
 	return { tone: "neutral", label: "Stopped", text: "Stopped" };
+}
+
+/** A Signal account Signal signed out (its link was removed on the phone, or its number went elsewhere). */
+export function signedOutOf(c: ChannelWithStatus): boolean {
+	return c.type === "signal" && c.status.state === "error" && /signed this account out/i.test(c.status.error ?? "");
 }
 
 /** All of a platform's accounts in one line: "Nori · Connected", "Not connected"… */
@@ -52,6 +58,7 @@ export function platformState(list: ChannelWithStatus[]): AccountState {
 		};
 	}
 	const trouble = list.find((c) => c.enabled && c.status.state === "error");
+	if (trouble && signedOutOf(trouble)) return { tone: "danger", label: "Signed out", text: "Signed out" };
 	if (trouble) return { tone: "danger", label: "Problem", text: "Can't connect" };
 	return { tone: "neutral", label: "Off", text: "Off" };
 }

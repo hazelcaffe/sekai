@@ -6,6 +6,7 @@ import { ActivityPage } from "./pages/ActivityPage.tsx";
 import { ConversationPage } from "./pages/ConversationPage.tsx";
 import { HomePage, OpenBotPage } from "./pages/HomePage.tsx";
 import { InboxPage } from "./pages/InboxPage.tsx";
+import { JobPage } from "./pages/JobPage.tsx";
 import { LibraryPage } from "./pages/LibraryPage.tsx";
 import { OnboardingPage } from "./pages/OnboardingPage.tsx";
 import { SettingsPage } from "./settings/SettingsPage.tsx";
@@ -31,6 +32,7 @@ function Settings() {
 export { AppShell };
 
 export const screens = {
+	JobPage,
 	HomePage,
 	ConversationPage,
 	InboxPage,

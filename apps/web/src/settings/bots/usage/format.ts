@@ -12,7 +12,7 @@ export const RANGES: { value: Range; short: string; label: string; before: strin
 
 export const TRIGGER_LABEL: Record<string, string> = {
 	user: "You, in Sekai",
-	channel: "Discord & Slack",
+	channel: "Discord, Slack & Signal",
 	group: "Group chats",
 	routine: "Routines",
 	reminder: "Reminders",

@@ -29,8 +29,10 @@ services:
       dockerfile: Dockerfile
       # Web reading (Settings → Bots → Web reading) needs the Firecrawl Local binary in the image; building it takes a few
       # minutes of Rust. Turn it on with: docker compose build --build-arg WITH_WEB_ENGINE=1
+      # Signal accounts for bots need signal-cli in the image (about 400 MB, x86_64): --build-arg WITH_SIGNAL=1
       args:
         WITH_WEB_ENGINE: ${WITH_WEB_ENGINE:-0}
+        WITH_SIGNAL: ${WITH_SIGNAL:-0}
     image: sekai:latest
     restart: unless-stopped
     depends_on:

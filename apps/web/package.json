@@ -15,6 +15,8 @@
 		"@sekai/shared": "workspace:*",
 		"@sekai/ui": "workspace:*",
 		"@tanstack/react-query": "^5.107.1",
+		"@xterm/addon-fit": "0.11.0",
+		"@xterm/xterm": "6.0.0",
 		"cmdk": "^1.1.1",
 		"lucide-react": "^1.73.0",
 		"radix-ui": "^1.8.1",

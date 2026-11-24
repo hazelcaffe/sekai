@@ -314,7 +314,7 @@ export async function callOwnerInVoice(agent: Agent, reason: string): Promise<bo
 		if (!owner || !adapter.voice || status(id).state !== "connected") continue;
 		const where = await adapter.voice.userVoice(owner);
 		if (!where) continue;
-		const dm = await ownerDm(agent.id);
+		const dm = await ownerDm(agent.id, "discord");
 		const conversation = dm ? await getConversation(dm.conversationId) : null;
 		if (!conversation) continue;
 		await joinVoice({

@@ -9,7 +9,7 @@ import {
 	useConversations,
 	useMachineUsers,
 } from "@sekai/client";
-import { type Agent, CHANNEL_DEFINITIONS, type ChannelType, type Conversation } from "@sekai/shared";
+import { type Agent, type Conversation, channelTitle } from "@sekai/shared";
 import { Button, Confirm, Dialog, Input } from "@sekai/ui";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
@@ -43,7 +43,7 @@ interface Dm {
 	key: string;
 	agent: Agent;
 	conversation: Conversation;
-	type: ChannelType;
+	type: MessagingChat["type"];
 	who: string;
 }
 
@@ -214,7 +214,7 @@ function useRowDialogs(conversations: Conversation[], current: Conversation | un
 								.join(" ")
 						: conversations.find((c) => c.id === deleting?.id)?.kind === "group"
 							? "The group and its messages will be deleted. The bots and their memory are kept."
-							: "This chat and its messages are deleted from Sekai (not from Discord or Slack). The bot and its memory are kept."
+							: "This chat and its messages are deleted from Sekai (not from Discord, Slack or Signal). The bot and its memory are kept."
 				}
 				confirmLabel="Delete"
 				danger
@@ -226,8 +226,8 @@ function useRowDialogs(conversations: Conversation[], current: Conversation | un
 }
 
 /** "Discord", "Slack", or "Discord and Slack": the platforms linked chats come from. */
-function linkedTitle(types: ChannelType[]): string {
-	const names = [...new Set(types.map((t) => CHANNEL_DEFINITIONS[t]?.title ?? t))];
+function linkedTitle(types: MessagingChat["type"][]): string {
+	const names = [...new Set(types.map((t) => (t === "email" ? "Email" : channelTitle(t))))];
 	return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? "Linked chats");
 }
 
@@ -282,7 +282,8 @@ export function ChatList({ empty, className }: { empty?: ReactNode; className?: 
 				setDeleting({
 					kind: "group",
 					id: dm.conversation.id,
-					name: `${dm.agent.name} · ${CHANNEL_DEFINITIONS[dm.type]?.title ?? dm.type} DM`,
+					name:
+						dm.type === "email" ? dm.conversation.title : `${dm.agent.name} · ${channelTitle(dm.type)} DM`,
 				})
 			}
 		/>

@@ -214,7 +214,7 @@ export function SidebarSection({
 }
 
 /** The platform's mark on a chat's picture (Discord channel, Discord DM). */
-export function PlatformBadge({ type, children }: { type: ChannelType; children: ReactNode }) {
+export function PlatformBadge({ type, children }: { type: ChannelType | "email"; children: ReactNode }) {
 	return (
 		<span className="relative shrink-0">
 			{children}
@@ -286,7 +286,7 @@ export function GroupRow({
 	/** Shown instead of the chat's title (a Discord channel's name). */
 	title?: string;
 	/** The chat comes from a messaging app: its mark goes on the picture. */
-	platform?: ChannelType;
+	platform?: ChannelType | "email";
 }) {
 	const busy = useUi(
 		useShallow((s) => {
@@ -344,7 +344,7 @@ export function DmRow({
 }: {
 	agent: Agent;
 	conversation: Conversation;
-	type: ChannelType;
+	type: ChannelType | "email";
 	who: string;
 	active: boolean;
 	unread: boolean;
@@ -364,7 +364,9 @@ export function DmRow({
 	};
 	return (
 		<ChatListRow
-			title={`${agent.name} · ${CHANNEL_DEFINITIONS[type]?.title ?? type} DM`}
+			title={
+				type === "email" ? conversation.title : `${agent.name} · ${CHANNEL_DEFINITIONS[type]?.title ?? type} DM`
+			}
 			avatar={
 				<PlatformBadge type={type}>
 					<AgentAvatar avatar={agent.avatar} size={36} />

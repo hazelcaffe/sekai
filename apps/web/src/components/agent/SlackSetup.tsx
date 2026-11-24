@@ -4,44 +4,11 @@ import { Button, Fold } from "@sekai/ui";
 import { Copy, Download, ExternalLink } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { avatarPng, downloadBlob } from "../../lib/avatarPng.ts";
 
-/** The same rendered avatar, exported whole to PNG; Slack doesn't offer an API to set an app icon. */
-async function avatarPng(element: HTMLDivElement, agent: Agent): Promise<void> {
-	const canvas = document.createElement("canvas");
-	canvas.width = canvas.height = 512;
-	const ctx = canvas.getContext("2d");
-	if (!ctx) throw new Error("Your browser couldn't create the picture.");
-	const picture = element.querySelector("img");
-	const svg = element.querySelector("svg");
-	if (picture || svg) {
-		const image = new Image();
-		image.crossOrigin = "anonymous";
-		image.src =
-			picture?.src ??
-			`data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg as SVGSVGElement))}`;
-		await image.decode();
-		const scale = Math.min(512 / image.naturalWidth, 512 / image.naturalHeight);
-		const w = image.naturalWidth * scale;
-		const h = image.naturalHeight * scale;
-		ctx.drawImage(image, (512 - w) / 2, (512 - h) / 2, w, h);
-	} else if (agent.avatar.kind === "emoji") {
-		ctx.fillStyle = agent.avatar.color;
-		ctx.beginPath();
-		ctx.arc(256, 256, 256, 0, Math.PI * 2);
-		ctx.fill();
-		ctx.font = "280px sans-serif";
-		ctx.textAlign = "center";
-		ctx.textBaseline = "middle";
-		ctx.fillText(agent.avatar.emoji, 256, 270);
-	} else throw new Error("The picture hasn't loaded yet. Try again in a moment.");
-	const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-	if (!blob) throw new Error("Your browser couldn't save the picture.");
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = `${agent.name.replace(/[^\p{L}\p{N}-]/gu, "-")}-slack.png`;
-	a.click();
-	setTimeout(() => URL.revokeObjectURL(url), 10_000);
+/** Slack doesn't offer an API to set an app icon: the same rendered avatar, saved as a PNG to upload there. */
+async function saveAvatar(element: HTMLDivElement, agent: Agent): Promise<void> {
+	downloadBlob(await avatarPng(element, agent), `${agent.name.replace(/[^\p{L}\p{N}-]/gu, "-")}-slack.png`);
 }
 
 export function SlackSetup({ agent }: { agent: Agent }) {
@@ -86,7 +53,7 @@ export function SlackSetup({ agent }: { agent: Agent }) {
 					size="sm"
 					onClick={() => {
 						if (avatar.current)
-							void avatarPng(avatar.current, agent).catch((e: unknown) =>
+							void saveAvatar(avatar.current, agent).catch((e: unknown) =>
 								toast.error(e instanceof Error ? e.message : "Couldn't save the picture."),
 							);
 					}}

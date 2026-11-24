@@ -87,7 +87,7 @@ export interface SetupPlan {
 
 // ---------------------------------------------------------------- what goes on a machine
 
-const SERVER_PACKAGES = ["curl", "wget", "gnupg", "ca-certificates", "sudo", "git", "unzip"];
+const SERVER_PACKAGES = ["curl", "wget", "gnupg", "ca-certificates", "sudo", "git", "unzip", "bubblewrap"];
 
 const DEVBOX_PACKAGES = [
 	...SERVER_PACKAGES,

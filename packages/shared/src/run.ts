@@ -4,6 +4,7 @@ import { Usage } from "./message.ts";
 export const RunTrigger = z.enum([
 	"user",
 	"routine",
+	"job",
 	"reminder",
 	"handoff",
 	"ask",
@@ -11,6 +12,7 @@ export const RunTrigger = z.enum([
 	"test",
 	"regenerate",
 	"channel",
+	"email",
 ]);
 export type RunTrigger = z.infer<typeof RunTrigger>;
 

@@ -1,4 +1,5 @@
-import { useAccess, useAgentMap, useAgents, useRoutines, useRuns } from "@sekai/client";
+import { useAccess, useAgentMap, useAgents, useJobs, useRoutines, useRuns } from "@sekai/client";
+import { activeJob } from "@sekai/shared";
 import {
 	Button,
 	EmptyState,
@@ -22,6 +23,7 @@ import { RoutineDialog } from "../components/routines/RoutineDialog.tsx";
 import { RoutineList } from "../components/routines/RoutineRow.tsx";
 import { useWorkingAgents } from "../stores/ui.ts";
 import { ActivityLog } from "./activity/ActivityLog.tsx";
+import { JobRow } from "./JobPage.tsx";
 
 const VIEWS = ["working", "scheduled", "done", "log"] as const;
 type View = (typeof VIEWS)[number];
@@ -69,6 +71,10 @@ export function ActivityPage() {
 	}, [liveStore, allRuns, botId]);
 
 	const routines = mine(allRoutines);
+	const jobs = useJobs();
+	const liveJobs = mine(jobs.data ?? []).filter((j) => activeJob(j.status));
+	const doneJobs = mine(jobs.data ?? []).filter((j) => !activeJob(j.status));
+	const workingCount = live.length + liveJobs.length;
 	const runs = mine(allRuns);
 	const [creating, setCreating] = useState(false);
 
@@ -81,7 +87,7 @@ export function ActivityPage() {
 	const asked = params.get("view");
 	const view: View = (VIEWS as readonly string[]).includes(asked ?? "")
 		? (asked as View)
-		: live.length > 0
+		: workingCount > 0
 			? "working"
 			: "scheduled";
 
@@ -129,7 +135,7 @@ export function ActivityPage() {
 			<Tabs value={view} onValueChange={setView}>
 				<div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:border-b sm:border-border">
 					<TabsList className="sm:border-b-0">
-						<TabsTrigger value="working">Working{live.length ? ` (${live.length})` : ""}</TabsTrigger>
+						<TabsTrigger value="working">Working{workingCount ? ` (${workingCount})` : ""}</TabsTrigger>
 						<TabsTrigger value="scheduled">
 							Scheduled{scheduled.length ? ` (${scheduled.length})` : ""}
 						</TabsTrigger>
@@ -151,7 +157,17 @@ export function ActivityPage() {
 				</div>
 
 				<TabsContent value="working">
-					{loadingRuns && live.length === 0 ? (
+					{jobs.isError && <ErrorState title="Jobs didn’t load" onRetry={() => void jobs.refetch()} />}
+					{liveJobs.length > 0 && (
+						<Section title="Coding jobs">
+							<List>
+								{liveJobs.map((job) => (
+									<JobRow job={job} key={job.id} />
+								))}
+							</List>
+						</Section>
+					)}
+					{(loadingRuns || jobs.isLoading) && workingCount === 0 ? (
 						<SkeletonRows count={2} />
 					) : runsError && live.length === 0 ? (
 						<ErrorState
@@ -159,18 +175,20 @@ export function ActivityPage() {
 							error={runsErr}
 							onRetry={() => void refetchRuns()}
 						/>
-					) : live.length === 0 ? (
+					) : workingCount === 0 ? (
 						<EmptyState
 							icon={<Activity />}
 							title="Nothing running right now"
 							description="Replies and routines in progress show up here."
 						/>
 					) : (
-						<List label="Working runs">
-							{live.map((r) => (
-								<RunRow key={r.id} run={r} showAgent={!bot} />
-							))}
-						</List>
+						live.length > 0 && (
+							<List label="Working runs">
+								{live.map((r) => (
+									<RunRow key={r.id} run={r} showAgent={!bot} />
+								))}
+							</List>
+						)
 					)}
 				</TabsContent>
 
@@ -227,6 +245,16 @@ export function ActivityPage() {
 				</TabsContent>
 
 				<TabsContent value="done">
+					{jobs.isError && <ErrorState title="Jobs didn’t load" onRetry={() => void jobs.refetch()} />}
+					{doneJobs.length > 0 && (
+						<Section title="Coding jobs">
+							<List>
+								{doneJobs.map((job) => (
+									<JobRow job={job} key={job.id} />
+								))}
+							</List>
+						</Section>
+					)}
 					{loadingRuns ? (
 						<SkeletonRows count={5} />
 					) : runsError ? (
@@ -235,18 +263,20 @@ export function ActivityPage() {
 							error={runsErr}
 							onRetry={() => void refetchRuns()}
 						/>
-					) : completed.length === 0 ? (
+					) : completed.length === 0 && doneJobs.length === 0 ? (
 						<EmptyState
 							icon={<CircleCheck />}
 							title="No finished work yet"
 							description="Completed replies and routine runs appear here."
 						/>
 					) : (
-						<List label="Completed runs">
-							{completed.map((r) => (
-								<RunRow key={r.id} run={r} showAgent={!bot} />
-							))}
-						</List>
+						completed.length > 0 && (
+							<List label="Completed runs">
+								{completed.map((r) => (
+									<RunRow key={r.id} run={r} showAgent={!bot} />
+								))}
+							</List>
+						)
 					)}
 				</TabsContent>
 

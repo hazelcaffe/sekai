@@ -11,13 +11,21 @@ import { leaveAllVoice } from "./channels/voice.ts";
 import { resumeCodeIndexes, stopCodeIndexes } from "./code/indexer.ts";
 import { APP_NAME, APP_VERSION, config } from "./config.ts";
 import { closeDb, initDb } from "./db/index.ts";
+import { startEmail, stopEmail } from "./email/watch.ts";
+import { restoreJobs, shutdownJobs } from "./jobs/index.ts";
 import { log } from "./lib/log.ts";
 import { resumeLibrary } from "./library/index.ts";
 import { type BridgeSocket, bridgeWebSocket, upgradeBridge } from "./machines/bridge.ts";
 import { initMachines, shutdownMachines } from "./machines/manager.ts";
 import { upgradeVnc, type VncSocket, vncWebSocket } from "./machines/vnc.ts";
 import { connectAll, disconnectAll } from "./mcp/manager.ts";
-import { initProviders, shutdownProviders } from "./providers/index.ts";
+import {
+	initProviders,
+	type SignInSocket,
+	shutdownProviders,
+	signInWebSocket,
+	upgradeSignIn,
+} from "./providers/index.ts";
 import { startPush } from "./push.ts";
 import { startEventWatch, stopEventWatch } from "./scheduler/events.ts";
 import { startScheduler, stopScheduler } from "./scheduler/index.ts";
@@ -27,6 +35,7 @@ import { startHousekeeping, stopHousekeeping } from "./services/housekeeping.ts"
 import { failStreamingMessages } from "./services/messages.ts";
 import { failActiveRuns } from "./services/runs.ts";
 import { seedBuiltinSkills } from "./services/skills.ts";
+import { stopSignalDaemon } from "./signal/engine.ts";
 import { upgradeVoice, type VoiceSocket, voiceWebSocket } from "./voice/ws.ts";
 import { startWebEngine, stopWebEngine } from "./web/engine.ts";
 import { stopWebSetup } from "./web/setup.ts";
@@ -47,14 +56,14 @@ async function main(): Promise<void> {
 	await initProviders();
 
 	const app = createApp();
-	const server = Bun.serve<VncSocket | BridgeSocket | VoiceSocket>({
+	const server = Bun.serve<VncSocket | BridgeSocket | VoiceSocket | SignInSocket>({
 		hostname: config.host,
 		port: config.port,
 		// SSE streams stay open indefinitely; keepalive pings are sent every 15s.
 		idleTimeout: 0,
 		maxRequestBodySize: 30 * 1024 * 1024,
 		async fetch(req, srv) {
-			// WebSockets: the desktop app lending your computer, and takeover of a bot's computer (VNC).
+			// WebSockets: the desktop app lending your computer, takeover (VNC), voice calls, and subscription sign-in.
 			if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
 				const bridge = await upgradeBridge(req, srv as Server<BridgeSocket>);
 				if (bridge !== null) return bridge;
@@ -62,6 +71,8 @@ async function main(): Promise<void> {
 				if (vnc !== null) return vnc;
 				const voice = await upgradeVoice(req, srv as Server<VoiceSocket>);
 				if (voice !== null) return voice;
+				const signIn = await upgradeSignIn(req, srv as Server<SignInSocket>);
+				if (signIn !== null) return signIn;
 			}
 			return app.fetch(req, srv);
 		},
@@ -72,15 +83,19 @@ async function main(): Promise<void> {
 			open(ws) {
 				if (ws.data.kind === "vnc") void vncWebSocket.open(ws as ServerWebSocket<VncSocket>);
 				else if (ws.data.kind === "voice") void voiceWebSocket.open(ws as ServerWebSocket<VoiceSocket>);
+				else if (ws.data.kind === "signin") signInWebSocket.open(ws as ServerWebSocket<SignInSocket>);
 			},
 			message(ws, message) {
 				if (ws.data.kind === "vnc") vncWebSocket.message(ws as ServerWebSocket<VncSocket>, message);
 				else if (ws.data.kind === "voice") voiceWebSocket.message(ws as ServerWebSocket<VoiceSocket>, message);
+				else if (ws.data.kind === "signin")
+					signInWebSocket.message(ws as ServerWebSocket<SignInSocket>, message);
 				else void bridgeWebSocket.message(ws as ServerWebSocket<BridgeSocket>, message);
 			},
 			close(ws) {
 				if (ws.data.kind === "vnc") vncWebSocket.close(ws as ServerWebSocket<VncSocket>);
 				else if (ws.data.kind === "voice") voiceWebSocket.close(ws as ServerWebSocket<VoiceSocket>);
+				else if (ws.data.kind === "signin") signInWebSocket.close(ws as ServerWebSocket<SignInSocket>);
 				else bridgeWebSocket.close(ws as ServerWebSocket<BridgeSocket>);
 			},
 		},
@@ -96,6 +111,7 @@ async function main(): Promise<void> {
 
 	void connectAll();
 	await initMachines();
+	await restoreJobs();
 	initBrowsers();
 	await initChannels();
 	await startScheduler();
@@ -106,6 +122,7 @@ async function main(): Promise<void> {
 	void scheduleCheckups().catch(() => {});
 	startHousekeeping();
 	startXMentions();
+	void startEmail().catch(() => {});
 	startPush();
 	void resumeCodeIndexes().catch(() => {});
 	void resumeLibrary().catch(() => {});
@@ -124,12 +141,15 @@ async function main(): Promise<void> {
 		stopCheckups();
 		stopHousekeeping();
 		stopXMentions();
+		await stopEmail();
 		stopCodeIndexes();
 		stopWebSetup();
 		await stopWebEngine();
 		cancelAllRuns();
+		await shutdownJobs();
 		leaveAllVoice();
 		await shutdownChannels();
+		await stopSignalDaemon();
 		shutdownMachines();
 		await shutdownBrowsers();
 		stopXvfb();

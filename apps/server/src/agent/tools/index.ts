@@ -13,8 +13,10 @@ import { codeTools } from "./code.ts";
 import { computerTools } from "./computer.ts";
 import { contactTools } from "./contact.ts";
 import { discordUserTools } from "./discord-user.ts";
+import { emailTools } from "./email.ts";
 import { extensionTools } from "./extension.ts";
 import { hostTools } from "./hosts.ts";
+import { jobTools } from "./jobs.ts";
 import { libraryTools } from "./library.ts";
 import { machineTools } from "./machines.ts";
 import { mediaTools } from "./media.ts";
@@ -58,8 +60,10 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
 	...hostTools,
 	...codeTools,
 	...libraryTools,
+	...jobTools,
 	...mediaTools,
 	...contactTools,
+	...emailTools,
 	...xTools,
 	...systemTools,
 ];
@@ -197,6 +201,7 @@ const TOOL_PERMISSION: Record<string, Permission> = {
 	host_revoke: "admin",
 };
 const CATEGORY_PERMISSION: Partial<Record<string, Permission>> = {
+	jobs: "subscriptions",
 	routines: "routines",
 	web: "web",
 	browser: "browser",
@@ -205,6 +210,7 @@ const CATEGORY_PERMISSION: Partial<Record<string, Permission>> = {
 	code: "code",
 	library: "library",
 	x: "channels",
+	email: "channels",
 };
 /**
  * What a bot shared with you can do in your chats: think with you, remember you, read the web and your library.

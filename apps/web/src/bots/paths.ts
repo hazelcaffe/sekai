@@ -3,11 +3,12 @@
  * addresses (and the old ones that still work) are tested.
  */
 
-export type ChannelPlatform = "discord" | "slack";
+export type ChannelPlatform = "discord" | "slack" | "signal";
 export type SocialPlatform = "x" | "instagram" | "tiktok";
 
 export type AccountsView =
 	| { view: "home" }
+	| { view: "email"; page: string }
 	| { view: "platform"; platform: ChannelPlatform }
 	| { view: "connect"; platform: ChannelPlatform }
 	| { view: "account"; platform: ChannelPlatform; id: string }
@@ -15,13 +16,15 @@ export type AccountsView =
 
 /**
  * /accounts, /accounts/discord, /accounts/discord/new, /accounts/discord/:accountId, /accounts/slack…,
- * /accounts/x|instagram|tiktok. The older /accounts/channels and /accounts/discord-user open Discord.
+ * /accounts/signal…, /accounts/x|instagram|tiktok. The older /accounts/channels and /accounts/discord-user open
+ * Discord.
  */
 export function accountsView(rest: string): AccountsView {
 	const [first = "", second = ""] = rest.split("/");
+	if (first === "email") return { view: "email", page: second };
 	const platform: ChannelPlatform | null =
-		first === "slack"
-			? "slack"
+		first === "slack" || first === "signal"
+			? first
 			: first === "discord" || first === "channels" || first === "discord-user"
 				? "discord"
 				: null;

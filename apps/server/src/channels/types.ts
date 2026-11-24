@@ -141,11 +141,31 @@ export interface ActionResult {
 	whisper?: string;
 }
 
+/** Someone reacted to a message (platforms where reactions answer approvals: Signal). */
+export interface InboundReaction extends ChatRef {
+	/** The platform message they reacted to. */
+	messageId: string;
+	emoji: string;
+	/** They took the reaction back. */
+	remove: boolean;
+}
+
+/** Someone added the bot to a group (or invited it). */
+export interface GroupInvite {
+	chatId: string;
+	chatName: string;
+	inviterId: string;
+	inviterName: string;
+}
+
 export interface ChannelHandlers {
 	onMessage(msg: InboundMessage): Promise<void>;
 	onCommand(cmd: CommandInvocation): Promise<Reply>;
 	onAutocomplete(cmd: CommandInvocation, option: string, value: string): Promise<{ name: string; value: string }[]>;
 	onAction(action: ActionInvocation): Promise<ActionResult>;
+	onReaction?(reaction: InboundReaction): Promise<void>;
+	/** Whether to stay in (or accept) a group someone added the bot to: only for people who may use it. */
+	onInvite?(invite: GroupInvite): Promise<boolean>;
 	/** The connection died in a way the adapter can't recover from (bad token, revoked access). */
 	onFatal(err: unknown): void;
 	log(level: "info" | "warn", message: string): void;
@@ -176,6 +196,10 @@ export interface ChannelAdapter {
 	readonly threads?: boolean;
 	/** What /help says about this platform: how to talk to the bot, and tips for its commands. */
 	readonly help?: { intro?: string; tips?: string };
+	/** Reacting 👍 or 👎 to an approval request answers it (platforms without buttons that report reactions). */
+	readonly reactionApprovals?: boolean;
+	/** Splits a long reply into messages, when the platform's limit isn't a plain character count. */
+	chunk?(text: string): string[];
 	/** How this platform writes a mention of someone in text, e.g. <@123>. */
 	mention(userId: string): string;
 	/** Small print under a message (Discord: -# subtext). */

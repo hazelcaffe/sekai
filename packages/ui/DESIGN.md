@@ -39,7 +39,7 @@ Use these, everywhere, for the same thing:
 | your devices | computers of yours that bots may work on                                | hosts, nodes                               |
 | app          | a connected tool a bot can use (Notion, GitHub…)                        | MCP server (except in the custom-app form) |
 | skill        | know-how a bot can follow                                               |                                            |
-| account      | a bot's own account on Discord, Slack, X, Instagram, TikTok             | channel, integration                       |
+| account      | a bot's own account on Discord, Slack, Signal, X, Instagram, TikTok     | channel, integration                       |
 | memory       | what a bot remembers about you and its work                             | brain, facts store                         |
 | notes        | a bot's notes                                                           |                                            |
 | library      | documents every bot can search                                          |                                            |
@@ -136,7 +136,7 @@ this bot.
 | Model & voice  | The model and how hard it thinks, limits; planner, council, fallback, background and vision models under Advanced. How it listens and sounds on calls.                                                                                                                                                         |
 | Memory         | What it remembers (with the one **Learns as it goes** switch; pin, edit, forget, clear, check-up), what it knows about you, its notes, and code it has indexed.                                                                                                                                                |
 | Tools & access | Apps it may use (on/off per app; Add an app from here, and come back here after setting it up), skills, web search, what it may do (files, commands, devices…) and its approvals rule.                                                                                                                         |
-| Accounts       | Its Discord (bot or personal), Slack, X, Instagram and TikTok accounts: a list, each opening its own page (chats, who can use it, how it speaks, reconnect).                                                                                                                                                   |
+| Accounts       | Its Discord (bot or personal), Slack, Signal, X, Instagram and TikTok accounts: a list, each opening its own page (chats, who can use it, how it speaks, reconnect).                                                                                                                                           |
 | Routines       | Its routines: the same list and editor as Activity → Scheduled, filtered to this bot.                                                                                                                                                                                                                          |
 | Computer       | Its computer and devboxes: create it (always offered, even before it has one), power, size, checkpoints, passwords and keys, web apps, sharing it with other bots, shared browsers, lending your devices, saved sign-ins. The live screen, taking over and Teach open beside the chat (full screen on phones). |
 
@@ -199,8 +199,9 @@ Settled so nobody guesses. Change them here, not in code.
 - **Bot rows' menu** (sidebar and Chats): Pin, Hide, Mark as read, Bot settings. Duplicate and Make primary live in
   the bot's Profile. Unread shows as a bold name and a small brand dot at the row's end (that's the one indicator;
   no counts). Mark all as read is in the section's menu and in search.
-- **The chat list's sections**: Pinned, Bots, Groups, Discord & Slack (one section; each row has the platform's
-  mark), and a **Hidden** fold at the end (search finds hidden bots too).
+- **The chat list's sections**: Pinned, Bots, Groups, the messaging apps' chats (one section named after them,
+  "Discord, Slack and Signal"; each row has the platform's mark), and a **Hidden** fold at the end (search finds
+  hidden bots too).
 - **The collapsed sidebar (rail)**: Search, Needs you (with its count), Activity, Library, then bot avatars;
   your avatar (Settings) at the bottom.
 - **Theme**: only in Settings → Appearance and the person menu. No theme buttons elsewhere.

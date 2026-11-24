@@ -11,9 +11,13 @@ For the rules every change must keep (who owns what, how requests become a perso
 apps/server      Bun + Hono API, Postgres (Drizzle), SSE event bus
   src/agent        runtime (per-chat run queue), tool loop, strategies, approvals, context, prompt
   src/agent/tools  built-in tools; one defineTool() each
-  src/channels     platform adapters (Discord, Slack Socket Mode), manager (access, routing, group links, approvals),
-                   commands, streaming delivery
-  src/providers    BYOS: ACP client, Claude Agent SDK runner, Sekai tools bridge (MCP), turn composer
+  src/channels     platform adapters (Discord, Slack Socket Mode, Signal), manager (access, routing, group links,
+                   approvals), commands, streaming delivery
+  src/signal       signal-cli for Signal accounts: the pinned install, one daemon on loopback, linking and registering
+  src/email        bots' mailboxes: mailcow, IMAP/SMTP accounts, watching (IDLE), verified senders, threaded replies
+  src/providers    BYOS: ACP client, Claude Agent SDK runner, Sekai tools bridge (MCP), turn composer, CLI installer
+                   and browser sign-in terminal, coding job workers
+  src/jobs         coding jobs: workers' lifetime, their gated workspace tools (local or over SSH), relays to the chat
   src/machines     computers and devboxes: Proxmox client, setup (cloud-init seed or SSH script), SSH, desktop helper,
                    VNC bridge;
                    your own servers and devices (master key, per-bot access, tailnet)

@@ -243,6 +243,8 @@ describe("ACP check against a scripted agent", () => {
 		args: [fixture],
 		env,
 		extraModels: [],
+		signInCommand: [],
+		ownConfig: false,
 		createdAt: 0,
 		updatedAt: 0,
 	});

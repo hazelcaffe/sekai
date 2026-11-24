@@ -12,7 +12,7 @@ import { errorMessage } from "../lib/errors.ts";
 import { truncate, truncateMiddle } from "../lib/text.ts";
 import { EMPTY_USAGE } from "../llm/types.ts";
 import { claudeToolKind, claudeToolTitle, gatedExternalTool } from "./kinds.ts";
-import { agentEnv, checkDir, OutputTail, withTimeout } from "./process.ts";
+import { checkDir, OutputTail, providerEnv, withTimeout } from "./process.ts";
 import { setProviderStatus } from "./store.ts";
 import type { RunnerInput, RunnerResult, TurnBlock } from "./turn.ts";
 
@@ -39,9 +39,9 @@ function effortFor(thinking: ThinkingSetting): Effort | undefined {
 	}
 }
 
-function baseOptions(provider: Provider, tail: OutputTail): Options {
+export function baseOptions(provider: Provider, tail: OutputTail): Options {
 	return {
-		env: agentEnv(provider.env),
+		env: providerEnv(provider),
 		// Your own Claude Code settings, hooks and CLAUDE.md files stay out of Sekai's agents.
 		settingSources: [],
 		stderr: (d) => tail.push(d),

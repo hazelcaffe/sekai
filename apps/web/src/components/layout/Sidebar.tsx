@@ -1,4 +1,4 @@
-import { cn, isMac, useApprovals, useCredentialRequests, usePairings } from "@sekai/client";
+import { cn, isMac, useApprovals, useCredentialRequests, useEmailSenders, usePairings } from "@sekai/client";
 import { IconButton, Kbd, SekaiMark, Tooltip } from "@sekai/ui";
 import { Activity, Inbox, Library, PanelLeftClose, PanelLeftOpen, Plus, Search, X } from "lucide-react";
 import type { ReactNode } from "react";
@@ -16,7 +16,8 @@ export function useNeedsYouCount(): number {
 	const { data: approvals = [] } = useApprovals();
 	const { data: pairings = [] } = usePairings();
 	const { data: logins = [] } = useCredentialRequests();
-	return approvals.length + pairings.length + logins.length;
+	const { data: senders = [] } = useEmailSenders();
+	return approvals.length + pairings.length + logins.length + senders.length;
 }
 
 function NavItem({

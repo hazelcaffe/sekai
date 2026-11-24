@@ -19,6 +19,8 @@ export const useAppDownloads = (enabled = true) =>
 export const useModels = () =>
 	useQuery({ queryKey: qk.models, queryFn: () => api.models(), staleTime: 5 * 60_000, retry: 1 });
 export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: api.settings.get });
+export const useJobs = () => useQuery({ queryKey: qk.jobs, queryFn: api.jobs.list });
+export const useJob = (id: string) => useQuery({ queryKey: qk.job(id), queryFn: () => api.jobs.get(id) });
 
 export const useAgents = () =>
 	useQuery({ queryKey: qk.agents, queryFn: api.agents.list, staleTime: Number.POSITIVE_INFINITY });
@@ -89,6 +91,19 @@ export const useChannelBindings = (channelId: string | null) =>
 		enabled: Boolean(channelId),
 	});
 export const usePairings = () => useQuery({ queryKey: qk.pairings, queryFn: api.channels.pairings });
+export const useEmailAccount = (id: string) =>
+	useQuery({ queryKey: qk.emailAccount(id), queryFn: () => api.email.account(id) });
+export const useEmailSenders = () => useQuery({ queryKey: qk.emailSenders, queryFn: api.email.senders });
+/** signal-cli on this server: installed, running, or what's wrong. */
+export const useSignalStatus = (enabled = true) =>
+	useQuery({ queryKey: qk.signalStatus, queryFn: api.signal.status, enabled });
+/** A Signal account's details: who it is, names for the people it answers, safety numbers that changed. */
+export const useSignalAccount = (channelId: string | null) =>
+	useQuery({
+		queryKey: qk.signalAccount(channelId ?? ""),
+		queryFn: () => api.signal.account(channelId ?? ""),
+		enabled: Boolean(channelId),
+	});
 export const useMachines = (agentId?: string) =>
 	useQuery({ queryKey: qk.machines(agentId), queryFn: () => api.machines.list(agentId ? { agentId } : undefined) });
 /** Other bots sharing one of your machines. */

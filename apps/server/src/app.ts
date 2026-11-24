@@ -25,14 +25,17 @@ import { desktopRoutes } from "./routes/desktop.ts";
 import { digestRoutes } from "./routes/digest.ts";
 import { documentRoutes } from "./routes/documents.ts";
 import { downloadRoutes } from "./routes/downloads.ts";
+import { emailRoutes } from "./routes/email.ts";
 import { extensionRoutes } from "./routes/extension.ts";
 import { hookRoutes } from "./routes/hooks.ts";
 import { hostRoutes } from "./routes/hosts.ts";
+import { jobRoutes } from "./routes/jobs.ts";
 import { mcpRoutes, skillRoutes } from "./routes/library.ts";
 import { credentialRoutes, machineRoutes } from "./routes/machines.ts";
 import { providerRoutes } from "./routes/providers.ts";
 import { pushRoutes } from "./routes/push.ts";
 import { sharedBrowserRoutes } from "./routes/shared-browsers.ts";
+import { signalRoutes } from "./routes/signal.ts";
 import { instagramRoutes, tiktokRoutes } from "./routes/social.ts";
 import { systemRoutes } from "./routes/system.ts";
 import { tailscaleRoutes } from "./routes/tailscale.ts";
@@ -178,13 +181,16 @@ export function createApp(): Hono {
 		.route("/memories", memoryRoutes)
 		.route("/notes", noteRoutes)
 		.route("/routines", routineRoutes)
+		.route("/jobs", jobRoutes)
 		.route("/skills", skillRoutes)
 		.route("/mcp", mcpRoutes)
 		.route("/channels", channelRoutes)
+		.route("/signal", signalRoutes)
 		.route("/providers", providerRoutes)
 		.route("/api-providers", apiProviderRoutes)
 		.route("/voice", voiceRoutes)
 		.route("/web", webRoutes)
+		.route("/email", emailRoutes)
 		.route("/x", xRoutes)
 		.route("/instagram", instagramRoutes)
 		.route("/tiktok", tiktokRoutes)

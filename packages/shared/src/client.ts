@@ -53,6 +53,22 @@ import type { CompareEvent, CompareRequest } from "./compare.ts";
 import type { Conversation, ConversationCreate, ConversationUpdate, MessageSearchHit } from "./conversation.ts";
 import type { DigestConfigUpdate, DigestStatus } from "./digest.ts";
 import type { AppDownloads } from "./downloads.ts";
+import type {
+	EmailAccount,
+	EmailAccountUpdate,
+	EmailConnect,
+	EmailItem,
+	EmailMailboxCreate,
+	EmailOptions,
+	EmailSenderNote,
+	EmailServerGuess,
+	EmailTestInput,
+	EmailTestResult,
+	MailcowCheck,
+	MailcowCheckInput,
+	MailcowSettings,
+	MailcowSettingsUpdate,
+} from "./email.ts";
 import type { CallRing } from "./events.ts";
 import type {
 	ExtensionChat,
@@ -116,7 +132,7 @@ import type {
 	EmbeddingModelInfo,
 } from "./model-provider.ts";
 import type { ModelInfo } from "./models.ts";
-import type { ProviderCreate, ProviderUpdate, ProviderWithStatus } from "./provider.ts";
+import type { ProviderCreate, ProviderUpdate, ProviderWithStatus, SignInTicket } from "./provider.ts";
 import type {
 	Routine,
 	RoutineCreate,
@@ -127,6 +143,15 @@ import type {
 } from "./routine.ts";
 import type { ApprovalDecision, PendingApproval, Run } from "./run.ts";
 import type { ModelPrice, PublicSettings, ServerInfo, SettingsUpdate, UsageReport, UsageScope } from "./settings.ts";
+import type {
+	SignalAccountInfo,
+	SignalEngineStatus,
+	SignalLink,
+	SignalLinkStart,
+	SignalProfile,
+	SignalRegister,
+	SignalVerify,
+} from "./signal.ts";
 import type { Skill, SkillCreate, SkillUpdate } from "./skill.ts";
 import type { SkillDraft, TeachContext, TeachDraftInput, TeachSave } from "./teach.ts";
 import type { TtAccount, TtConnect, TtUpdate } from "./tiktok.ts";
@@ -768,6 +793,12 @@ export function createApiClient(options: ApiClientOptions) {
 			delete: (id: string) => del(`/notes/${id}`),
 		},
 
+		jobs: {
+			list: () => get<import("./job.ts").Job[]>("/jobs"),
+			get: (id: string) => get<import("./job.ts").JobDetail>(`/jobs/${id}`),
+			send: (id: string, message: string) => post<{ ok: true }>(`/jobs/${id}/send`, { message }),
+			stop: (id: string) => post<{ ok: true }>(`/jobs/${id}/stop`),
+		},
 		routines: {
 			list: (query?: { agentId?: string }) => get<Routine[]>("/routines", query),
 			get: (id: string) => get<Routine>(`/routines/${id}`),
@@ -812,8 +843,37 @@ export function createApiClient(options: ApiClientOptions) {
 			check: (id: string) => post<ProviderWithStatus>(`/providers/${id}/check`),
 			authenticate: (id: string, methodId: string) =>
 				post<ProviderWithStatus>(`/providers/${id}/authenticate`, { methodId }),
+			/**
+			 * A one-time ticket for the sign-in terminal (the preset's command, an ACP "terminal" method of the agent,
+			 * or one of the preset's targets). Asks "Confirm it's you" first when needed.
+			 */
+			signIn: (id: string, body: { methodId?: string; target?: string } = {}) =>
+				post<SignInTicket>(`/providers/${id}/signin`, body),
+			/** The sign-in terminal's WebSocket (see SignInServerMessage). */
+			signInUrl: (ticket: string) => wsUrl(`/api/providers/signin/${encodeURIComponent(ticket)}`),
+			/** Installs (or updates) a tool a subscription needs into Sekai's tools folder; progress comes as events. */
+			installTool: (toolId: string) => post<{ ok: true }>(`/providers/tools/${toolId}/install`),
 		},
 
+		email: {
+			mailcow: () => get<MailcowSettings>("/email/mailcow"),
+			saveMailcow: (input: MailcowSettingsUpdate) => request<MailcowSettings>("PUT", "/email/mailcow", input),
+			check: (input: MailcowCheckInput) => post<MailcowCheck>("/email/mailcow/check", input),
+			forgetMailcow: () => del("/email/mailcow"),
+			options: () => get<EmailOptions>("/email/options"),
+			guess: (address: string) => get<EmailServerGuess>("/email/autoconfig", { address }),
+			test: (input: EmailTestInput) => post<EmailTestResult>("/email/test", input),
+			account: (id: string) => get<EmailAccount | null>(`/email/accounts/${id}`),
+			create: (id: string, input: EmailMailboxCreate) =>
+				post<EmailAccount>(`/email/accounts/${id}/mailbox`, input),
+			connect: (id: string, input: EmailConnect) => request<EmailAccount>("PUT", `/email/accounts/${id}`, input),
+			update: (id: string, input: EmailAccountUpdate) => patch<EmailAccount>(`/email/accounts/${id}`, input),
+			reconnect: (id: string) => post<EmailAccount>(`/email/accounts/${id}/reconnect`),
+			remove: (id: string, mailbox: boolean) => del(`/email/accounts/${id}`, { mailbox }),
+			recent: (id: string) => get<EmailItem[]>(`/email/accounts/${id}/mail`),
+			senders: () => get<EmailSenderNote[]>("/email/senders"),
+			decide: (id: string, allow: boolean) => post<{ ok: true }>(`/email/senders/${id}`, { allow }),
+		},
 		channels: {
 			list: (query?: { agentId?: string }) => get<ChannelWithStatus[]>("/channels", query),
 			create: (body: ChannelCreate) => post<ChannelWithStatus>("/channels", body),
@@ -829,6 +889,25 @@ export function createApiClient(options: ApiClientOptions) {
 			pairings: () => get<ChannelPairing[]>("/channels/pairings"),
 			decidePairing: (code: string, approve: boolean) =>
 				post<{ ok: true }>(`/channels/pairings/${encodeURIComponent(code)}`, { approve }),
+		},
+
+		/** Bots' Signal accounts (signal-cli on this server). Removing one is channels.delete. */
+		signal: {
+			status: () => get<SignalEngineStatus>("/signal/status"),
+			/** Admins: downloads and installs signal-cli here (Linux x86_64), in the background. */
+			install: () => post<SignalEngineStatus>("/signal/install"),
+			restart: () => post<SignalEngineStatus>("/signal/restart"),
+			/** A code to scan in Signal on the phone; follow it with link(). */
+			startLink: (body: SignalLinkStart) => post<SignalLink>("/signal/link", body),
+			link: (id: string) => get<SignalLink>(`/signal/link/${encodeURIComponent(id)}`),
+			/** Signal texts (or calls) a code to the number. */
+			register: (body: SignalRegister) => post<{ ok: true }>("/signal/register", body),
+			verify: (body: SignalVerify) => post<{ channelId: string }>("/signal/verify", body),
+			account: (channelId: string) => get<SignalAccountInfo>(`/signal/accounts/${channelId}`),
+			setProfile: (channelId: string, body: SignalProfile) =>
+				post<{ profileName: string }>(`/signal/accounts/${channelId}/profile`, body),
+			/** Trusts someone's changed safety number. */
+			trust: (channelId: string, id: string) => post<{ ok: true }>(`/signal/accounts/${channelId}/trust`, { id }),
 		},
 
 		/**
