@@ -42,8 +42,11 @@ export const AgentModels = z.object({
 	/** Used instead of the primary model when a message has images and the primary model has no vision. */
 	vision: ModelRef.nullable().default(null),
 	strategy: ModelStrategy.default({ type: "single" }),
-	/** Maximum model calls (tool-loop steps) per reply. */
-	maxSteps: z.number().int().min(1).max(100).default(24),
+	/**
+	 * A safety limit on model calls (tool-loop steps) in one reply. A bot works until it's done; this only stops one
+	 * that runs away (going in circles is caught sooner, see agent/progress.ts).
+	 */
+	maxSteps: z.number().int().min(1).max(1000).default(200),
 	maxOutputTokens: z.number().int().positive().nullable().default(null),
 	temperature: z.number().min(0).max(2).nullable().default(null),
 	/** How it sounds and listens on calls, reading aloud and dictation. Empty fields use Settings → Bots → Voice. */

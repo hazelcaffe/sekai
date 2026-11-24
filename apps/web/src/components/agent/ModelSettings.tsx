@@ -219,11 +219,11 @@ export function ModelSettings({ agent }: { agent: Agent }) {
 			<Section title="Limits" description="How much it may do in one reply." saveState={saveState("limits")}>
 				<div className="grid gap-4 xs:grid-cols-2">
 					<NumberField
-						label="Steps per reply"
-						hint="Model calls in one reply."
+						label="Most steps per reply"
+						hint="It keeps going until it's done. This only stops a reply that runs away."
 						value={m.maxSteps}
 						min={1}
-						max={100}
+						max={1000}
 						onSave={(v) => v != null && change("limits", { maxSteps: v })}
 					/>
 					<NumberField

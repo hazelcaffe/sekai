@@ -9,6 +9,7 @@ import { addUsage, type ChatMessage, type ChatToolCall, EMPTY_USAGE } from "../l
 import { saveUpload } from "../services/uploads.ts";
 import { requestApproval } from "./approvals.ts";
 import { gateFor, type RuleSets } from "./permissions.ts";
+import { NUDGE_AFTER, NUDGE_TEXT, RepeatWatch, STOP_AFTER, stepSignature, trimOldResults } from "./progress.ts";
 import { isSafetyError, isSafetyFinish, looksLikeRefusal, RefusalError } from "./refusal.ts";
 import { reviewAsPrimary, reviewToolCall } from "./review.ts";
 import { type ResolvedTool, type ToolContext, type ToolImage, type Toolset, toolOutput } from "./tools/index.ts";
@@ -83,8 +84,14 @@ export async function runToolLoop(input: LoopInput): Promise<LoopResult> {
 	let usage = EMPTY_USAGE;
 	let sideEffects = false;
 	const env: ToolCallEnv = { ...input, priorActions: [] };
+	// A bot works until it's done: maxSteps is only a safety limit. These catch it going in circles and keep a long
+	// task's context inside the model's window.
+	const repeats = new RepeatWatch();
+	let nudged = false;
+	const contextWindow = (await getModelInfo(input.model.model))?.contextWindow ?? 200_000;
 
 	for (let step = 1; step <= input.maxSteps; step++) {
+		if (step > 1) trimOldResults(input.messages, contextWindow);
 		const calls = new Map<number, PendingCall>();
 		let stepText = "";
 		let finishReason: string | null = null;
@@ -156,6 +163,7 @@ export async function runToolLoop(input: LoopInput): Promise<LoopResult> {
 		input.messages.push({ role: "assistant", content: stepText.trim() || null, tool_calls: toolCalls });
 
 		const shots: { title: string; images: ToolImage[] }[] = [];
+		const outcomes: { content: string; images: ToolImage[] }[] = [];
 		for (const call of ordered) {
 			const tool = toolset.byName.get(call.name);
 			const args = parseArgs(call.args);
@@ -171,6 +179,7 @@ export async function runToolLoop(input: LoopInput): Promise<LoopResult> {
 				startedAt: Date.now(),
 			});
 			const result = await executeToolCall(env, call, tool, args);
+			outcomes.push({ content: result.content, images: result.images });
 			if (result.ran) sideEffects = sideEffects || tool?.risk !== "read";
 			input.messages.push({ role: "tool", tool_call_id: call.id, content: result.content });
 			if (result.images.length)
@@ -197,9 +206,25 @@ export async function runToolLoop(input: LoopInput): Promise<LoopResult> {
 			input.messages.push(message);
 			forgetOldScreenshots(input.messages, KEEP_SCREENSHOTS);
 		}
+
+		const same = repeats.step(stepSignature(ordered, outcomes));
+		if (same >= STOP_AFTER) {
+			writer.notice(
+				"warning",
+				"I stopped because I kept repeating the same step. Tell me how you'd like me to go on.",
+			);
+			return { usage, steps: step, sideEffects };
+		}
+		if (same >= NUDGE_AFTER && !nudged) {
+			nudged = true;
+			input.messages.push({ role: "user", content: `(A note from Sekai, not from the user.) ${NUDGE_TEXT}` });
+		}
 	}
 
-	writer.notice("warning", `Stopped after ${input.maxSteps} steps. Say "continue" to let me keep going.`);
+	writer.notice(
+		"warning",
+		`I've taken ${input.maxSteps} steps, this bot's safety limit for one reply. Say "continue" and I'll pick up where I left off.`,
+	);
 	return { usage, steps: input.maxSteps, sideEffects };
 }
 
