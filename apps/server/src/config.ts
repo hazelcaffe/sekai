@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export const APP_NAME = "Sekai";
-export const APP_VERSION = "0.3.0";
+export const APP_VERSION = "0.4.0";
 
 /** Repo root when running from source; the executable's folder when compiled. */
 function findRoot(): string {
