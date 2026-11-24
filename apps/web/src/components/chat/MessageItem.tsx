@@ -48,6 +48,7 @@ import {
 import { memo, useState } from "react";
 import { toast } from "sonner";
 import { useLongPress } from "../../lib/hooks.ts";
+import { ChatJob } from "../../pages/JobPage.tsx";
 import { useAgentPresence } from "../../stores/ui.ts";
 import { AdvisorBlock, NoticeLine, ReasoningBlock, ToolCard } from "./Parts.tsx";
 import { RetryButton, VersionSwitcher } from "./RetryControls.tsx";
@@ -279,6 +280,7 @@ export const MessageItem = memo(function MessageItem({
 	) : null;
 
 	const voice = message.parts.find((p): p is AudioPart => p.type === "audio");
+	if (message.sender === "system" && message.meta.jobId) return <ChatJob id={message.meta.jobId} />;
 	if (message.sender === "user") {
 		const via = message.meta.channel
 			? `via ${channelTitle(message.meta.channel.type)}${message.meta.channel.isGroup ? ` · ${message.meta.channel.chatName ?? "group"}` : ""}`

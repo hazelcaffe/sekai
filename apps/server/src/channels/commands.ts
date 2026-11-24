@@ -257,8 +257,9 @@ function helpText(adapter: CommandEnv["adapter"]): string {
 	].join("\n");
 }
 
-/** People in a /trust: Discord's numeric ids or Slack's member ids, as typed or from mentions. */
-const PERSON_ID = /\b(?:\d{15,25}|[UW][A-Z0-9]{6,})\b/g;
+/** People in a /trust: Signal's account ids, Discord's numeric ids or Slack's member ids, as typed or from mentions. */
+const PERSON_ID =
+	/\b(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|\d{15,25}|[UW][A-Z0-9]{6,})\b/g;
 
 // ---------------------------------------------------------------- helpers
 

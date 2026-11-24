@@ -26,6 +26,7 @@ export function parentOf(pathname: string): string | null {
 	const path = pathname.replace(/\/+$/, "") || "/";
 	if (isTabRoot(path) || path === "/welcome") return null;
 	if (path.startsWith("/c/")) return "/";
+	if (path.startsWith("/jobs/")) return "/activity";
 	const parts = path.split("/").filter(Boolean);
 	if (parts[0] === "bots" && parts.length <= 2) return "/";
 	if (parts[0] === "settings" && parts.length === 1) return "/";

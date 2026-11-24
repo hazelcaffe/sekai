@@ -197,7 +197,7 @@ export class OutboundStream {
 			header: this.target.header,
 			mentions: this.target.mentions,
 		});
-		const chunks = text ? chunkText(text, adapter.maxText) : [];
+		const chunks = text ? (adapter.chunk?.(text) ?? chunkText(text, adapter.maxText)) : [];
 		for (const [i, chunk] of chunks.entries()) {
 			const id = this.posted[i];
 			if (id) {

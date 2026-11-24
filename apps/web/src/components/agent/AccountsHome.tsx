@@ -1,7 +1,7 @@
-import { useChannels, usePairings } from "@sekai/client";
+import { useChannels, useEmailAccount, usePairings } from "@sekai/client";
 import type { Agent } from "@sekai/shared";
 import { Badge, Callout, ErrorState, List, Row, SkeletonRows } from "@sekai/ui";
-import { AtSign } from "lucide-react";
+import { AtSign, Mail } from "lucide-react";
 import { botPath } from "../../bots/registry.tsx";
 import { AccountMark } from "./AccountMark.tsx";
 import {
@@ -22,6 +22,7 @@ const SOCIAL: { id: SocialPlatform; title: string }[] = [
 /** The bot's accounts on other apps: one row each, with how it's doing; each opens its own page. */
 export function AccountsHome({ agent, mayEdit }: { agent: Agent; mayEdit: boolean }) {
 	const channels = useChannels(agent.id);
+	const email = useEmailAccount(agent.id);
 	const x = useSocialAccount("x", agent.id);
 	const instagram = useSocialAccount("instagram", agent.id);
 	const tiktok = useSocialAccount("tiktok", agent.id);
@@ -29,6 +30,7 @@ export function AccountsHome({ agent, mayEdit }: { agent: Agent; mayEdit: boolea
 	const all = channels.data ?? [];
 	const discord = all.filter((c) => c.type === "discord" || c.type === "discord-user");
 	const slack = all.filter((c) => c.type === "slack");
+	const signal = all.filter((c) => c.type === "signal");
 	const { data: pairings = [] } = usePairings();
 	const loading = channels.isLoading || x.isLoading || instagram.isLoading || tiktok.isLoading;
 	const failed = channels.error ?? x.error ?? instagram.error ?? tiktok.error;
@@ -59,6 +61,18 @@ export function AccountsHome({ agent, mayEdit }: { agent: Agent; mayEdit: boolea
 			) : (
 				<List label="Accounts">
 					<Row
+						icon={<Mail />}
+						title="Email"
+						subtitle={
+							email.isError
+								? "Couldn't load the address"
+								: email.isPending
+									? "Checking…"
+									: (email.data?.address ?? "Not connected")
+						}
+						href={href("email")}
+					/>
+					<Row
 						leading={<AccountMark platform="discord" />}
 						title="Discord"
 						subtitle={<StatusLine state={platformState(discord)} />}
@@ -71,6 +85,13 @@ export function AccountsHome({ agent, mayEdit }: { agent: Agent; mayEdit: boolea
 						subtitle={<StatusLine state={platformState(slack)} />}
 						badge={pairing(pairingsFor(pairings, slack).length)}
 						href={href("slack")}
+					/>
+					<Row
+						leading={<AccountMark platform="signal" />}
+						title="Signal"
+						subtitle={<StatusLine state={platformState(signal)} />}
+						badge={pairing(pairingsFor(pairings, signal).length)}
+						href={href("signal")}
 					/>
 					{SOCIAL.map((p) => (
 						<Row

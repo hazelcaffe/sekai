@@ -141,9 +141,11 @@ function ChatHeader({
 	const busy = groupBusy ? `${groupBusy.name}: ${groupBusy.label}…` : null;
 	const messaging = useMessagingChat(conversation);
 	const where = messaging
-		? messaging.dm
-			? `${channelTitle(messaging.type)} DM`
-			: `${channelTitle(messaging.type)} · ${messaging.name}`
+		? messaging.type === "email"
+			? `Email · ${messaging.name}`
+			: messaging.dm
+				? `${channelTitle(messaging.type)} DM`
+				: `${channelTitle(messaging.type)} · ${messaging.name}`
 		: null;
 	const subtitle = isGroup
 		? (busy ?? members.map((m) => m.name).join(", "))
@@ -393,8 +395,12 @@ function MessagingNotice({ chat, agentName, agentId }: { chat: MessagingChat; ag
 	return (
 		<div className="mx-auto mb-2 flex w-full max-w-3xl items-center gap-2 rounded-lg bg-surface-2/70 px-3.5 py-2 text-small text-fg-subtle">
 			<span className="min-w-0 flex-1">
-				{chat.dm ? `Your ${app} DM with ${agentName}.` : `${agentName} in ${chat.name} on ${app}.`} What you
-				type here stays in Sekai.
+				{chat.type === "email"
+					? `${agentName}'s email thread with ${chat.name}.`
+					: chat.dm
+						? `Your ${app} DM with ${agentName}.`
+						: `${agentName} in ${chat.name} on ${app}.`}{" "}
+				What you type here stays in Sekai.
 			</span>
 			<button
 				type="button"

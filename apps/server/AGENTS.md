@@ -50,14 +50,24 @@ src/agent/        the agent runtime
   teach.ts          teaching a bot by doing it once: a recorded demonstration written up as a skill by a model
                     that can see (draftSkill), then saved and turned on for the bot (saveTaughtSkill)
   tools/            built-in tools (one defineTool each), index.ts lists BUILTIN_TOOLS and MCP tool wiring
-src/providers/    BYOS: ACP client (acp.ts), Claude Agent SDK (claude.ts), tools bridge over MCP for them
-                   Pi runs chat-only (pi-chat.sh), with one ACP process per session: its adapter doesn't
-                   gate native tools, forward MCP servers or keep multiple active sessions in one process.
+src/providers/    BYOS: ACP client (acp.ts), Claude Agent SDK (claude.ts), tools bridge over MCP for them,
+                  CLI installer into <data>/tools/ (tools.ts), per-subscription config dirs <data>/providers/<id>/
+                  and env (process.ts, setup.ts), browser sign-in PTY WebSocket (signin.ts, signin-detect.ts).
+                  Pi runs chat-only (pi-chat.sh), with one ACP process per session: its adapter doesn't
+                  gate native tools, forward MCP servers or keep multiple active sessions in one process.
 src/llm/          gateway client (OpenAI-compatible), API providers (OpenAI/Anthropic/Gemini kinds), embeddings
 src/channels/     messaging platforms: types.ts (ChannelAdapter), discord.ts, discord-user.ts, slack.ts (Socket Mode
-                  and the Web API; each thread its own chat), slack-format.ts (mrkdwn), manager.ts
+                  and the Web API; each thread its own chat), slack-format.ts (mrkdwn), signal.ts (a bot's Signal
+                  account through the signal-cli daemon: events by SSE, replies by JSON-RPC; chat ids
+                  signal:dm:<bot ACI>:<their ACI> and signal:group:<group id>, message ids <timestamp>:<author ACI>),
+                  signal-format.ts (Markdown → Signal's style ranges, splitting at 2,000 bytes), manager.ts
                   (access, routing, bindings, approvals), stream.ts (posts replies when finished), commands.ts,
                   voice.ts (Discord voice channels: join, hear allowed users, speak)
+src/signal/       signal-cli for Signal accounts: engine.ts (install the pinned 0.14.10 native build, checked by
+                  SHA-256, into data/tools/signal-cli; one daemon for every account, `daemon --http 127.0.0.1:<free
+                  port>`, multi-account, started while something holds it and restarted after a crash), rpc.ts
+                  (JSON-RPC + SSE helpers), accounts.ts (linking to a phone, registering a number, the profile,
+                  changed safety numbers, forgetting a removed account); routes/signal.ts (/api/signal)
 src/voice/        voice-call.ts (calls: speech to text → the bot's own model → text to speech), tts.ts, listen.ts
                   (STT, live or clip by clip), ogg.ts, settings.ts (voiceFor(agent) resolves defaults), custom.ts
                   (made voices), providers/ (ElevenLabs, Fish Audio: API providers added in Settings → Voice)
@@ -85,6 +95,10 @@ src/web/          the web engine: Firecrawl Local started and watched here (engi
 src/code/         code index: chunking, incremental indexing, hybrid search (pgvector + tsvector, RRF)
 src/x/, src/social/  X (emusks), Instagram, TikTok accounts; x/mentions.ts polls and answers
 src/outreach/     message_user / call_user (bots reaching you), voice messages
+src/email/        mailcow settings/client, one sealed IMAP/SMTP account per bot, watch.ts (IDLE + polling and a
+                  saved UID cursor), inbound.ts (verified allowed mail → owner-scoped chat/run → threaded SMTP
+                  reply), verify.ts/dkim.ts (trust boundary), mailbox.ts/send.ts (tools and rolling send limit).
+                  routes/email.ts: admin mailcow connection, owner-only account/mail and Needs you sender notes.
 src/scheduler/    routines and reminders (croner), schedule descriptions; events.ts (tailnet device changes);
                   webhook routines arrive at routes/hooks.ts (public, the token in the path is the key)
 src/library/      document library: extract.ts (PDF via unpdf, .docx via fflate, HTML, text), chunk.ts (passages
@@ -151,6 +165,12 @@ Tell the bot about it in `prompt.ts` when it needs context to choose it.
 
 ## Database
 
+### Coding jobs
+
+`src/jobs/` owns the lifetime of subscription workers. The `jobs` row is not an external chat session: it has its own ID, transcript, live process and deadline. The five `job_*` tools scope jobs to actor, bot and originating chat. `job.changed` goes only to the owner. Questions and terminal states create a short chat event and enqueue a `job` run; approval requests use the existing gate and Needs you. Startup reloads a saved session or records an interruption. Never automatically replay a prompt with side effects.
+
+`providers/job-worker.ts` binds a dedicated ACP host or Claude SDK session to a per-job loopback workspace bridge. Claude and OpenCode receive only workspace tools; Codex must confirm its named, no-native-access profile. Custom adapters must be explicitly vetted as **client-only** before an admin sets `SEKAI_JOB_CLIENT_ONLY=1`. Merely advertising ACP capabilities doesn't sandbox an adapter. The bridge and ACP RPCs both check the actual operation and arguments. `workspace.py` is bundled as text and runs locally or over `sshTarget(machine, agentId)` after `machinesForBot`; directory descriptors and no-follow opens protect file paths. Never replace the isolated terminal with a shell that merely changes directory.
+
 Edit `src/db/schema.ts`, run `bun run db:generate` (from the repo root), commit the new `drizzle/NNNN_*.sql` and
 `drizzle/meta/*`. Migrations apply on startup. JSON columns use `jsonb().$type<T>()`; add defaults so old rows
 stay valid. Postgres runs in Docker on port 5433 (`bun run db:up`).
@@ -164,6 +184,13 @@ stay valid. Postgres runs in Docker on port 5433 (`bun run db:up`).
   otherwise. `test/fixtures/passkey-check.ts` has a software authenticator (`SoftPasskey`) that makes real WebAuthn
   answers, for passkey flows.
 - Live checks: `scripts/discord-e2e.ts`, `scripts/slack-e2e.ts` (three Slack apps, existing server), `scripts/proxmox-e2e.ts`.
+- `SEKAI_EMAIL_E2E=1 bun run test:email` uses the mailcow endpoint, key and test domain in
+  `~/.config/sekai-e2e/mailcow.env` (`MAILCOW_URL`, `MAILCOW_API_KEY`, `MAILCOW_TEST_DOMAIN`), a fresh local database,
+  a deterministic local model, and two temporary mailboxes on that domain. It checks
+  sender isolation, a signed threaded reply and the follow-up, and removes the mailboxes and database in `finally`.
+- Signal: `signal.test.ts` (events, the installer's checksum, the adapter against `fixtures/fake-signal-cli.ts`),
+  `signal-format.test.ts`, and `signal-routing.test.ts` (the manager end to end with the fake signal-cli and a fake
+  model gateway; needs Postgres). There's no live Signal test: it would need a real number.
 - For a one-off check against real data, write `scripts/.<name>.tmp.ts` that calls `initDb()` and the service
   functions directly, run it with `bun`, then delete it.
 
@@ -179,6 +206,12 @@ stay valid. Postgres runs in Docker on port 5433 (`bun run db:up`).
   (`sekaiToolIn` in `providers/bridge.ts`); never match on the call's input.
 - **Messaging platforms:** only the owner (`allowFrom[0]`) may change the bot (anything not in `GUEST_COMMANDS` in
   `channels/manager.ts`); trust changes only on the explicit phrases. Attachments download after the access check.
+- **Signal:** people are their ACI (`sourceUuid`), never a number or name. signal-cli downloads attachments itself
+  (Sekai reads them with getAttachment only after the access check; `pruneAttachments` deletes the rest after 6 h).
+  Its HTTP interface has no auth, so it binds 127.0.0.1 only and its folder (`data/signal`, the keys; backed up as
+  `signal/data`) is 0700. Safety numbers stay trust-on-first-use: a changed one is only trusted from the account's
+  page (sudo), and joining groups is decided by the manager (`onInvite`: only someone it answers). Removing a
+  registered number unregisters it; a linked phone's account is never unregistered.
 - **Secrets:** sealed at rest, masked for the app, and a masked value sent back means "keep the stored one" (see
   `mcp/manager.ts` transports, `llm/api-providers.ts`). Agent processes and the browser get `agentEnv()`, not
   `process.env`.

@@ -66,7 +66,7 @@ function groupTitle(names: string[]): string {
 
 export async function createConversation(
 	input: ConversationCreateInput,
-	opts: { ownerId?: string } = {},
+	opts: { ownerId?: string; emailPeer?: string } = {},
 ): Promise<Conversation> {
 	const data = parse(ConversationCreate, input);
 	const now = Date.now();
@@ -81,7 +81,7 @@ export async function createConversation(
 			title: data.title ?? "New chat",
 			agentId: agent.id,
 			memberIds: [agent.id],
-			settings: ConversationSettings.parse({}),
+			settings: ConversationSettings.parse({ emailPeer: opts.emailPeer }),
 			summary: null,
 			summaryUntil: null,
 			pinned: false,
@@ -151,7 +151,9 @@ export async function getDirectConversation(agentId: string, userId?: string): P
 	const agent = await getAgent(agentId);
 	if (!agent) throw notFound("Bot");
 	const ownerId = userId ?? newOwner(agent.userId);
-	const [latest] = await listConversations({ agentId, kind: "direct", userId: ownerId });
+	const latest = (await listConversations({ agentId, kind: "direct", userId: ownerId })).find(
+		(c) => !c.settings.emailPeer,
+	);
 	if (latest) return latest;
 	return createConversation({ kind: "direct", agentId, title: "New chat" }, { ownerId });
 }

@@ -1,6 +1,6 @@
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import type { Provider } from "@sekai/shared";
+import { chmodSync, mkdirSync } from "node:fs";
+import { delimiter, join } from "node:path";
+import { PROVIDER_PRESETS, type Provider } from "@sekai/shared";
 import { config } from "../config.ts";
 
 /** Sekai's own secrets never reach a third-party agent process. */
@@ -19,9 +19,63 @@ export function agentEnv(extra: Record<string, string>): Record<string, string> 
 	return env;
 }
 
+/** Sekai's own tools folder: CLIs it installed for subscriptions (see tools.ts). */
+export function toolsDir(): string {
+	return join(config.dataDir, "tools");
+}
+
+/** Links to the installed tools' executables; first on subscription CLIs' PATH. */
+export function toolsBinDir(): string {
+	return join(toolsDir(), "bin");
+}
+
+/** PATH with Sekai's tools first. */
+export function withTools(path: string | undefined): string {
+	const bin = toolsBinDir();
+	const rest = (path ?? "").split(delimiter).filter((p) => p && p !== bin);
+	return [bin, ...rest].join(delimiter);
+}
+
+/** A subscription's own folder, for the sign-in and settings of its CLI (only Sekai's account can read it). */
+export function providerDir(providerId: string): string {
+	if (!/^prv_[A-Za-z0-9_-]+$/.test(providerId)) throw new Error("Unexpected subscription id");
+	return join(config.dataDir, "providers", providerId);
+}
+
+/**
+ * Environment variables pointing the subscription's CLI at its own folders (its preset's configDirs), when it
+ * keeps its own sign-in. Creates them, private to Sekai's account.
+ */
+export function configEnv(provider: Provider, create = true): Record<string, string> {
+	if (!provider.ownConfig) return {};
+	const root = join(config.dataDir, "providers");
+	const base = providerDir(provider.id);
+	const out: Record<string, string> = {};
+	for (const [key, sub] of Object.entries(PROVIDER_PRESETS[provider.preset].configDirs)) {
+		out[key] = join(base, sub);
+	}
+	if (create) {
+		for (const dir of [root, base, ...Object.values(out)]) {
+			mkdirSync(dir, { recursive: true, mode: 0o700 });
+			chmodSync(dir, 0o700);
+		}
+	}
+	return out;
+}
+
+/**
+ * How a subscription's CLI runs: Sekai's secrets left out, Sekai's tools first on PATH, its own folders when it
+ * keeps its own sign-in, then the env set on it (which wins).
+ */
+export function providerEnv(provider: Provider): Record<string, string> {
+	const env = agentEnv({ ...configEnv(provider), ...provider.env });
+	env.PATH = withTools(env.PATH);
+	return env;
+}
+
 /** pi-acp doesn't ask before running Pi's native tools. Force a chat-only Pi underneath it. */
 export function acpEnv(provider: Provider): Record<string, string> {
-	const env = agentEnv(provider.env);
+	const env = providerEnv(provider);
 	if (provider.preset !== "pi") return env;
 	if (process.platform === "win32") throw new Error("The Pi preset needs a Linux or macOS server (or Docker).");
 	const launcher = join(import.meta.dir, "pi-chat.sh");

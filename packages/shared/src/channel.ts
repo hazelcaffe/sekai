@@ -4,8 +4,8 @@ import { z } from "zod";
  * Messaging channels: give an agent its own bot on a chat platform so you can talk to it from there.
  * Every channel uses the platform's official bot API with credentials you create yourself.
  */
-/** Bot accounts on Slack and Discord, plus Discord personal accounts. */
-export const CHANNEL_TYPES = ["discord", "slack", "discord-user"] as const;
+/** Bot accounts on Slack and Discord, plus Discord personal accounts and Signal accounts (through signal-cli). */
+export const CHANNEL_TYPES = ["discord", "slack", "discord-user", "signal"] as const;
 export const ChannelType = z.enum(CHANNEL_TYPES);
 export type ChannelType = z.infer<typeof ChannelType>;
 
@@ -241,6 +241,20 @@ export const CHANNEL_DEFINITIONS: Record<ChannelType, ChannelDefinition> = {
 		],
 		docsUrl: "https://discord.com/developers/docs/reference#authentication",
 		approvals: "buttons",
+	},
+	signal: {
+		type: "signal",
+		title: "Signal",
+		idHint: "Signal account IDs come from pairing: message the bot and approve its code in Needs you",
+		// No tokens: the account's keys live in signal-cli's folder in Sekai's data (it's linked or registered here).
+		fields: [],
+		setup: [
+			"Get a number made for the bot: a spare phone with Signal, or a number that can take a text or a call.",
+			"Link it to Signal on that phone (Settings → Linked devices), or register the number here.",
+			"Message the bot from your own Signal to get a pairing code, then approve it in Sekai.",
+		],
+		docsUrl: "https://github.com/AsamK/signal-cli",
+		approvals: "reactions",
 	},
 };
 

@@ -16,6 +16,7 @@ export interface CallRing {
 }
 
 export type ServerEvent =
+	| { type: "job.changed"; job: import("./job.ts").Job; steps: import("./job.ts").JobStep[] }
 	| { type: "hello"; serverTime: number }
 	| { type: "message.created"; message: Message }
 	| { type: "message.updated"; message: Message }
@@ -57,6 +58,8 @@ export type ServerEvent =
 	| { type: "machine.checkpoints"; machineId: string }
 	/** A bot's code indexes changed (indexing progress, done, deleted). */
 	| { type: "code.changed"; agentId: string }
+	/** A bot's email account or its mail changed (its owner only). */
+	| { type: "email.changed"; agentId: string }
 	/** A bot is calling you: answer in the app (or it messages you instead). */
 	| { type: "call.ring"; ring: CallRing }
 	| { type: "call.ring.ended"; ringId: string; outcome: "answered" | "declined" | "missed" }

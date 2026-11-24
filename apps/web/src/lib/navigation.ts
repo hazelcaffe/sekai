@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { useUi } from "../stores/ui.ts";
 
 export interface MessagingChat {
-	type: ChannelType;
+	type: ChannelType | "email";
 	/** The platform's name for the chat ("DM with sam", "#general (server)"). */
 	name: string;
 	dm: boolean;
@@ -33,6 +33,8 @@ export function messagingChats(
 	const platformOf = new Map(channels.map((c) => [c.id, c.type]));
 	const byId = new Map(conversations.map((c) => [c.id, c]));
 	const out = new Map<string, MessagingChat>();
+	for (const c of conversations)
+		if (c.settings?.emailPeer) out.set(c.id, { type: "email", dm: true, name: c.settings.emailPeer });
 	for (const l of links) {
 		const type = platformOf.get(l.channelId);
 		if (!type || out.has(l.conversationId)) continue;

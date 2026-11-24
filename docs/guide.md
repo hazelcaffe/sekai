@@ -12,6 +12,8 @@
 - [Voice](#voice)
 - [Bots reach you](#bots-reach-you)
 - [Bots on Discord](#bots-on-discord) and [a bot's own Discord account](#a-bots-own-discord-account)
+- [A bot's own Signal account](#a-bots-own-signal-account)
+- [Email](#email)
 - [X (Twitter)](#x-twitter)
 - [Apps (MCP) and skills](#apps-mcp-and-skills)
 - [Settings and server setup](#settings-and-server-setup)
@@ -19,7 +21,7 @@
 - [Code search](#code-search)
 - [Computers, devboxes and the web](#computers-devboxes-and-the-web) and [your own computer](#your-own-computer)
 - [Your browser extension](#your-browser-extension)
-- [Subscriptions as models](#subscriptions-as-models)
+- [Subscriptions as models](#subscriptions-as-models) and [coding jobs](#coding-jobs)
 
 ## Bots and chats
 
@@ -174,7 +176,7 @@ Settings → Bots → Voice.
 
 ## Bots reach you
 
-- **`message_user`** sends you a message on the bot's own initiative: a Slack or Discord DM from its bot when it has one, otherwise in its chat in the app, optionally as audio. Choose `via: "slack"`, `"discord"`, `"app"` or `"auto"`. Reminders and routines use it when you asked to be told.
+- **`message_user`** sends you a message on the bot's own initiative: a Slack, Discord or Signal DM from its account there when it has one, otherwise in its chat in the app, optionally as audio. Choose `via: "slack"`, `"discord"`, `"signal"`, `"app"` or `"auto"`. Reminders and routines use it when you asked to be told.
 - **`call_user`** rings the app (a full-screen ring on phones). If you're in a Discord voice channel its bot can see, it joins you there. No answer in 40 seconds (or Decline) sends its message as a voice message instead.
 - **Notifications** for approvals, calls, outreach and finished routines show in the browser, the desktop app and the phone apps, and as [push notifications](install.md#on-your-devices) on devices that turned them on. Approval requests can be answered right from the notification.
 
@@ -252,6 +254,67 @@ The account's DMs and group chats arrive in Sekai and the bot's answers are sent
 The bot can use the account for anything you'd do in Discord, through one `discord` tool (REST with the token): list servers, read a server's channels and members and history, send to a server channel or group chat or DM, open a DM by user id, react, and change the account's display name and bio. For the interactive things — joining a server from an invite, voice channels, anything with a captcha — it opens Discord **in its own browser, signed in as the account** (`browser_account`) and clicks like a person. Joins and captchas are why it's a real browser: the agent ticks the check itself, or you take over its computer in the app and tick it. If a check rotates the account's token, Sekai picks up the fresh one the app is holding and keeps going.
 
 Discord doesn't allow accounts to be used like this, so the account could get limited. Only you (and whoever you trust) can talk to it.
+
+## A bot's own Signal account
+
+Signal has no bot API, so a bot gets a **real Signal account**, run by [signal-cli](https://github.com/AsamK/signal-cli) (a third-party, open-source Signal client) on your server. The bot speaks as that account: **use a number made for the bot, never your own.** Its DMs and groups show up as chats in Sekai (with Signal's mark in the sidebar), and it answers, asks for approvals and sends and receives files there.
+
+**Setting up Signal on the server.** One signal-cli daemon runs every bot's account, started when a bot has one. On Linux (x86_64) an admin installs it from a bot's **Accounts → Signal → Connect Signal** with **Install it**: Sekai downloads signal-cli 0.14.10's native build (no Java needed), checks it against the SHA-256 pinned in Sekai, and unpacks it into `data/tools/signal-cli/`. Elsewhere (ARM, macOS), install Java 21 or newer and signal-cli 0.14.10's JVM build yourself, and put `signal-cli` on the server's `PATH` or set `SIGNAL_CLI` to its path. The Docker image gets it with `docker compose build --build-arg WITH_SIGNAL=1` (x86_64). People who may connect accounts but aren't admins are told to ask an admin.
+
+**Connecting a bot**, in **Accounts → Signal → Connect Signal**, one of two ways:
+
+1. **Link to a phone (recommended).** Get a phone (or a spare one) with Signal on a number made for the bot. Choose **Show the code**, then in Signal on that phone: **Settings → Linked devices → Link new device**, and scan it. Sekai becomes a linked device of that account, like Signal Desktop; the phone keeps the account. The code works for two minutes (**Show a new code** after that).
+2. **Register a number.** No phone needed afterwards: a number that can get a text or a call becomes the bot's own Signal account. Signal asks for a captcha first: solve it at [signalcaptchas.org](https://signalcaptchas.org/registration/generate.html), copy the **Open Signal** link (right-click it, or touch and hold) and paste it. Signal texts a six-digit code (or calls, after a text was tried); enter it. A registration lock PIN is optional: Signal asks for it if the number had one, and a new one stops others from registering the bot's number. The profile gets the bot's name and picture.
+
+On the account's page, **Name and picture on Signal** gives the account the bot's name and picture (Colorful Stage pictures are made smaller to fit Signal's circle whole, never cropped). Then message the bot from your own Signal: you get a pairing code to approve in **Needs you**, and the first person approved is its owner.
+
+**What works.**
+
+- **DMs and groups.** In a DM it answers everything; in a group it answers when it's @-mentioned or someone replies to (quotes) one of its messages, or every message after `/listen on`. It joins a group only when someone it answers added it, and declines or leaves the others.
+- **Who can use it** works as on Discord and Slack: an allowlist and pairing codes, by each person's Signal account ID (their ACI), never by a name or a number someone could claim. `trust @someone`, `/trust` and the owner-only commands are the same.
+- **Replies** are posted once they're finished, with the typing indicator meanwhile. Markdown becomes Signal's own styles (bold, italic, strikethrough, monospace, spoilers); links show as their address so Signal makes them tappable; headings become bold lines and tables monospace. Long answers are split at paragraphs into messages of at most 2,000 bytes (Signal's limit for one message). A retry edits the same Signal message (Signal allows that for a day, ten times); older ones are sent again. In groups a reply quotes the message it answers. Messages deleted in Sekai are deleted for everyone on Signal too.
+- **Files:** images, files and voice notes both ways (as files; voice notes aren't transcribed), with Sekai's size limits (20 MB in, 25 MB out). Images get their real type.
+- **Approvals and commands** are text, since Signal has no buttons: a request says what the bot wants to do; react 👍 to approve or 👎 to deny, or type `/approve CODE` / `/deny CODE`. Only the owner decides. Every command works typed (`/help` lists them). Reactions, typing indicators and quotes work both ways.
+- **Safety numbers.** signal-cli trusts a contact's first safety number. When one changes (a new phone, Signal reinstalled, or someone else took over their number), their messages wait until you trust the new one on the account's page (it lists them, and the log notes it). A changed safety number never makes anyone allowed.
+- **When something breaks** the account's page says so: Signal's helper isn't running (Sekai restarts it by itself; admins can **Restart** it), or the account was **signed out** (its link was removed on the phone, or the number was registered elsewhere): **Link it again** or **Register it again** right there keeps its chats and settings.
+- **Removing it** forgets the account's keys here. A number registered here is unregistered from Signal first; a linked phone's account is never touched (remove Sekai from **Linked devices** on the phone too).
+
+**Limits.** No calls, stories, stickers or polls. The daemon listens on `127.0.0.1` only, but its HTTP interface has no password, so anything running on the server itself could use the accounts: run Sekai on a machine you trust. Signal's own limits apply (rate limits, captchas when it's suspicious of a new account). Backups keep the accounts' keys (`data/signal/data`), not the files signal-cli downloaded; restoring a backup on a second server while the first still runs puts the same account in two places, which Signal won't like.
+
+**Testing.** `bun test apps/server/test/signal.test.ts` and `signal-format.test.ts` cover the events, the formatting, the installer's checksum and the adapter against a fake signal-cli; `signal-routing.test.ts` runs a DM, pairing, approvals and groups through the channel manager (with Postgres).
+
+## Email
+
+Open a bot's **Accounts → Email** to give it an address. Only the owner can do this, and their role needs the
+**Accounts** permission.
+
+- **Create an address:** first, an admin opens **Settings → Bots → Email**, enters mailcow's HTTPS address and a
+  **read-write** API key, and chooses **Check**. Select just the domains bots may use (none are selected by
+  default), choose a mailbox size and save. On the bot's page, pick the name and domain. Sekai creates the mailbox
+  with the bot's display name and a random password. The key and mailbox passwords are encrypted at rest.
+- **Use an email account:** enter its address. **Find servers** looks up the incoming (IMAP) and outgoing (SMTP)
+  settings; check the names, ports and encryption against your provider's instructions. Enter the username and
+  password (often an app password), then **Test** and **Connect**. Both sign-ins must work before Sekai saves it.
+
+**Who can email it** lists the people who may ask this bot to do things. Your address is added initially if it's
+on your Sekai profile. Only add people you trust with the bot's tools and memory. A From line isn't proof: Sekai
+checks the receiving server's authentication report for a DMARC pass or an aligned SPF or DKIM pass. For local
+mail on mailcow, which can omit that report, Sekai can verify the domain's signature over the message itself.
+Unknown, unverified and automated mail stays in the inbox. Its contents are data, not instructions to the bot.
+If you turn on notes for new senders, **Needs you** lets you allow a verified address for _future_ messages.
+
+New verified mail from those people opens an email-marked chat. Replies keep the subject and threading headers,
+and attachments appear in the chat. Messages you type in Sekai stay there; an answer to an incoming email goes
+back to its sender. Approvals happen in Sekai, never by replying to an email. Bots can also send formatted mail
+and files, reply, search, read, flag, archive or delete mail. Sending outside the list follows the bot's outward
+action approval rule. The **daily send limit** defaults to 50 messages per rolling 24 hours, including replies.
+
+One mailbox per bot. Watching starts with new mail, not the old inbox; older mail can still be searched and read.
+Sekai uses IMAP IDLE when available and checks periodically otherwise. Incoming messages over 40 MB are skipped;
+individual uploads are limited to 25 MB, and outgoing attachments to 20 MB together. **Disconnect** keeps the
+mailbox. For a mailbox Sekai created, **Delete the mailbox too** permanently removes its mail on mailcow. Neither
+choice deletes existing Sekai chats. Sign-in and password-reset emails use the separate settings under **People →
+Sign-in options**.
 
 ## X (Twitter)
 
@@ -420,24 +483,34 @@ Sekai reaches machines over Tailscale when they have it, or the LAN otherwise, s
 
 ## Subscriptions as models
 
-**Settings → Bots → Subscriptions** (admins) lets a bot use an agent CLI you've installed and signed in to on the computer running Sekai, instead of a gateway model:
+**Settings → Bots → Subscriptions** (admins) lets a bot use an agent CLI you pay for as its model, instead of a gateway model — **installed and signed in right from your browser**, without SSHing into the server:
 
-| Preset      | Runs                                                       | Sign in                                                |
-| ----------- | ---------------------------------------------------------- | ------------------------------------------------------ |
-| Codex       | `npx -y @agentclientprotocol/codex-acp@latest`             | `codex login` (ChatGPT) or `OPENAI_API_KEY`            |
-| Claude      | Claude Agent SDK (bundled Claude Code, or your own binary) | `claude auth login` or `ANTHROPIC_API_KEY` (see below) |
-| Grok Build  | `npx -y @xai-official/grok@latest agent stdio`             | `grok login`                                           |
-| OpenCode    | `opencode acp`                                             | `opencode auth login` or `/connect` in OpenCode        |
-| Pi          | `pi-acp` (chat only)                                       | `pi`, then `/login`, or configure `models.json`        |
-| Devin       | `devin acp`                                                | Devin CLI sign-in                                      |
-| Antigravity | `agy_acp_server.par`                                       | Google sign-in when asked                              |
-| Muse Code   | `muse acp` (`MUSE_EXPERIMENTAL_ACP=on`)                    | `muse login`                                           |
-| Custom      | any ACP agent over stdio                                   | the agent's own                                        |
+| Preset      | Runs                                                       | Install from Sekai                                         | Sign in (browser terminal)                                         |
+| ----------- | ---------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
+| Codex       | `codex-acp`                                                | `@agentclientprotocol/codex-acp` + `@openai/codex`         | `codex login --device-auth` (ChatGPT) or `OPENAI_API_KEY`          |
+| Claude      | Claude Agent SDK (bundled Claude Code, or your own binary) | Bundled with Sekai                                         | `claude auth login` or `ANTHROPIC_API_KEY` (see below)             |
+| Grok Build  | `grok agent stdio`                                         | `@xai-official/grok`                                       | `grok login --device-auth` or `XAI_API_KEY`                        |
+| OpenCode    | `opencode acp`                                             | Official OpenCode v2 installer                             | `opencode auth login`                                              |
+| Pi          | `pi-acp` (chat only)                                       | `pi-acp` + `@earendil-works/pi-coding-agent` (Node 22.19+) | `pi auth login <provider> --no-browser`                            |
+| Devin       | `devin acp`                                                | Official Devin CLI installer                               | `devin auth login --force-manual-token-flow` or `WINDSURF_API_KEY` |
+| Antigravity | `agy_acp_server.par`                                       | Manual download (set path under Advanced)                  | Google sign-in / ACP auth method when asked                        |
+| Muse Code   | `muse acp` (`MUSE_EXPERIMENTAL_ACP=on`)                    | Official Muse Code installer                               | `muse login` or `META_API_KEY`                                     |
+| Custom      | any ACP agent over stdio                                   | Manual                                                     | Your own sign-in command under Advanced (no shell)                 |
 
-Sekai starts the agent and checks it: version, sign-in state, models and reasoning levels. Each subscription has its own page with how it's doing, its sign-in methods when it offers some, its models, the bots using it, its settings and Remove; **Add** picks a plan and then its settings. Pick one of its models for a bot from the bot's Model & voice page or the composer pill; subscription models appear under _your subscription_.
+**Setting one up from the browser**
 
-- **[OpenCode v2](https://opencode.ai/v2/docs/):** Install it and connect a provider as the OS user that runs Sekai. Sekai offers the models OpenCode reports; its default comes from `model` in `opencode.json` (a `provider/model` reference). For an [OpenAI-compatible endpoint](https://opencode.ai/v2/docs/providers#custom), add a custom provider and its models to OpenCode's config. To use a separate OpenCode setup for a subscription, set `XDG_CONFIG_HOME` and `XDG_DATA_HOME` in that subscription's environment and use those same paths when configuring it and signing in.
-- **[Pi](https://docs.pi.dev/latest/models):** On a Linux or macOS server (or in the container) with Node.js 22.19 or later, run `npm install -g --ignore-scripts @earendil-works/pi-coding-agent pi-acp`. Both `pi` and `pi-acp` should be on the server's PATH. You can set a full path to `pi-acp` as the command and a full path to `pi` in `PI_ACP_PI_COMMAND`. Run `pi` as the OS user running Sekai, then `/login` to connect a provider and `/model` to choose a default (Ctrl+S). For a compatible endpoint, use `~/.pi/agent/models.json` (or set `PI_CODING_AGENT_DIR` for a separate config directory); the agent doesn't inherit Sekai's gateway settings. Pi's ACP adapter doesn't pass Sekai's MCP tools through or ask before running Pi's native tools, so the Pi preset runs without tools or extensions.
+1. Open **Settings → Bots → Subscriptions → Add** and pick a plan (admins only; asks to confirm it's you).
+2. On the subscription's page, follow the top action:
+   - **Install** downloads the CLI into Sekai's own tools folder (`<data>/tools/`, first on agents' `PATH`) and shows live progress and the installed version. Sekai-managed tools can also be updated from the same page.
+   - **Sign in** opens an interactive terminal right in the browser (a sheet on phones) running only that subscription's sign-in command (never a general shell). Any sign-in link or one-time device code it prints appears as big **Open the sign-in page** and **Copy code** buttons above the terminal; when a CLI asks you to paste a code back, a paste bar appears too. Nothing typed or printed in the sign-in terminal is logged or stored.
+   - Once the command exits, Sekai checks the subscription again and lists its models and thinking levels.
+3. **Separate sign-ins per subscription.** Every new subscription keeps its sign-in in its own private (`0700`) folder under `<data>/providers/<id>/` (included in Sekai backups, so sign-ins survive Docker restarts and you can connect two different accounts of the same plan). Older subscriptions keep using the server's default CLI folder unless you turn on **Use its own sign-in** on their page.
+4. **API keys** work too: set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `WINDSURF_API_KEY` or `META_API_KEY` under **Advanced → Environment**. Secret-looking values are encrypted at rest and masked in the UI.
+
+Pick any ready subscription's model for a bot from its **Model & voice** page or the composer pill; subscription models appear under _your subscription_.
+
+- **[OpenCode v2](https://opencode.ai/v2/docs/):** Click **Install** on its subscription page, then **Sign in** to pick a provider with `opencode auth login`. Sekai offers the models OpenCode reports; its default comes from `model` in `opencode.json`.
+- **[Pi](https://docs.pi.dev/latest/models):** Needs Node.js 22.19 or later on the server (Linux or macOS). Click **Install** for `pi-acp` and `pi`, pick a provider on the subscription's page, and click **Sign in** (`pi auth login <provider> --no-browser`). Pi's ACP adapter doesn't pass Sekai's MCP tools through or ask before running Pi's native tools, so the Pi preset runs without tools or extensions.
 - **Existing Gemini CLI subscriptions** become custom ACP subscriptions on startup. Their names, launch settings, bot model selections and sessions stay the same. Antigravity and Gemini API models are unchanged.
 
 **How a turn works**
@@ -451,7 +524,7 @@ Sekai starts the agent and checks it: version, sign-in state, models and reasoni
 
 > **Claude and Anthropic's terms.** Anthropic doesn't allow third-party apps to offer claude.ai login, and Sekai doesn't. Sekai never asks for your Claude account. It drives the Claude Code that's already signed in on the computer running Sekai (`claude auth login`), or uses an `ANTHROPIC_API_KEY` you add in the subscription's settings. If anyone else uses your Sekai, use an API key.
 
-**In Docker**, agent CLIs keep their sign-in in the container's home. Either sign in inside it (`docker compose exec app …`), or uncomment the sign-in mounts in `docker-compose.yml`. The image includes Node and npx for the npx-based agents, and Claude Code ships with the Agent SDK.
+**In Docker**, subscriptions installed and signed in from the browser keep their sign-in in Sekai's data volume (each in its own folder). Older ones keep it in the container's home: either sign in inside it (`docker compose exec app …`), or uncomment the sign-in mounts in `docker-compose.yml`. The image includes Node and npx for the npx-based agents, and Claude Code ships with the Agent SDK.
 
 **Limitations**
 

@@ -35,6 +35,7 @@ import { errorMessage } from "../lib/errors.ts";
 import { log } from "../lib/log.ts";
 import { truncate, truncateMiddle } from "../lib/text.ts";
 import { EMPTY_USAGE } from "../llm/types.ts";
+import type { JobClient } from "./job-client.ts";
 import { asKind, gatedExternalTool, KIND_LABELS, type ToolKind } from "./kinds.ts";
 import { acpEnv, checkDir, OutputTail, pipeText, withTimeout } from "./process.ts";
 import { setProviderStatus } from "./store.ts";
@@ -193,11 +194,18 @@ export class AcpHost {
 		this.died.catch(() => {});
 	}
 
-	static async start(provider: Provider, cwd: string, onDispose: () => void = () => {}): Promise<AcpHost> {
+	static async start(
+		provider: Provider,
+		cwd: string,
+		onDispose: () => void = () => {},
+		job?: JobClient,
+		signal?: AbortSignal,
+	): Promise<AcpHost> {
 		const env = acpEnv(provider);
 		let proc: Bun.Subprocess<"pipe", "pipe", "pipe">;
 		try {
 			proc = Bun.spawn(resolveCommand(provider), {
+				signal,
 				cwd,
 				env,
 				stdin: "pipe",
@@ -231,13 +239,39 @@ export class AcpHost {
 			.onNotification("session/update", ({ params }) => {
 				host.listeners.get(params.sessionId)?.onUpdate(params.update);
 			});
+		if (job) {
+			app.onRequest("fs/read_text_file", ({ params: p }) => job.read(p.sessionId, p.path, p.line, p.limit))
+				.onRequest("fs/write_text_file", ({ params: p }) => job.write(p.sessionId, p.path, p.content))
+				.onRequest("terminal/create", ({ params: p }) => job.create(p.sessionId, p.command, p.args, p.cwd))
+				.onRequest("terminal/output", ({ params: p }) => {
+					const t = job.terminal(p.sessionId, p.terminalId);
+					return {
+						output: t.output,
+						truncated: false,
+						exitStatus: t.code === null ? null : { exitCode: t.code },
+					};
+				})
+				.onRequest("terminal/wait_for_exit", async ({ params: p }) => {
+					const t = job.terminal(p.sessionId, p.terminalId);
+					await t.done;
+					return { exitCode: t.code };
+				})
+				.onRequest("terminal/kill", ({ params: p }) => {
+					job.terminal(p.sessionId, p.terminalId).abort.abort();
+					return {};
+				})
+				.onRequest("terminal/release", ({ params: p }) => job.release(p.sessionId, p.terminalId));
+		}
 		host.conn = app.connect(ndJsonStream(writable, proc.stdout));
 		try {
 			host.init = await host.request(
 				"initialize",
 				{
 					protocolVersion: PROTOCOL_VERSION,
-					clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+					clientCapabilities: {
+						fs: { readTextFile: Boolean(job), writeTextFile: Boolean(job) },
+						terminal: Boolean(job),
+					},
 					clientInfo: { name: "sekai", title: "Sekai", version: APP_VERSION },
 				},
 				START_TIMEOUT_MS,
@@ -395,15 +429,24 @@ export async function checkAcp(provider: Provider): Promise<Partial<ProviderStat
 			agentName: init.agentInfo?.title || init.agentInfo?.name || provider.title,
 			agentVersion: init.agentInfo?.version ?? null,
 			vision: host.supportsImages,
-			authMethods: (init.authMethods ?? []).map((m) => ({
-				id: m.id,
-				name: m.name,
-				description: m.description ?? null,
-				terminal:
-					"type" in m && m.type === "terminal"
-						? [provider.command, ...(("args" in m && m.args) || provider.args)].join(" ")
-						: null,
-			})),
+			authMethods: (init.authMethods ?? []).map((m) => {
+				const isTerm = "type" in m && m.type === "terminal";
+				const args = isTerm && "args" in m && Array.isArray(m.args) ? m.args.map(String) : undefined;
+				const env =
+					isTerm && "env" in m && m.env && typeof m.env === "object"
+						? Object.fromEntries(
+								Object.entries(m.env as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+							)
+						: undefined;
+				return {
+					id: m.id,
+					name: m.name,
+					description: m.description ?? null,
+					terminal: isTerm ? [provider.command, ...(args ?? provider.args)].join(" ") : null,
+					...(args ? { args } : {}),
+					...(env ? { env } : {}),
+				};
+			}),
 		};
 		try {
 			const res = await host.request<SessionSetup & { sessionId: string }>(

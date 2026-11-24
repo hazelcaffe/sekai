@@ -9,7 +9,8 @@ import { encodeOggOpus } from "../voice/ogg.ts";
 import { voiceFor } from "../voice/settings.ts";
 import { speakAll } from "../voice/tts.ts";
 
-export type Via = "auto" | "app" | "discord" | "slack";
+export type Via = "auto" | "app" | "discord" | "slack" | "signal";
+type Where = "app" | "discord" | "slack" | "signal";
 
 /** Text said in the bot's voice, as a voice message (Ogg Opus, uploaded). */
 export async function voiceMessage(agent: Agent, text: string): Promise<AudioPart> {
@@ -32,15 +33,15 @@ export async function mainChat(agentId: string): Promise<string> {
 }
 
 /**
- * A message from a bot to you, started by the bot: a Slack or Discord DM when it has one (auto), or in its
+ * A message from a bot to you, started by the bot: a Slack, Discord or Signal DM when it has one (auto), or in its
  * chat in the app. Either way you get a notification, and it can be a voice message.
  */
 export async function messageUser(
 	agent: Agent,
 	input: { text: string; voice?: boolean; via?: Via },
-): Promise<{ where: "app" | "discord" | "slack"; conversationId: string; messageId: string; voice: boolean }> {
+): Promise<{ where: Where; conversationId: string; messageId: string; voice: boolean }> {
 	const via = input.via ?? "auto";
-	let where: "app" | "discord" | "slack" = "app";
+	let where: Where = "app";
 	let conversationId: string | null = null;
 	if (via !== "app") {
 		const { ownerDm } = await import("../channels/manager.ts");
@@ -49,11 +50,12 @@ export async function messageUser(
 			return null;
 		});
 		if (dm) {
-			where = dm.type === "slack" ? "slack" : "discord";
+			where = dm.type === "slack" ? "slack" : dm.type === "signal" ? "signal" : "discord";
 			conversationId = dm.conversationId;
-		} else if (via === "discord" || via === "slack") {
+		} else if (via !== "auto") {
+			const app = via === "slack" ? "Slack bot" : via === "signal" ? "Signal account" : "Discord bot";
 			throw new Error(
-				`You have no connected ${via === "slack" ? "Slack" : "Discord"} bot with an owner to DM (set one up in the bot's Accounts section).`,
+				`You have no connected ${app} with an owner to DM (set one up in the bot's Accounts section).`,
 			);
 		}
 	}

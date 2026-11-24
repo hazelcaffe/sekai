@@ -7,6 +7,7 @@ import { errorMessage } from "../lib/errors.ts";
 import { log } from "../lib/log.ts";
 import { authenticateAcp, checkAcp, invalidateAcpHost, runAcpTurn, shutdownAcpHosts } from "./acp.ts";
 import { checkClaude, runClaudeTurn } from "./claude.ts";
+import { setAfterSignIn, shutdownSignInSessions } from "./signin.ts";
 import {
 	loadProviders,
 	modelLabel,
@@ -18,6 +19,7 @@ import {
 import { ExternalTurnError, runExternalTurn } from "./turn.ts";
 
 export { handleBridgeRequest } from "./bridge.ts";
+export { type SignInSocket, signInWebSocket, upgradeSignIn } from "./signin.ts";
 
 function writtenSince(input: StrategyInput, start: number): string {
 	return input.writer.parts
@@ -38,9 +40,14 @@ const checking = new Map<string, Promise<void>>();
 export async function initProviders(): Promise<void> {
 	await loadProviders();
 	onProviderChange((id) => void invalidateAcpHost(id));
+	setAfterSignIn((id) => {
+		void invalidateAcpHost(id);
+		startCheck(id);
+	});
 }
 
 export async function shutdownProviders(): Promise<void> {
+	shutdownSignInSessions();
 	await shutdownAcpHosts();
 }
 

@@ -15,7 +15,11 @@ import type {
 	ConversationKind,
 	ConversationSettings,
 	DmPolicy,
+	EmailSender,
+	EmailServer,
 	GroupPolicy,
+	JobStatus,
+	JobStep,
 	Machine,
 	MachineBackend,
 	MachineKind,
@@ -77,6 +81,36 @@ export const settings = pgTable("settings", {
 	key: text().primaryKey(),
 	value: jsonb().$type<unknown>().notNull(),
 });
+
+/** Each worker owns its session; it never borrows the conversation's subscription session or bridge. */
+export const jobs = pgTable(
+	"jobs",
+	{
+		id: text().primaryKey(),
+		userId: owner(),
+		agentId: text()
+			.notNull()
+			.references(() => agents.id, { onDelete: "cascade" }),
+		conversationId: text()
+			.notNull()
+			.references(() => conversations.id, { onDelete: "cascade" }),
+		messageId: text().notNull(),
+		providerId: text().notNull(),
+		providerTitle: text().notNull(),
+		model: text(),
+		title: text().notNull(),
+		status: text().$type<JobStatus>().notNull(),
+		sessionId: text(),
+		machineId: text(),
+		location: text().notNull(),
+		folder: text().notNull(),
+		lastStep: text().notNull(),
+		usage: jsonb().$type<Usage>(),
+		steps: jsonb().$type<JobStep[]>().notNull(),
+		...timestamps,
+	},
+	(t) => [index("jobs_owner_status").on(t.userId, t.status)],
+);
 
 export const agents = pgTable("agents", {
 	id: text().primaryKey(),
@@ -482,6 +516,10 @@ export const providers = pgTable("providers", {
 	args: jsonb().$type<string[]>().notNull(),
 	env: jsonb().$type<Record<string, string>>().notNull(),
 	extraModels: jsonb().$type<string[]>().notNull(),
+	/** The admin's own sign-in command (an argv; empty: the preset's). */
+	signInCommand: jsonb().$type<string[]>().notNull().default([]),
+	/** Signs in into its own folder under <data>/providers/<id>/ (new ones do; older ones keep the CLI's usual place). */
+	ownConfig: boolean().notNull().default(false),
 	/** The last check (models, reasoning levels, sign-in state), so the model picker works after a restart. */
 	status: jsonb().$type<ProviderStatus>(),
 	...timestamps,
@@ -1037,4 +1075,77 @@ export const accessGrants = pgTable(
 		createdAt: ms().notNull(),
 	},
 	(t) => [index("access_grants_agent_idx").on(t.agentId)],
+);
+
+/**
+ * A bot's own email address (one per bot): made on mailcow by Sekai, or any account with its own sign-in. The
+ * password is sealed. `sync` is where reading its inbox got to (the folder's UIDVALIDITY and the last UID seen).
+ */
+export const emailAccounts = pgTable("email_accounts", {
+	agentId: text()
+		.primaryKey()
+		.references(() => agents.id, { onDelete: "cascade" }),
+	address: text().notNull(),
+	name: text().notNull(),
+	kind: text().$type<"mailcow" | "account">().notNull(),
+	/** The mailcow it was made on (its mailbox is deleted there with "Delete the mailbox too"). */
+	mailcowUrl: text(),
+	imap: jsonb().$type<EmailServer>().notNull(),
+	smtp: jsonb().$type<EmailServer>().notNull(),
+	username: text().notNull(),
+	password: text().notNull(),
+	allowFrom: jsonb().$type<string[]>().notNull().default([]),
+	signature: text().notNull().default(""),
+	notifyUnknown: boolean().notNull().default(true),
+	dailyLimit: integer().notNull().default(50),
+	enabled: boolean().notNull().default(true),
+	sync: jsonb().$type<{ uidValidity: string | null; lastUid: number }>().notNull(),
+	...timestamps,
+});
+
+/**
+ * Mail a bot received or sent, in short (the mail itself stays in its mailbox): for threading by Message-ID, its
+ * recent mail, the daily send limit, and unknown senders waiting in Needs you (`note`).
+ */
+export const emailMessages = pgTable(
+	"email_messages",
+	{
+		id: text().primaryKey(),
+		agentId: text()
+			.notNull()
+			.references(() => agents.id, { onDelete: "cascade" }),
+		direction: text().$type<"in" | "out">().notNull(),
+		/** The Message-ID, without its angle brackets. */
+		messageId: text().notNull(),
+		inReplyTo: text(),
+		references: jsonb().$type<string[]>().notNull().default([]),
+		fromAddress: text().notNull(),
+		fromName: text().notNull().default(""),
+		to: jsonb().$type<string[]>().notNull().default([]),
+		subject: text().notNull().default(""),
+		snippet: text().notNull().default(""),
+		sender: text().$type<EmailSender>().notNull(),
+		/** What vouched for the sender ("dmarc", "dkim"…), or null. */
+		verifiedBy: text(),
+		automated: boolean().notNull().default(false),
+		/** The chat it's in (a thread's chat, or the chat a bot sent it from). */
+		conversationId: text().references(() => conversations.id, { onDelete: "set null" }),
+		/** This email started that chat. */
+		startedChat: boolean().notNull().default(false),
+		/** The Sekai message it became (or, sent, the bot's reply it carried). */
+		sekaiMessageId: text(),
+		folder: text(),
+		uid: integer(),
+		attachments: integer().notNull().default(0),
+		/** An unknown sender's mail in Needs you: waiting, or what the owner did. */
+		note: text().$type<"waiting" | "allowed" | "dismissed">(),
+		/** When it was sent (its Date), else when Sekai saw it. */
+		at: ms().notNull(),
+		createdAt: ms().notNull(),
+	},
+	(t) => [
+		index("email_messages_agent_idx").on(t.agentId, t.at),
+		index("email_messages_message_id_idx").on(t.agentId, t.messageId),
+		index("email_messages_conversation_idx").on(t.conversationId),
+	],
 );

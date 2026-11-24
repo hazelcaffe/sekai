@@ -6,6 +6,8 @@ export const ConversationKind = z.enum(["direct", "group"]);
 export type ConversationKind = z.infer<typeof ConversationKind>;
 
 export const ConversationSettings = z.object({
+	/** Set by the inbox watcher. Email threads are separate from the bot's main chat. */
+	emailPeer: z.string().optional(),
 	/** Picks who answers in a group when nobody is @mentioned. Defaults to the first member's fast model. */
 	routerModel: ModelRef.nullable().default(null),
 	/** Maximum agent replies (including agent-to-agent handoffs) per message you send. */

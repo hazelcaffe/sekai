@@ -105,6 +105,7 @@ describe("several people", () => {
 				sharedChat: 201,
 				adminSeesMemberChat: 404,
 				adminChatList: 0,
+				email: { owner: 200, shared: 403, sharedMail: 403, mailcow: 403 },
 				memberSearch: 0,
 				slack: {
 					created: 201,
@@ -119,6 +120,17 @@ describe("several people", () => {
 					otherMessageLookup: null,
 					ownerSeesStatus: true,
 					otherSeesStatus: false,
+				},
+				signal: {
+					created: 201,
+					otherAccount: 404,
+					otherProfile: 404,
+					otherTrust: 404,
+					sharedBotLink: 403,
+					sharedBotRegister: 403,
+					memberInstall: 403,
+					memberSeesStatus: 200,
+					withoutAccounts: 403,
 				},
 				browserExtension: {
 					connected: 201,

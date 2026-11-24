@@ -158,7 +158,7 @@ export function useAttention(): {
 		items.push({
 			id: `channel-${c.id}`,
 			tone: "warning",
-			title: `${name(c.agentId)}'s ${c.type === "slack" ? "Slack bot" : c.type === "discord" ? "Discord bot" : "Discord account"} is offline`,
+			title: `${name(c.agentId)}'s ${c.type === "slack" ? "Slack bot" : c.type === "discord" ? "Discord bot" : c.type === "signal" ? "Signal account" : "Discord account"} is offline`,
 			detail: friendlyAttentionDetail(c.status.error, "It can't send or receive messages right now."),
 			href: `/bots/${c.agentId}/accounts`,
 			action: "Open",

@@ -82,7 +82,7 @@ const app = agent({ name: "mock-acp" })
 	.onRequest("initialize", () => ({
 		protocolVersion: PROTOCOL_VERSION,
 		agentCapabilities: {
-			loadSession: false,
+			loadSession: process.env.MOCK_ACP_LOAD === "1",
 			promptCapabilities: { image: true, embeddedContext: false },
 			mcpCapabilities: { http: true },
 		},
@@ -90,6 +90,17 @@ const app = agent({ name: "mock-acp" })
 		authMethods: [{ id: "mock-login", name: "Mock login", description: "Pretends to sign in" }],
 	}))
 	.onRequest("authenticate", () => ({}))
+	.onRequest("session/load", ({ params }) => {
+		if (process.env.MOCK_ACP_LOAD !== "1") throw RequestError.invalidParams();
+		sessions.set(params.sessionId, {
+			mcpUrl: null,
+			model: "mock-fast",
+			thought: "low",
+			cancelled: false,
+			turns: 1,
+		});
+		return {};
+	})
 	.onRequest("session/new", ({ params }) => {
 		if (process.env.MOCK_ACP_AUTH === "required") throw RequestError.authRequired();
 		if (process.env.MOCK_ACP_ONE_CHAT === "1") {
@@ -143,6 +154,60 @@ const app = agent({ name: "mock-acp" })
 		});
 
 		const notes: string[] = [];
+		if (process.env.MOCK_JOB_MANAGER === "1" && s.mcpUrl) {
+			const current = text.split("Reply to this message:").at(-1) ?? text;
+			if (current.includes("Launch the job"))
+				await mcp(s.mcpUrl, "tools/call", {
+					name: "job_start",
+					arguments: { title: "Writing a haiku", task: "job-question", subscription: "Worker" },
+				});
+			const asked = current.match(/Job (job_[\w-]+):[^\n]+asks: Which season/);
+			if (asked)
+				await mcp(s.mcpUrl, "tools/call", {
+					name: "job_send",
+					arguments: { id: asked[1], message: "job-answer: spring" },
+				});
+			await update({
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "Noted the job update." },
+			});
+			return { stopReason: "end_turn" };
+		}
+		if (text.endsWith("job-question")) {
+			const decision = await client.request("session/request_permission", {
+				sessionId,
+				toolCall: { toolCallId: "write-poem", title: "Write hello.txt", kind: "edit" },
+				options: [
+					{ optionId: "write", name: "Write once", kind: "allow_once" },
+					{ optionId: "reject", name: "Deny", kind: "reject_once" },
+				],
+			});
+			if (decision.outcome.outcome !== "selected" || decision.outcome.optionId !== "write")
+				throw new Error("Write wasn't offered");
+			await update({
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "Drafting a poem. " },
+			});
+			await client.request("fs/write_text_file", {
+				sessionId,
+				path: "/work/hello.txt",
+				content: "Spring rain on the sill\n",
+			});
+			await update({
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: "\nQuestion: Which season?" },
+			});
+			return { stopReason: "end_turn" };
+		}
+		if (text.endsWith("job-answer: spring")) {
+			const { content } = await client.request("fs/read_text_file", { sessionId, path: "/work/hello.txt" });
+			await update({
+				sessionUpdate: "agent_message_chunk",
+				content: { type: "text", text: `Finished. ${content}` },
+			});
+			return { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
+		}
+		if (text.endsWith("job-fail")) throw RequestError.invalidParams(undefined, "Scripted worker failure");
 		const memory = text.match(/save memory: ([^\n]+)/i)?.[1];
 		if (memory && s.mcpUrl) {
 			await mcp(s.mcpUrl, "initialize", {

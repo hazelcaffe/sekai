@@ -67,18 +67,29 @@ export async function actorOf(p: Principal): Promise<Actor | null> {
 }
 
 /**
+ * The person and principal a WebSocket is for: signed in, from Sekai's own pages, owing no step.
+ * Returns an error response otherwise.
+ */
+export async function socketAuth(req: Request): Promise<{ actor: Actor; principal: Principal } | Response> {
+	const principal = await authenticate(req);
+	if (!principal) return Response.json({ error: "Sign in to continue" }, { status: 401 });
+	const deny = denyReason(principal, req, { websocket: true });
+	if (deny) return Response.json({ error: deny }, { status: 403 });
+	if (principal.kind === "session" && principal.restriction) {
+		return Response.json({ error: "Finish signing in first" }, { status: 403 });
+	}
+	const actor = await actorOf(principal);
+	if (!actor) return Response.json({ error: "Sign in to continue" }, { status: 401 });
+	return { actor, principal };
+}
+
+/**
  * The person a WebSocket is for (VNC, voice, the desktop bridge's own check is separate): signed in, from Sekai's own
  * pages, owing no step. Returns an error response otherwise.
  */
 export async function socketActor(req: Request): Promise<Actor | Response> {
-	const p = await authenticate(req);
-	if (!p) return Response.json({ error: "Sign in to continue" }, { status: 401 });
-	const deny = denyReason(p, req, { websocket: true });
-	if (deny) return Response.json({ error: deny }, { status: 403 });
-	if (p.kind === "session" && p.restriction)
-		return Response.json({ error: "Finish signing in first" }, { status: 403 });
-	const actor = await actorOf(p);
-	return actor ?? Response.json({ error: "Sign in to continue" }, { status: 401 });
+	const res = await socketAuth(req);
+	return res instanceof Response ? res : res.actor;
 }
 
 /**

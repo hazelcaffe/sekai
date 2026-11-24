@@ -68,6 +68,8 @@ async function seesAgent(agentId: string, who: Actor): Promise<boolean> {
 /** The chat an event is about, if any. */
 function conversationOf(ev: ServerEvent): string | null {
 	switch (ev.type) {
+		case "job.changed":
+			return ev.job.conversationId;
 		case "message.created":
 		case "message.updated":
 			return ev.message.conversationId;
@@ -116,6 +118,7 @@ export async function eventVisibleTo(ev: ServerEvent, audience: Audience, who: A
 		case "note.changed":
 			return ev.agentId ? await seesAgent(ev.agentId, who) : inAudience(audience, who);
 		case "code.changed":
+		case "email.changed":
 			return (await agentOwner(ev.agentId)) === who.userId;
 		case "machine.changed":
 			return (await agentOwner(ev.machine.agentId)) === who.userId;

@@ -42,6 +42,7 @@ const FEATURES = PERMISSIONS.filter((p): p is Exclude<Permission, "admin"> => p 
 type NumberLimit = Exclude<keyof RoleLimits, "models">;
 const NUMBER_LIMITS: { key: NumberLimit; label: string; unit: string; decimals?: boolean; hint?: string }[] = [
 	{ key: "maxBots", label: "Bots", unit: "bots", hint: "How many bots they can have." },
+	{ key: "maxJobs", label: "Active coding jobs", unit: "jobs", hint: "Four at once by default, up to two per bot." },
 	{
 		key: "costPerMonth",
 		label: "Spending a month",
@@ -78,6 +79,7 @@ function listLine(r: Role): string {
 	const limited =
 		l.models !== null ||
 		l.maxBots !== null ||
+		l.maxJobs != null ||
 		l.costPerMonth !== null ||
 		l.tokensPerDay !== null ||
 		l.tokensPerMonth !== null ||
@@ -92,6 +94,7 @@ function summary(r: Role): string {
 	const parts = [`${r.permissions.filter((p) => p !== "admin").length} of ${FEATURES.length} features`];
 	if (l.models) parts.push(l.models.length === 1 ? "1 model" : `${l.models.length} models`);
 	if (l.maxBots !== null) parts.push(`up to ${pluralize(l.maxBots, "bot")}`);
+	if (l.maxJobs != null) parts.push(`up to ${pluralize(l.maxJobs, "active job")}`);
 	if (l.costPerMonth !== null) parts.push(`$${l.costPerMonth} a month`);
 	if (l.tokensPerDay !== null) parts.push(`${formatTokens(l.tokensPerDay)} tokens a day`);
 	if (l.tokensPerMonth !== null) parts.push(`${formatTokens(l.tokensPerMonth)} tokens a month`);
@@ -169,7 +172,7 @@ function draftOf(r: Role | null, template: Role | undefined): Draft {
 	const base = r ?? template;
 	const limits = base?.limits ?? EMPTY_LIMITS;
 	const numbers = Object.fromEntries(
-		NUMBER_LIMITS.map((l) => [l.key, limits[l.key] === null ? "" : String(limits[l.key])]),
+		NUMBER_LIMITS.map((l) => [l.key, limits[l.key] == null ? "" : String(limits[l.key])]),
 	) as Record<NumberLimit, string>;
 	return {
 		name: r?.name ?? "",

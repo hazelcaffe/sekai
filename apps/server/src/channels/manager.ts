@@ -36,6 +36,7 @@ import { autocomplete, COMMANDS, type CommandEnv, runAction, runCommand } from "
 import { discordAdapter } from "./discord.ts";
 import { discordUserAdapter } from "./discord-user.ts";
 import { fromPlatformMentions, type ParsedCommand, parseTextCommand } from "./render.ts";
+import { signalAdapter } from "./signal.ts";
 import { slackAdapter } from "./slack.ts";
 import {
 	agentBots,
@@ -69,7 +70,9 @@ import type {
 	ChannelAdapter,
 	ChatRef,
 	CommandInvocation,
+	GroupInvite,
 	InboundMessage,
+	InboundReaction,
 	Reply,
 } from "./types.ts";
 
@@ -77,6 +80,7 @@ const FACTORIES: Record<string, AdapterFactory> = {
 	discord: discordAdapter,
 	"discord-user": discordUserAdapter,
 	slack: slackAdapter,
+	signal: signalAdapter,
 };
 
 /** Adds or replaces a platform adapter (also how tests plug in a fake platform). */
@@ -227,8 +231,19 @@ export async function updateChannel(id: string, input: ChannelUpdateInput): Prom
 }
 
 export async function deleteChannel(id: string): Promise<void> {
-	await requireOwnChannel(id);
+	const channel = await requireOwnChannel(id);
 	await stopChannel(id);
+	// A Signal account lives in signal-cli's folder too: it goes from there (and a number registered here is
+	// unregistered) before the account is forgotten.
+	if (channel.type === "signal") {
+		const { forgetSignalAccount } = await import("../signal/accounts.ts");
+		try {
+			await forgetSignalAccount(channel);
+		} catch (err) {
+			if (channel.enabled) void startChannel(id);
+			throw err;
+		}
+	}
 	await db.delete(schema.channels).where(eq(schema.channels.id, id));
 	clearStatus(id);
 	for (const [c, p] of pairings) if (p.channelId === id) pairings.delete(c);
@@ -309,6 +324,8 @@ export async function startChannel(id: string): Promise<void> {
 			onAutocomplete: (cmd, option, value) => asOwner(id, [], () => handleAutocomplete(id, cmd, option, value)),
 			onAction: (action) =>
 				asOwner(id, { whisper: "This bot isn't available right now." }, () => handleAction(id, action)),
+			onReaction: (reaction) => asOwner(id, undefined, () => handleReaction(id, reaction)),
+			onInvite: (invite) => asOwner(id, false, () => handleInvite(id, invite)),
 			onFatal: (err) => {
 				if (stale()) return;
 				log.warn(`channel ${channel.name}: ${errorMessage(err)}`);
@@ -346,9 +363,10 @@ export async function startChannel(id: string): Promise<void> {
 		if (stale()) return;
 		entry.attempts++;
 		const delay = Math.min(30_000 * 2 ** (entry.attempts - 1), 15 * 60_000);
-		const credential = /token|credential|rejected|unauthor|invalid_auth|not_authed|account_inactive|401/i.test(
-			errorMessage(err),
-		);
+		// Bad credentials (or an account the platform signed out) wait for you to fix them.
+		const credential =
+			(err as { fatal?: boolean }).fatal === true ||
+			/token|credential|rejected|unauthor|invalid_auth|not_authed|account_inactive|401/i.test(errorMessage(err));
 		setStatus(id, {
 			state: "error",
 			error: credential ? errorMessage(err) : `${errorMessage(err)} (retrying in ${Math.round(delay / 1000)}s)`,
@@ -422,7 +440,8 @@ export async function decidePairing(pairingCode: string, approve: boolean): Prom
 			.get(channel.id)
 			?.adapter.send(
 				p.chatId,
-				`You're connected to ${agent?.name ?? "your bot"}. Say hi! Type / to see what I can do here.`,
+				// Signal has no command menu: /help lists them there.
+				`You're connected to ${agent?.name ?? "your bot"}. Say hi! Type ${channel.type === "signal" ? "/help" : "/"} to see what I can do here.`,
 			)
 			.catch(() => {});
 	}
@@ -539,7 +558,7 @@ async function tryTrust(channel: Channel, entry: Running, msg: InboundMessage): 
 		if (remove) return { text: "Say untrust @someone to remove one person." };
 		// Everyone in this chat (the account too): people mentioned now, plus the people in a group DM.
 		let ids = msg.mentions.map((m) => m.id);
-		if (channel.type === "discord-user" && entry.adapter.groupMembers) {
+		if ((channel.type === "discord-user" || channel.type === "signal") && entry.adapter.groupMembers) {
 			ids = [...ids, ...(await entry.adapter.groupMembers(msg.chatId).catch(() => [] as string[]))];
 		}
 		ids = ids.filter((id) => id && id !== status(channel.id).botId);
@@ -675,7 +694,7 @@ async function bindingForNow(channel: Channel, chat: ChatRef): Promise<ChannelBi
  */
 export async function ownerDm(
 	agentId: string,
-	platform?: "slack" | "discord",
+	platform?: "slack" | "discord" | "signal",
 ): Promise<{ conversationId: string; channelId: string; botName: string; type: Channel["type"] } | null> {
 	const own = await ownAgentIds();
 	if (own && !own.has(agentId)) return null;
@@ -1127,6 +1146,40 @@ async function handleAction(channelId: string, action: ActionInvocation): Promis
 	return update ? { update } : {};
 }
 
+/** Reactions that answer an approval request (on platforms without buttons): 👍 approves, 👎 denies. */
+const REACTION_CHOICES: Record<string, ApprovalChoice> = {
+	"👍": "approve",
+	"✅": "approve",
+	"👎": "deny",
+	"❌": "deny",
+};
+
+/** A reaction to one of the bot's approval requests answers it, when it's the owner's. Other reactions stay there. */
+async function handleReaction(channelId: string, reaction: InboundReaction): Promise<void> {
+	if (reaction.remove) return;
+	const entry = running.get(channelId);
+	if (!entry?.adapter.reactionApprovals) return;
+	const choice = REACTION_CHOICES[reaction.emoji];
+	if (!choice) return;
+	const channel = (await getChannel(channelId)) ?? entry.channel;
+	const post = [...approvalPosts.entries()].find(([, list]) =>
+		list.some(
+			(p) => p.channelId === channelId && p.chatId === reaction.chatId && p.messageId === reaction.messageId,
+		),
+	);
+	if (!post) return;
+	if (!mayUse(channel, reaction) || !isOwner(channel, reaction)) return;
+	const token = [...approvalCodes].find(([, a]) => a.toolCallId === post[0])?.[0];
+	if (token) await answerApproval(token, choice, reaction.senderName);
+}
+
+/** The bot stays in a group someone added it to only when they may use it there. */
+async function handleInvite(channelId: string, invite: GroupInvite): Promise<boolean> {
+	const channel = await getChannel(channelId);
+	if (!channel || channel.groupPolicy === "disabled") return false;
+	return channel.allowFrom.includes(invite.inviterId);
+}
+
 async function newChat(channel: Channel, binding: ChannelBinding): Promise<void> {
 	const current = await getConversation(binding.conversationId);
 	if (current?.kind === "group") {
@@ -1270,7 +1323,7 @@ async function answerApproval(token: string, choice: ApprovalChoice, by: string)
 	return `${choice === "deny" ? "Denied" : scoped ? "Approved for this chat" : "Approved"} by ${by}`;
 }
 
-function approvalReply(token: string, part: ToolPart, subtext: (s: string) => string): Reply {
+function approvalReply(token: string, part: ToolPart, adapter: ChannelAdapter): Reply {
 	// Approval prompts can land in a group chat: keep anything that looks like a secret out of them.
 	const shown = JSON.stringify(
 		part.args,
@@ -1278,8 +1331,11 @@ function approvalReply(token: string, part: ToolPart, subtext: (s: string) => st
 		2,
 	);
 	const details = truncate(`${part.name} ${shown}`, 1200);
+	const how = adapter.reactionApprovals
+		? `React 👍 to approve or 👎 to deny, or type /approve ${token} or /deny ${token}`
+		: `Or type /approve ${token} or /deny ${token}`;
 	return {
-		text: `✋ **${part.title ?? part.name}**\n${part.reason ?? "This action needs your approval."}\n\`\`\`\n${details}\n\`\`\`\n${subtext(`Or type /approve ${token} or /deny ${token}`)}`,
+		text: `✋ **${part.title ?? part.name}**\n${part.reason ?? "This action needs your approval."}\n\`\`\`\n${details}\n\`\`\`\n${adapter.subtext(how)}`,
 		buttons: [
 			{ id: `ap:${token}:approve`, label: "Approve once", style: "success" },
 			...(part.alwaysAsk
@@ -1298,7 +1354,7 @@ async function postApproval(target: StreamTarget, part: ToolPart): Promise<void>
 		token = code();
 		approvalCodes.set(token, { toolCallId: part.id, expiresAt: Date.now() + 24 * 3_600_000 });
 	}
-	const reply = approvalReply(token, part, (s) => entry.adapter.subtext(s));
+	const reply = approvalReply(token, part, entry.adapter);
 	const messageId = await entry.adapter.send(target.chatId, reply);
 	const posts = approvalPosts.get(part.id) ?? [];
 	posts.push({ channelId: target.channelId, chatId: target.chatId, messageId, text: reply.text });

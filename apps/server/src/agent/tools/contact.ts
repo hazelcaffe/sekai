@@ -21,21 +21,34 @@ export const contactTools = [
 		name: "message_user",
 		category: "contact",
 		description:
-			"Message the user right now, on your own: a Slack or Discord DM from your bot if you have one (via auto/slack/discord), otherwise in your chat in the Sekai app, with a notification either way. voice: true sends audio in your voice. For reminders, things they asked to be told about, finished work, or anything that needs them. Not for replying in this chat (just answer; for a voice message here, use voice_message).",
+			"Message the user right now, on your own: a Slack, Discord or Signal DM from your account there if you have one (via auto/slack/discord/signal), otherwise in your chat in the Sekai app, with a notification either way. voice: true sends audio in your voice. For reminders, things they asked to be told about, finished work, or anything that needs them. Not for replying in this chat (just answer; for a voice message here, use voice_message).",
 		parameters: z.object({
 			text: z.string().min(1).max(4000),
 			voice: z.boolean().optional().describe("Send as a voice message"),
-			via: z.enum(["auto", "app", "discord", "slack"]).optional(),
+			via: z.enum(["auto", "app", "discord", "slack", "signal"]).optional(),
 		}),
 		risk: "external",
 		title: (a) =>
-			a.voice ? "Sent a voice message" : a.via === "discord" ? "Messaged you on Discord" : "Messaged you",
+			a.voice
+				? "Sent a voice message"
+				: a.via === "discord"
+					? "Messaged you on Discord"
+					: a.via === "signal"
+						? "Messaged you on Signal"
+						: "Messaged you",
 		async execute(args, ctx) {
 			try {
 				const r = await messageUser(ctx.agent, args);
 				return {
 					sent: true,
-					where: r.where === "slack" ? "Slack DM" : r.where === "discord" ? "Discord DM" : "the Sekai app",
+					where:
+						r.where === "slack"
+							? "Slack DM"
+							: r.where === "discord"
+								? "Discord DM"
+								: r.where === "signal"
+									? "Signal DM"
+									: "the Sekai app",
 					as: r.voice ? "voice message" : "text",
 				};
 			} catch (err) {
@@ -130,7 +143,7 @@ export const contactTools = [
 							? `No voice channel “${args.channel}”`
 							: "The user isn't in a voice channel your bot can see. Ask them to join one, or name one.",
 					);
-				const dm = await ownerDm(ctx.agent.id);
+				const dm = await ownerDm(ctx.agent.id, "discord");
 				const conversation =
 					(await getConversation(dm?.conversationId ?? ctx.conversation.id)) ?? ctx.conversation;
 				await joinVoice({

@@ -135,12 +135,14 @@ export const MessageVersion = z.object({
 export type MessageVersion = z.infer<typeof MessageVersion>;
 
 export const MessageMeta = z.object({
+	jobId: z.string().optional(),
 	/** Why this message exists, when it wasn't typed by you. */
 	trigger: z
 		.enum([
 			"user",
 			"routine",
 			"reminder",
+			"job",
 			"handoff",
 			"ask",
 			"group",
@@ -150,6 +152,7 @@ export const MessageMeta = z.object({
 			"outreach",
 			"digest",
 			"checkup",
+			"email",
 		])
 		.optional(),
 	routineId: z.string().optional(),
@@ -167,6 +170,18 @@ export const MessageMeta = z.object({
 	version: z.number().int().optional(),
 	/** Models that declined this turn before another one answered (automatic refusal retry). */
 	declined: z.array(z.object({ model: z.string(), reason: z.string() })).optional(),
+	/**
+	 * An email: the one someone sent the bot (its Message-ID, sender and subject), or on the bot's reply, the email it
+	 * sent back.
+	 */
+	email: z
+		.object({
+			messageId: z.string(),
+			from: z.string(),
+			fromName: z.string().optional(),
+			subject: z.string(),
+		})
+		.optional(),
 	/** A post on X: the mention you wrote (and on the bot's reply, the post it made). */
 	x: z.object({ postId: z.string(), author: z.string() }).optional(),
 	/** Said on a voice call (a transcript line), or a task the voice handed to the bot during one. */

@@ -39,6 +39,8 @@ free software under the [GNU AGPL v3](LICENSE).
 - **They get things done.** Routines on a schedule or when something happens (a webhook, a device going offline),
   reminders, a morning digest, a document library they search by meaning, code search, apps over MCP (50+ with
   one-click sign-in), skills, and the web.
+- **Coding jobs.** Bots hand work to Claude Code, Codex or OpenCode workers in a folder on the server, their computer
+  or a devbox, then talk to them, watch them live and stop them, with your approvals and limits.
 - **The web, read properly.** Turn on [Firecrawl Local](docs/guide.md#web-reading) and bots read pages as clean
   Markdown (PDFs and Word files too), search, list a site's pages and crawl a set of them. Scraping runs on your
   server; only search leaves it, and you can turn that off.
@@ -58,6 +60,10 @@ free software under the [GNU AGPL v3](LICENSE).
 - **Bots reach you.** Push notifications on your phone, messages and calls from bots, and their own Slack apps,
   Discord bots, Discord accounts and X accounts. Several bots can talk together in one Slack thread or Discord
   channel, each as itself.
+- **Signal.** A bot gets its own Signal account through signal-cli (linked to a phone, or a number registered for it):
+  DMs and groups as chats, files both ways, approvals by `/approve` or 👍, and people checked by their account ID.
+- **Email.** A bot gets its own address (a mailbox Sekai makes on your mailcow, or any IMAP/SMTP account), answers
+  verified mail from people you list as email chats, and sends mail with approvals and a daily limit.
 - **Computers of their own.** On a Proxmox server, a bot can have a desktop (a VM or a container) it uses by itself
   while you watch or take over, and devboxes for development. With the desktop app you can lend it your own computer
   too.
@@ -129,8 +135,8 @@ updates.
 
 - [Installing and hosting](docs/install.md): Docker, from source, as a service, on the internet, configuration,
   backups, updating, troubleshooting.
-- [User guide](docs/guide.md): people and roles, approvals, routines, memory, the library, voice, Slack, Discord and X,
-  apps, computers, your own devices, subscriptions as models, Settings.
+- [User guide](docs/guide.md): people and roles, approvals, routines, memory, the library, voice, Slack, Discord, Signal,
+  X and email, apps, computers, your own devices, subscriptions as models, coding jobs, Settings.
 - [Architecture](docs/architecture.md): how the code fits together, and how to extend it.
 - [Browser extension](apps/extension/README.md): builds, connection, tools, privacy and GitHub Actions releases.
 - [AGENTS.md](AGENTS.md): the guide for contributors and coding agents.

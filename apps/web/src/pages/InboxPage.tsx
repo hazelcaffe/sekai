@@ -8,6 +8,7 @@ import {
 	useAgentMap,
 	useApprovals,
 	useCredentialRequests,
+	useEmailSenders,
 	usePairings,
 } from "@sekai/client";
 import { type CredentialRequest, channelTitle } from "@sekai/shared";
@@ -25,6 +26,7 @@ import { LoginForm } from "../components/computer/CredentialPrompt.tsx";
 export function InboxPage() {
 	const approvals = useApprovals();
 	const pairings = usePairings();
+	const senders = useEmailSenders();
 	const logins = useCredentialRequests();
 	const agents = useAgentMap();
 	const canPair = useAccess().can("channels");
@@ -47,8 +49,12 @@ export function InboxPage() {
 		if (approvalId && approvals.data)
 			document.getElementById(`approval-${approvalId}`)?.scrollIntoView({ block: "nearest" });
 	}, [approvalId, approvals.data]);
-	const failed = approvals.isError || pairings.isError || logins.isError;
-	const pending = approvals.isPending || pairings.isPending || logins.isPending;
+	const senderDecision = useMutation({
+		mutationFn: ({ id, allow }: { id: string; allow: boolean }) => api.email.decide(id, allow),
+		onSuccess: () => void qc.invalidateQueries({ queryKey: qk.emailSenders }),
+	});
+	const failed = approvals.isError || pairings.isError || logins.isError || senders.isError;
+	const pending = approvals.isPending || pairings.isPending || logins.isPending || senders.isPending;
 	return (
 		<Page title="Needs you" description="Review requests from your bots and connected accounts.">
 			{failed && (
@@ -58,6 +64,7 @@ export function InboxPage() {
 						if (approvals.isError) void approvals.refetch();
 						if (pairings.isError) void pairings.refetch();
 						if (logins.isError) void logins.refetch();
+						if (senders.isError) void senders.refetch();
 					}}
 				/>
 			)}
@@ -166,12 +173,58 @@ export function InboxPage() {
 					)}
 				</Section>
 			)}
+			{Boolean(senders.data?.length) && (
+				<Section
+					title="New email senders"
+					description="Allowed senders can use the bot's tools and memory by email."
+				>
+					<List>
+						{senders.data?.map((n) => (
+							<Row
+								key={n.id}
+								title={`New email for ${agents.get(n.agentId)?.name ?? "your bot"}`}
+								subtitle={`${n.address || "Unknown address"} · ${n.verified ? n.subject || "No subject" : "Sender couldn't be verified"}`}
+								wrap
+								trailing={
+									canPair && (
+										<>
+											{n.verified && (
+												<Button
+													variant="secondary"
+													disabled={senderDecision.isPending}
+													onClick={() => senderDecision.mutate({ id: n.id, allow: true })}
+												>
+													Allow this sender
+												</Button>
+											)}
+											<Button
+												variant="ghost"
+												disabled={senderDecision.isPending}
+												onClick={() => senderDecision.mutate({ id: n.id, allow: false })}
+											>
+												Dismiss
+											</Button>
+										</>
+									)
+								}
+							/>
+						))}
+					</List>
+					{senderDecision.isError && (
+						<ErrorState
+							error={senderDecision.error}
+							onRetry={() => senderDecision.variables && senderDecision.mutate(senderDecision.variables)}
+						/>
+					)}
+				</Section>
+			)}
 			{pending ? (
 				<SkeletonRows count={2} leading />
 			) : (
 				!failed &&
 				!requests.length &&
 				!waiting.length &&
+				!senders.data?.length &&
 				!signIns.length && (
 					<EmptyState
 						icon={<Inbox />}

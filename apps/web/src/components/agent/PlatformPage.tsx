@@ -1,5 +1,5 @@
 import { useChannels, usePairings } from "@sekai/client";
-import type { Agent } from "@sekai/shared";
+import { type Agent, type ChannelType, signalConfig } from "@sekai/shared";
 import { Badge, Button, EmptyState, ErrorState, Link, List, Page, type PageBack, Row, SkeletonRows } from "@sekai/ui";
 import { AtSign, Plus } from "lucide-react";
 import { botPath } from "../../bots/registry.tsx";
@@ -20,22 +20,35 @@ const TEXT = {
 		empty: "isn't on Slack yet",
 		emptyHelp: "Connect its own Slack app to chat in DMs and channels, and approve actions with a tap.",
 	},
+	signal: {
+		title: "Signal",
+		description: "Message it on Signal, in DMs and groups.",
+		empty: "isn't on Signal yet",
+		emptyHelp: "Give it its own Signal account: link a phone made for it, or register a number.",
+	},
 } as const;
 
-/** The bot's accounts on Discord or Slack (a bot can have several), with a way to connect another. */
+/** Which accounts a platform's page lists. */
+const ON: Record<"discord" | "slack" | "signal", (type: ChannelType) => boolean> = {
+	discord: (t) => t === "discord" || t === "discord-user",
+	slack: (t) => t === "slack",
+	signal: (t) => t === "signal",
+};
+
+/** The bot's accounts on Discord, Slack or Signal (a bot can have several), with a way to connect another. */
 export function PlatformPage({
 	agent,
 	platform,
 	back,
 }: {
 	agent: Agent;
-	platform: "discord" | "slack";
+	platform: "discord" | "slack" | "signal";
 	back: PageBack;
 }) {
 	const channels = useChannels(agent.id);
 	const { data: pairings = [] } = usePairings();
 	const t = TEXT[platform];
-	const list = (channels.data ?? []).filter((c) => (platform === "slack" ? c.type === "slack" : c.type !== "slack"));
+	const list = (channels.data ?? []).filter((c) => ON[platform](c.type));
 	const waiting = pairingsFor(pairings, list).length;
 	const connect = botPath(agent.id, "accounts", `${platform}/new`);
 
@@ -69,12 +82,20 @@ export function PlatformPage({
 								leading={<AccountMark platform={platform} />}
 								title={
 									c.status.botName ??
-									(c.type === "discord-user" ? "Normal account" : `${t.title} bot`)
+									(c.type === "discord-user"
+										? "Normal account"
+										: c.type === "signal"
+											? signalConfig(c).number || "Signal account"
+											: `${t.title} bot`)
 								}
 								subtitle={
 									<>
 										<StatusLine state={channelState(c)} />
 										{c.type === "discord-user" && " · Normal account"}
+										{c.type === "signal" &&
+											(signalConfig(c).mode === "linked"
+												? " · Linked to a phone"
+												: " · Own number")}
 									</>
 								}
 								badge={

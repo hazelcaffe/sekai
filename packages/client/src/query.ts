@@ -28,6 +28,8 @@ export const queryClient: QueryClient = new QueryClient({
 });
 
 export const qk = {
+	jobs: ["jobs"] as const,
+	job: (id: string) => ["job", id] as const,
 	auth: ["auth"] as const,
 	sessions: ["auth", "sessions"] as const,
 	passkeys: ["auth", "passkeys"] as const,
@@ -50,12 +52,19 @@ export const qk = {
 	channels: (agentId?: string) => ["channels", agentId ?? "all"] as const,
 	channelBindings: (channelId: string) => ["channelBindings", channelId] as const,
 	channelLinks: ["channelBindings", "all"] as const,
+	signalStatus: ["signal", "status"] as const,
+	signalAccount: (channelId: string) => ["signal", "account", channelId] as const,
 	voiceSettings: ["voice", "settings"] as const,
 	voiceModels: ["voice", "models"] as const,
 	voices: (model: string, cap: string, q: string) => ["voice", "voices", model, cap, q] as const,
 	customVoices: ["voice", "custom"] as const,
 	agentVoice: (agentId: string) => ["voice", "agent", agentId] as const,
 	pairings: ["pairings"] as const,
+	emailAccount: (id: string) => ["emailAccount", id] as const,
+	emailRecent: (id: string) => ["emailRecent", id] as const,
+	emailSenders: ["emailSenders"] as const,
+	emailOptions: ["emailOptions"] as const,
+	mailcow: ["mailcow"] as const,
 	machines: (agentId?: string) => ["machines", agentId ?? "all"] as const,
 	checkpoints: (machineId: string) => ["checkpoints", machineId] as const,
 	machinePorts: (machineId: string) => ["machinePorts", machineId] as const,

@@ -65,6 +65,7 @@ describe("Settings sections", () => {
 			"models",
 			"subscriptions",
 			"apps",
+			"email",
 			"voice",
 			"web-reading",
 			"memory",

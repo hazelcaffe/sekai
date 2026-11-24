@@ -12,9 +12,18 @@ import { log } from "../lib/log.ts";
  *   manifest.json        what's in it (tables with their columns and row counts, files, Sekai version)
  *   db/<table>.jsonl     every row of every table, one JSON object per line
  *   data/<path>          the data folder's files that can't come back by themselves (DATA_PATHS)
- * Caches (avatars, voices, app icons), browser profiles, desktop app builds and SSH connections are left out.
+ * Caches (avatars, voices, app icons), browser profiles, desktop app builds and SSH connections are left out. Of
+ * signal-cli's folder only the accounts (signal/data: bots' Signal keys) go in, not the attachments it downloaded.
  */
-export const DATA_PATHS = ["secret.key", "ssh/keys", "ssh/known_hosts", "uploads", "workspaces"];
+export const DATA_PATHS = [
+	"secret.key",
+	"ssh/keys",
+	"ssh/known_hosts",
+	"uploads",
+	"workspaces",
+	"providers",
+	"signal/data",
+];
 
 export interface Manifest {
 	format: "sekai-backup";
@@ -304,6 +313,15 @@ async function restoreFiles(work: string, manifest: Manifest): Promise<void> {
 	// Keys and passwords stay private; connections opened with the old keys aren't reused.
 	if (existsSync(join(config.dataDir, "secret.key"))) await chmod(join(config.dataDir, "secret.key"), 0o600);
 	if (existsSync(join(config.dataDir, "ssh"))) await chmod(join(config.dataDir, "ssh"), 0o700);
+	if (existsSync(join(config.dataDir, "providers"))) {
+		const provDir = join(config.dataDir, "providers");
+		await chmod(provDir, 0o700);
+		for (const entry of await readdir(provDir, { withFileTypes: true })) {
+			if (entry.isDirectory()) await chmod(join(provDir, entry.name), 0o700);
+		}
+	}
+	for (const dir of ["signal", "signal/data"])
+		if (existsSync(join(config.dataDir, dir))) await chmod(join(config.dataDir, dir), 0o700);
 	await rm(join(config.dataDir, "ssh", "ctl"), { recursive: true, force: true });
 }
 

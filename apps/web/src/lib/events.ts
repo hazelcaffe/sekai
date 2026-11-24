@@ -49,6 +49,7 @@ type Delta = { conversationId: string; messageId: string; index: number; delta: 
 /** Events that are chat traffic (what Settings pages don't show). */
 const CHAT_TRAFFIC = new Set<ServerEvent["type"]>([
 	"hello",
+	"job.changed",
 	"message.created",
 	"message.updated",
 	"message.delta",
@@ -130,6 +131,17 @@ export function connectEvents(qc: QueryClient): () => void {
 	const handle = (ev: ServerEvent) => {
 		refreshSettings(ev);
 		switch (ev.type) {
+			case "job.changed":
+				qc.setQueryData<import("@sekai/shared").Job[]>(qk.jobs, (list) =>
+					list ? upsert(list, ev.job, (a, b) => b.updatedAt - a.updatedAt) : list,
+				);
+				qc.setQueryData<import("@sekai/shared").JobDetail>(qk.job(ev.job.id), (detail) => {
+					if (!detail || ev.job.updatedAt < detail.updatedAt) return detail;
+					const steps = new Map(detail.steps.map((s) => [s.id, s]));
+					for (const step of ev.steps) steps.set(step.id, step);
+					return { ...ev.job, steps: [...steps.values()] };
+				});
+				break;
 			case "hello":
 				// Reloading everything: words from before the reconnect are in the fresh copies.
 				if (frame) cancelAnimationFrame(frame);
@@ -256,6 +268,7 @@ export function connectEvents(qc: QueryClient): () => void {
 				break;
 			case "settings.changed":
 				void qc.invalidateQueries({ queryKey: qk.settings });
+				void qc.invalidateQueries({ queryKey: qk.signalStatus });
 				void qc.invalidateQueries({ queryKey: ["voice"] });
 				void qc.invalidateQueries({ queryKey: ["agentTools"] });
 				break;
@@ -272,9 +285,15 @@ export function connectEvents(qc: QueryClient): () => void {
 				void qc.invalidateQueries({ queryKey: ["channels"] });
 				void qc.invalidateQueries({ queryKey: qk.channelBindings(ev.channelId) });
 				void qc.invalidateQueries({ queryKey: qk.channelLinks });
+				void qc.invalidateQueries({ queryKey: qk.signalAccount(ev.channelId) });
 				break;
 			case "pairing.changed":
 				void qc.invalidateQueries({ queryKey: qk.pairings });
+				break;
+			case "email.changed":
+				void qc.invalidateQueries({ queryKey: qk.emailAccount(ev.agentId) });
+				void qc.invalidateQueries({ queryKey: qk.emailRecent(ev.agentId) });
+				void qc.invalidateQueries({ queryKey: qk.emailSenders });
 				break;
 			case "code.changed":
 				void qc.invalidateQueries({ queryKey: ["code", ev.agentId] });

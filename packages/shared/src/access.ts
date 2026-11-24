@@ -41,7 +41,10 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
 	library: { label: "Library", description: "Their own documents for bots to search." },
 	voice: { label: "Voice", description: "Calls, read-aloud, voice messages and making voices." },
 	apps: { label: "Apps", description: "Connect apps for their own bots." },
-	channels: { label: "Accounts", description: "Discord, Slack, X, Instagram and TikTok accounts for their bots." },
+	channels: {
+		label: "Accounts",
+		description: "Discord, Slack, X, Instagram, TikTok and email accounts for their bots.",
+	},
 	computers: {
 		label: "Computers",
 		description: "Bots' own computers and devboxes.",
@@ -63,6 +66,7 @@ export const RoleLimits = z.object({
 	/** Models they may use (gateway or API provider ids). null: any. */
 	models: z.array(z.string().min(1).max(200)).max(200).nullable().default(null),
 	maxBots: z.number().int().min(0).max(1000).nullable().default(null),
+	maxJobs: z.number().int().min(0).max(100).nullable().optional(),
 	tokensPerDay: z.number().int().min(0).nullable().default(null),
 	tokensPerMonth: z.number().int().min(0).nullable().default(null),
 	/** US dollars a month, at the model prices set in Usage. */

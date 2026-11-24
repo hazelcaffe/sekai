@@ -134,6 +134,27 @@
       "when": 1795236325713,
       "tag": "0018_require_passkey",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795484936646,
+      "tag": "0019_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795485140702,
+      "tag": "0020_coding_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795485295561,
+      "tag": "0021_subscription_signin",
+      "breakpoints": true
     }
   ]
 }

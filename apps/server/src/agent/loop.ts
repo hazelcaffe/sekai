@@ -260,7 +260,10 @@ function remember(rules: RuleSets, scope: ApprovalScope, approve: boolean, tool:
  * (ask). Updates the call's tool part while it waits. The part must already exist in the writer.
  */
 export async function authorizeToolCall(
-	env: ToolCallEnv,
+	env: Omit<ToolCallEnv, "toolset" | "writer"> & {
+		toolset: Pick<Toolset, "rules">;
+		writer: Pick<MessageWriter, "updateTool">;
+	},
 	callId: string,
 	tool: GatedTool,
 	args: Record<string, unknown>,

@@ -11,6 +11,9 @@ describe("a bot's Accounts addresses", () => {
 		expect(accountsView("discord")).toEqual({ view: "platform", platform: "discord" });
 		expect(accountsView("slack/new")).toEqual({ view: "connect", platform: "slack" });
 		expect(accountsView("discord/chn_abc")).toEqual({ view: "account", platform: "discord", id: "chn_abc" });
+		expect(accountsView("signal")).toEqual({ view: "platform", platform: "signal" });
+		expect(accountsView("signal/new")).toEqual({ view: "connect", platform: "signal" });
+		expect(accountsView("signal/chn_sig")).toEqual({ view: "account", platform: "signal", id: "chn_sig" });
 		for (const p of ["x", "instagram", "tiktok"] as const)
 			expect(accountsView(p)).toEqual({ view: "social", platform: p });
 	});

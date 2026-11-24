@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import {
 	byosModelId,
 	type ModelInfo,
@@ -18,7 +19,9 @@ import { type Db, db, schema } from "../db/index.ts";
 import { bus } from "../events/bus.ts";
 import { badRequest, notFound, parse } from "../lib/errors.ts";
 import { newId } from "../lib/ids.ts";
+import { seal, unseal } from "../lib/secrets.ts";
 import { maskSecret } from "../services/settings.ts";
+import { providerDir } from "./process.ts";
 
 /** In-memory copy of every provider, so the model catalog and labels can be read synchronously. */
 let cache = new Map<string, Provider>();
@@ -47,13 +50,46 @@ export function providerStatus(id: string): ProviderStatus {
 	return statuses.get(id) ?? emptyStatus(id);
 }
 
-function rowToProvider(row: typeof schema.providers.$inferSelect): Provider {
-	const { status: _status, ...rest } = row;
-	return rest;
+/** Whether an environment variable's value is a secret (sealed at rest, masked for the app). */
+export function isSecretEnv(key: string): boolean {
+	return SECRET_KEY.test(key);
 }
 
-function publicProvider(p: Provider): ProviderWithStatus {
-	const env = Object.fromEntries(Object.entries(p.env).map(([k, v]) => [k, SECRET_KEY.test(k) ? maskSecret(v) : v]));
+/** Secret values are sealed in the database; the rest stay readable. */
+export function sealEnv(env: Record<string, string>): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(env).map(([k, v]) => [k, isSecretEnv(k) && v && !isSealed(v) ? seal(v) : v]),
+	);
+}
+
+export function unsealEnv(env: Record<string, string>): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(env).map(([k, v]) => {
+			if (!isSealed(v)) return [k, v];
+			try {
+				return [k, unseal(v)];
+			} catch {
+				// Sealed with another key (a restore without its secret.key): unusable, so blank rather than garbage.
+				return [k, ""];
+			}
+		}),
+	);
+}
+
+function isSealed(v: string): boolean {
+	return /^v1:[A-Za-z0-9+/]+=*$/.test(v);
+}
+
+function rowToProvider(row: typeof schema.providers.$inferSelect): Provider {
+	const { status: _status, ...rest } = row;
+	return { ...rest, env: unsealEnv(rest.env) };
+}
+
+/** A provider as the app sees it, before its setup (setup.ts) is added: secret values masked. */
+export type PublicProvider = Omit<ProviderWithStatus, "setup">;
+
+function publicProvider(p: Provider): PublicProvider {
+	const env = Object.fromEntries(Object.entries(p.env).map(([k, v]) => [k, isSecretEnv(k) ? maskSecret(v) : v]));
 	return { ...p, env, status: providerStatus(p.id) };
 }
 
@@ -82,6 +118,11 @@ export async function loadProviders(): Promise<void> {
 		// A check that was running when the server stopped never finished.
 		const s = r.status ?? emptyStatus(r.id);
 		statuses.set(r.id, s.state === "checking" ? { ...s, state: "unchecked" } : s);
+		// API keys saved before they were sealed get sealed now.
+		const sealed = sealEnv(r.env);
+		if (JSON.stringify(sealed) !== JSON.stringify(r.env)) {
+			await db.update(schema.providers).set({ env: sealed }).where(eq(schema.providers.id, r.id));
+		}
 	}
 }
 
@@ -95,15 +136,15 @@ export function requireProvider(id: string): Provider {
 	return p;
 }
 
-export function listProviders(): ProviderWithStatus[] {
+export function listProviders(): PublicProvider[] {
 	return [...cache.values()].sort((a, b) => a.createdAt - b.createdAt).map(publicProvider);
 }
 
-export function publicProviderById(id: string): ProviderWithStatus {
+export function publicProviderById(id: string): PublicProvider {
 	return publicProvider(requireProvider(id));
 }
 
-export async function createProvider(input: ProviderCreateInput): Promise<ProviderWithStatus> {
+export async function createProvider(input: ProviderCreateInput): Promise<PublicProvider> {
 	const data = parse(ProviderCreate, input);
 	const preset = PROVIDER_PRESETS[data.preset];
 	const command = (data.command ?? preset.command).trim();
@@ -119,13 +160,37 @@ export async function createProvider(input: ProviderCreateInput): Promise<Provid
 		args: data.args ?? preset.args,
 		env: { ...preset.env, ...cleanEnv(data.env) },
 		extraModels: data.extraModels,
+		signInCommand: checkSignInCommand(data.signInCommand),
+		ownConfig: data.ownConfig,
 		createdAt: now,
 		updatedAt: now,
 	};
-	await db.insert(schema.providers).values({ ...provider, status: null });
+	await db.insert(schema.providers).values({ ...provider, env: sealEnv(provider.env), status: null });
 	cache.set(provider.id, provider);
 	changed(provider.id);
 	return publicProvider(provider);
+}
+
+/** Shells and launchers that would turn "Sign in" into a terminal for anything. */
+const SHELLS =
+	/^(ba|da|z|k|c|tc|fi|a|mk|yash|r|n|x)?sh$|^(pwsh|powershell|cmd|busybox|env|sudo|su|doas|script|tmux|screen|xterm|nohup|setsid|exec|eval|python[\d.]*|perl|ruby|node|bun|deno|php|lua|tclsh|wish|expect|socat|nc|ncat|telnet|ssh)(\.exe)?$/i;
+
+/**
+ * An admin's sign-in command: an argv run without a shell, so nothing in it is expanded. A shell or a script
+ * interpreter as the program would make the browser's sign-in terminal a general one, so those are refused.
+ */
+export function checkSignInCommand(argv: string[]): string[] {
+	if (argv.length === 0) return [];
+	const [program = ""] = argv;
+	if (argv.some((a) => a.includes("\0"))) throw badRequest("The sign-in command has a character it can't run.");
+	const name = program.split(/[\\/]/).pop() ?? "";
+	if (!name || name.startsWith("-")) throw badRequest("Start the sign-in command with the program to run.");
+	if (SHELLS.test(name)) {
+		throw badRequest(
+			`The sign-in command can't be ${name}: it has to be the agent's own sign-in, not a shell or an interpreter.`,
+		);
+	}
+	return argv;
 }
 
 function cleanEnv(env: Record<string, string>): Record<string, string> {
@@ -138,7 +203,7 @@ function cleanEnv(env: Record<string, string>): Record<string, string> {
 	return out;
 }
 
-export async function updateProvider(id: string, input: ProviderUpdateInput): Promise<ProviderWithStatus> {
+export async function updateProvider(id: string, input: ProviderUpdateInput): Promise<PublicProvider> {
 	const patch = parse(ProviderUpdate, input);
 	const current = requireProvider(id);
 	let env = current.env;
@@ -146,7 +211,7 @@ export async function updateProvider(id: string, input: ProviderUpdateInput): Pr
 		// Secret values come back masked: keep the stored one unless a real new value was sent.
 		env = {};
 		for (const [k, v] of Object.entries(cleanEnv(patch.env))) {
-			const masked = SECRET_KEY.test(k) && (v === maskSecret(current.env[k] ?? "") || v === "••••");
+			const masked = isSecretEnv(k) && (v === maskSecret(current.env[k] ?? "") || v === "••••");
 			env[k] = masked ? (current.env[k] ?? "") : v;
 		}
 	}
@@ -154,10 +219,15 @@ export async function updateProvider(id: string, input: ProviderUpdateInput): Pr
 		...current,
 		...patch,
 		command: patch.command?.trim() ?? current.command,
+		signInCommand:
+			patch.signInCommand !== undefined ? checkSignInCommand(patch.signInCommand) : current.signInCommand,
 		env,
 		updatedAt: Date.now(),
 	};
-	await db.update(schema.providers).set(next).where(eq(schema.providers.id, id));
+	await db
+		.update(schema.providers)
+		.set({ ...next, env: sealEnv(next.env) })
+		.where(eq(schema.providers.id, id));
 	cache.set(id, next);
 	changed(id);
 	return publicProvider(next);
@@ -168,6 +238,8 @@ export async function deleteProvider(id: string): Promise<void> {
 	await db.delete(schema.providers).where(eq(schema.providers.id, id));
 	cache.delete(id);
 	statuses.delete(id);
+	// Remove this subscription's own sign-in folder if it had one (shared server credentials stay untouched).
+	await rm(providerDir(id), { recursive: true, force: true }).catch(() => {});
 	changed(id, true);
 }
 

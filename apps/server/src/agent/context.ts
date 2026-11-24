@@ -48,6 +48,8 @@ export async function prepareContext(opts: {
 	voiceCall?: boolean;
 	/** A mention on X from this handle: the reply is posted there. */
 	xFrom?: string;
+	/** The message is an email from someone the bot answers: its reply goes back by email. */
+	emailFrom?: { from: string; fromName?: string; subject: string };
 }): Promise<PreparedContext> {
 	const { agent, conversation } = opts;
 	const [settings, agents, modelInfo] = await Promise.all([getSettings(), listAgents(), getModelInfo(opts.model)]);
@@ -79,6 +81,7 @@ export async function prepareContext(opts: {
 		channel: opts.channel ?? null,
 		voiceCall: opts.voiceCall,
 		xFrom: opts.xFrom,
+		emailFrom: opts.emailFrom,
 	});
 	return {
 		settings,

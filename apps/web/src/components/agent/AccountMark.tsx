@@ -1,7 +1,7 @@
 import { BrandTile } from "@sekai/client";
 import type { ReactNode } from "react";
 
-export type AccountPlatform = "discord" | "slack" | "x" | "instagram" | "tiktok";
+export type AccountPlatform = "discord" | "slack" | "signal" | "x" | "instagram" | "tiktok";
 
 /** The marks LobeHub's set lacks, as one-colour glyphs (they follow the tile's text colour). */
 const GLYPHS: Record<"x" | "instagram" | "tiktok", ReactNode> = {
@@ -24,9 +24,10 @@ const GLYPHS: Record<"x" | "instagram" | "tiktok", ReactNode> = {
 	),
 };
 
-/** A platform's mark on the same tile every brand uses (Discord and Slack from LobeHub's set). */
+/** A platform's mark on the same tile every brand uses (Discord, Slack and Signal from the bundled marks). */
 export function AccountMark({ platform, size = 34 }: { platform: AccountPlatform; size?: number }) {
-	if (platform === "discord" || platform === "slack") return <BrandTile brand={platform} size={size} />;
+	if (platform === "discord" || platform === "slack" || platform === "signal")
+		return <BrandTile brand={platform} size={size} />;
 	return (
 		<BrandTile
 			brand={null}

@@ -257,6 +257,8 @@ export async function deleteAgent(id: string): Promise<void> {
 	// Its runs (and any approvals they wait on) stop first.
 	const { cancelAgentRuns } = await import("../agent/runtime.ts");
 	await cancelAgentRuns(id);
+	const { stopWatcher } = await import("../email/watch.ts");
+	await stopWatcher(id, { forget: true });
 	// Its computer and devboxes would otherwise keep running on Proxmox; its seats on other bots' machines go too.
 	const { deleteAgentMachines } = await import("../machines/manager.ts");
 	await deleteAgentMachines(id);

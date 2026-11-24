@@ -57,6 +57,7 @@ const QUERY_TOKEN_PATHS = [
 	/^\/api\/voice\/messages\/[^/]+\/speech$/,
 	/^\/api\/machines\/[^/]+\/screen$/,
 	/^\/api\/avatars\/gallery\/[^/]+$/,
+	/^\/api\/providers\/signin\/[^/]+$/,
 ];
 
 /** A token from `Authorization: Bearer …`, or `?token=` where a browser can't send headers (see above). */
