@@ -32,6 +32,11 @@
 - **Context and memory you can see.** A chat's details show exactly what the bot reads on its next turn: its
   instructions, memory, notes, history, tools and token counts, and let you compact or reset it. On the bot's
   **Memory** page you can edit or forget any memory, keep notes, and turn **Learns as it goes** on or off.
+- **Works until it's done.** A bot keeps going on a long task (dozens of clicks on its computer, a big refactor) without
+  stopping to ask you to say "continue". If it repeats exactly the same step and gets the same result, it's told to try
+  something else, and stops after a few more; older tool results are shortened as a task grows, so it never runs out of
+  room. **Most steps per reply** (a bot's **Model & voice → Limits**, 200 by default) only stops a reply that runs away;
+  your role's token and cost limits still apply.
 - **Self-management.** Bots run Sekai with their own tools: memory, notes, reminders, routines, skills, and creating or
   updating other bots. Built-in skills teach them good habits.
 - **Group chats.** Bots answer when @mentioned or picked by a router, hand work to each other with @mentions, and ask
