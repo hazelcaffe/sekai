@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { useShallow } from "zustand/react/shallow";
 import { useOpenAgent } from "../../lib/navigation.ts";
 import { MESSAGE_SCORE, ranked } from "../../lib/search.ts";
 import { signOut } from "../../lib/session.ts";
@@ -109,7 +110,16 @@ export function CommandPalette() {
 	const open = useUi((s) => s.paletteOpen);
 	const scope = useUi((s) => s.paletteScope);
 	const setOpen = useUi((s) => s.setPaletteOpen);
-	const ui = useUi();
+	// Only what this reads: the whole store changes on every keystroke (drafts) and every step of a reply.
+	const ui = useUi(
+		useShallow((s) => ({
+			setGetAppsOpen: s.setGetAppsOpen,
+			setImportBotOpen: s.setImportBotOpen,
+			setNewAgentOpen: s.setNewAgentOpen,
+			setNewChatOpen: s.setNewChatOpen,
+			setNewGroupOpen: s.setNewGroupOpen,
+		})),
+	);
 	const navigate = useNavigate();
 	const openAgent = useOpenAgent();
 	const { can } = useAccess();

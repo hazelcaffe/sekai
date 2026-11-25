@@ -426,7 +426,18 @@ export function ConversationPage() {
 	const agent =
 		conversation?.kind === "direct" && conversation.agentId ? (agents.get(conversation.agentId) ?? null) : null;
 	const layout = useLayout();
-	const ui = useUi();
+	// Only what this reads: the whole store changes on every keystroke (drafts) and every step of a reply.
+	const ui = useUi(
+		useShallow((s) => ({
+			closePanel: s.closePanel,
+			openComputer: s.openComputer,
+			openPanel: s.openPanel,
+			panelOpen: s.panelOpen,
+			panelView: s.panelView,
+			setDraft: s.setDraft,
+			setReplyTo: s.setReplyTo,
+		})),
+	);
 	const markSeen = useSeen((s) => s.markSeen);
 	const runs = useWorkingAgents(conversationId);
 	const scrollRef = useRef<HTMLDivElement>(null);

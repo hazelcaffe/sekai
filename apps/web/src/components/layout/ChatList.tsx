@@ -15,6 +15,7 @@ import { useMutation } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { useShallow } from "zustand/react/shallow";
 import { latestDirectByAgent, type MessagingChat, messagingChats } from "../../lib/navigation.ts";
 import { isUnreadChat } from "../../lib/unread.ts";
 import { useSeen } from "../../stores/seen.ts";
@@ -234,7 +235,8 @@ function linkedTitle(types: MessagingChat["type"][]): string {
 /** The chat list's sections (the sidebar and the phone's Chats screen). */
 export function ChatList({ empty, className }: { empty?: ReactNode; className?: string }) {
 	const d = useChatListData();
-	const ui = useUi();
+	// Only what this reads: the whole store changes on every keystroke (drafts) and every step of a reply.
+	const ui = useUi(useShallow((s) => ({ setNewAgentOpen: s.setNewAgentOpen })));
 	const { can } = useAccess();
 	const [showHidden, setShowHidden] = useState(false);
 	const { setRenaming, setDeleting, dialogs } = useRowDialogs(d.conversations, d.current, d.currentId);
