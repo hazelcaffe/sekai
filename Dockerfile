@@ -8,7 +8,7 @@ ARG WITH_WEB_ENGINE=0
 ARG WITH_SIGNAL=0
 
 # ---- install workspace dependencies ----
-FROM oven/bun:1.4.4 AS deps
+FROM oven/bun:1.4.5 AS deps
 WORKDIR /app
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 COPY package.json bun.lock ./
@@ -27,7 +27,7 @@ COPY . .
 RUN bun run build:web
 
 # ---- the web engine, when it was asked for (WITH_WEB_ENGINE=1) ----
-FROM oven/bun:1.4.4-slim AS webengine-0
+FROM oven/bun:1.4.5-slim AS webengine-0
 RUN mkdir -p /out/bin
 
 FROM rust:1 AS webengine-1
@@ -36,7 +36,7 @@ RUN cargo install firecrawl-local --locked --root /out
 FROM webengine-${WITH_WEB_ENGINE} AS webengine
 
 # ---- signal-cli, when it was asked for (WITH_SIGNAL=1): the release and checksum Sekai pins (signal/engine.ts) ----
-FROM oven/bun:1.4.4-slim AS signal-0
+FROM oven/bun:1.4.5-slim AS signal-0
 RUN mkdir -p /out/bin
 
 FROM debian:trixie-slim AS signal-1
@@ -56,7 +56,7 @@ RUN if [ "${TARGETARCH:-amd64}" != "amd64" ]; then \
 FROM signal-${WITH_SIGNAL} AS signal
 
 # ---- runtime: API server + built web app ----
-FROM oven/bun:1.4.4-slim AS runtime
+FROM oven/bun:1.4.5-slim AS runtime
 # Node/npm, git and curl let stdio MCP servers run via npx (most are published that way).
 # ssh reaches bots' computers and devboxes; Chromium is the browser for bots without a computer.
 RUN apt-get update \
