@@ -3,6 +3,7 @@ import { log } from "../lib/log.ts";
 import { providerModelInfo } from "../providers/store.ts";
 import { apiEmbeddingModels, apiModelInfos, notChatModel } from "./api-providers.ts";
 import { fetchModels, type RawModel } from "./gateway.ts";
+import { newestFirst } from "./order.ts";
 
 const TTL_MS = 5 * 60_000;
 let cache: { at: number; models: ModelInfo[] } | null = null;
@@ -42,11 +43,11 @@ export async function listModels(refresh = false): Promise<ModelInfo[]> {
 				const last = cache?.models.filter((m) => !m.api) ?? [];
 				if (last.length === 0 && apiModels.length === 0) throw gateway.reason;
 				log.warn("gateway model list failed; serving what's available", gateway.reason);
-				const models = [...last, ...apiModels];
+				const models = newestFirst([...last, ...apiModels]);
 				cache = { at: Date.now(), models };
 				return models;
 			}
-			const models = [...gateway.value.filter(isChat).map(toInfo), ...apiModels];
+			const models = newestFirst([...gateway.value.filter(isChat).map(toInfo), ...apiModels]);
 			cache = { at: Date.now(), models };
 			return models;
 		} finally {
