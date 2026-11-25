@@ -21,7 +21,7 @@
 	"devDependencies": {
 		"@sekai/shared": "workspace:*",
 		"@types/node": "^24.9.0",
-		"electron": "^45.3.2",
+		"electron": "^45.4.1",
 		"electron-builder": "^26.18.0"
 	},
 	"dependencies": {
