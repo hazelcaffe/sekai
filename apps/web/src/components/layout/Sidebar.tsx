@@ -3,6 +3,7 @@ import { IconButton, Kbd, SekaiMark, Tooltip } from "@sekai/ui";
 import { Activity, Inbox, Library, PanelLeftClose, PanelLeftOpen, Plus, Search, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { useShallow } from "zustand/react/shallow";
 import { useLayout } from "../../lib/hooks.ts";
 import { useUi } from "../../stores/ui.ts";
 import { ChatList, RailChats } from "./ChatList.tsx";
@@ -93,7 +94,14 @@ function MainNav({ collapsed }: { collapsed: boolean }) {
  * - pane: one screen of a dual-screen device.
  */
 export function Sidebar({ variant }: { variant: "full" | "rail" | "overlay" | "pane" }) {
-	const ui = useUi();
+	// Only what this reads: the whole store changes on every keystroke (drafts) and every step of a reply.
+	const ui = useUi(
+		useShallow((s) => ({
+			setPaletteOpen: s.setPaletteOpen,
+			setSidebarOpen: s.setSidebarOpen,
+			toggleSidebarCollapsed: s.toggleSidebarCollapsed,
+		})),
+	);
 	const navigate = useNavigate();
 	const { tablet } = useLayout();
 

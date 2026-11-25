@@ -5,6 +5,7 @@ import { WifiOff } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
+import { useShallow } from "zustand/react/shallow";
 import { isTabRoot } from "../../lib/back.ts";
 import { connectEvents } from "../../lib/events.ts";
 import { useHotkey, useLayout } from "../../lib/hooks.ts";
@@ -80,7 +81,20 @@ export function AppShell() {
 	const layout = useLayout();
 	const qc = useQueryClient();
 	const navigate = useNavigate();
-	const ui = useUi();
+	// Only what this reads: the whole store changes on every keystroke (drafts) and every step of a reply.
+	const ui = useUi(
+		useShallow((s) => ({
+			paletteOpen: s.paletteOpen,
+			setNewChatOpen: s.setNewChatOpen,
+			setNewGroupOpen: s.setNewGroupOpen,
+			setPaletteOpen: s.setPaletteOpen,
+			setSidebarOpen: s.setSidebarOpen,
+			sidebarCollapsed: s.sidebarCollapsed,
+			sidebarOpen: s.sidebarOpen,
+			togglePanel: s.togglePanel,
+			toggleSidebarCollapsed: s.toggleSidebarCollapsed,
+		})),
+	);
 	const { pathname } = useLocation();
 	const main = useRef<HTMLElement>(null);
 

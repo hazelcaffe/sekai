@@ -2,6 +2,7 @@ import { isMac, useAccess, useAgents } from "@sekai/client";
 import { DropdownContent, DropdownEntries, DropdownMenu, DropdownTrigger, type MenuEntry } from "@sekai/ui";
 import { Bot, FileUp, MessageSquarePlus, Users } from "lucide-react";
 import type { ReactNode } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useUi } from "../../stores/ui.ts";
 
 const NEW_CHAT = isMac ? "⌘N" : "Ctrl+N";
@@ -11,7 +12,15 @@ const NEW_GROUP = isMac ? "⌘⇧N" : "Ctrl+Shift+N";
 export function useNewEntries(): MenuEntry[] {
 	const { data: agents = [] } = useAgents();
 	const { can } = useAccess();
-	const ui = useUi();
+	// Only what this reads: the whole store changes on every keystroke (drafts) and every step of a reply.
+	const ui = useUi(
+		useShallow((s) => ({
+			setImportBotOpen: s.setImportBotOpen,
+			setNewAgentOpen: s.setNewAgentOpen,
+			setNewChatOpen: s.setNewChatOpen,
+			setNewGroupOpen: s.setNewGroupOpen,
+		})),
+	);
 	return [
 		{
 			label: "New chat",

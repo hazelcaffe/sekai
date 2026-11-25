@@ -12,7 +12,44 @@ function savedTheme(): ThemeChoice {
 }
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+
+/**
+ * localStorage, written at most every half second (the store is saved on every keystroke in a message box otherwise),
+ * and at once when the page is hidden or closed so nothing typed is lost.
+ */
+function batchedStorage(): StateStorage {
+	const pending = new Map<string, string>();
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	const flush = () => {
+		if (timer) clearTimeout(timer);
+		timer = null;
+		for (const [key, value] of pending) {
+			try {
+				localStorage.setItem(key, value);
+			} catch {}
+		}
+		pending.clear();
+	};
+	if (typeof window !== "undefined") {
+		window.addEventListener("pagehide", flush);
+		document.addEventListener("visibilitychange", () => {
+			if (document.visibilityState === "hidden") flush();
+		});
+	}
+	return {
+		getItem: (key) => pending.get(key) ?? localStorage.getItem(key),
+		setItem: (key, value) => {
+			pending.set(key, value);
+			timer ??= setTimeout(flush, 500);
+		},
+		removeItem: (key) => {
+			pending.delete(key);
+			localStorage.removeItem(key);
+		},
+	};
+}
+
 import { useShallow } from "zustand/react/shallow";
 
 /** One of the six group themes, or "auto" (Virtual Singers by day, Nightcord at 25:00 at night). */
@@ -242,6 +279,7 @@ export const useUi = create<UiState>()(
 		}),
 		{
 			name: "sekai.ui",
+			storage: createJSONStorage(batchedStorage),
 			partialize: (s) => ({
 				sidebarCollapsed: s.sidebarCollapsed,
 				foldedSections: s.foldedSections,
